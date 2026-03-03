@@ -1,0 +1,89 @@
+# Justfile for hyperlight-analysis-guest
+#
+# Build recipes for the Hyperlight Analysis Guest crate.
+# This crate provides secure code analysis in an isolated micro-VM.
+# Cross-platform: works on Linux, macOS, and Windows.
+
+set windows-shell := ["pwsh.exe", "-NoLogo", "-Command"]
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Build the analysis runtime guest binary
+build-runtime profile="release":
+    cd runtime && cargo +nightly build --profile {{ if profile == "debug" { "dev" } else { profile } }} --target x86_64-hyperlight-none -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
+
+# Build the host crate (includes building runtime)
+build profile="release":
+    cd host && cargo build --profile {{ if profile == "debug" { "dev" } else { profile } }}
+
+# Build the NAPI addon for Node.js
+# Depends on install to ensure @napi-rs/cli is available
+build-napi profile="release": install
+    {{ if profile == "debug" { "npm run build:debug" } else { "npm run build" } }}
+
+# Run all tests
+test:
+    cargo test --workspace -- --test-threads=1
+    npm test
+
+# Run Rust tests only
+test-rust:
+    # Single-threaded because QuickJS runtime isn't thread-safe in native mode
+    cargo test --workspace -- --test-threads=1
+
+# Run Node.js tests only
+test-node:
+    npm test
+
+# Format code
+fmt:
+    cargo fmt --all
+
+# Check formatting without modifying
+fmt-check:
+    cargo fmt --all -- --check
+
+# Run clippy lints
+lint:
+    cargo clippy --workspace -- -D warnings
+
+# Clean build artifacts
+clean:
+    cargo clean
+    -{{ if os() == "windows" { "del /f *.node 2>nul" } else { "rm -f *.node" } }}
+    -{{ if os() == "windows" { "rmdir /s /q node_modules 2>nul" } else { "rm -rf node_modules" } }}
+
+# Install Node.js dependencies
+install:
+    npm install
+
+# Full CI check (format, lint, test)
+ci: fmt-check lint test
+
+# Build everything from scratch (clean first)
+all: clean install build build-napi test
+
+# Full rebuild with clean
+rebuild: clean build build-napi
+
+# Quick development build (debug mode)
+dev:
+    just build debug
+    just build-napi debug
+
+# Show runtime info
+info:
+    #!/usr/bin/env bash
+    echo "=== Analysis Guest Info ==="
+    echo "Workspace: $(pwd)"
+    echo "Rust toolchain: $(rustc --version)"
+    echo "Cargo: $(cargo --version)"
+    echo "Node: $(node --version)"
+    echo "npm: $(npm --version)"
+    if [ -f "hyperlight-analysis.*.node" ]; then
+        echo "Native addon: $(ls hyperlight-analysis.*.node 2>/dev/null || echo 'not built')"
+    else
+        echo "Native addon: not built"
+    fi

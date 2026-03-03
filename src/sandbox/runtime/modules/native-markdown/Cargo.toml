@@ -1,0 +1,16 @@
+[package]
+name = "native-markdown"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "native_markdown"
+path = "src/lib.rs"
+
+# No external dependencies — hand-rolled Markdown parser
+[dependencies]
+rquickjs = { version = "0.11", default-features = false, features = ["bindgen", "futures", "macro", "loader"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(hyperlight)'] }

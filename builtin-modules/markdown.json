@@ -1,0 +1,13 @@
+{
+  "name": "markdown",
+  "description": "Convert Markdown to HTML or plain text (native Rust parser)",
+  "author": "system",
+  "mutable": false,
+  "type": "native",
+  "importStyle": "named",
+  "dtsHash": "sha256:3be98a7ce6e34cdb",
+  "hints": {
+    "overview": "Markdown conversion. Use markdownToText() for plain text, markdownToHtml() for HTML.",
+    "relatedModules": ["ha:html"]
+  }
+}

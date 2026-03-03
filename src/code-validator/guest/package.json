@@ -1,0 +1,45 @@
+{
+  "name": "hyperlight-analysis",
+  "version": "0.1.0",
+  "description": "Secure code analysis via Hyperlight micro-VM isolation",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "napi": {
+    "binaryName": "hyperlight-analysis",
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --manifest-path host/Cargo.toml && node -e \"require('fs').readdirSync('host').filter(f=>f.endsWith('.node')).forEach(f=>require('fs').copyFileSync('host/'+f,f))\"",
+    "build:debug": "napi build --platform --manifest-path host/Cargo.toml && node -e \"require('fs').readdirSync('host').filter(f=>f.endsWith('.node')).forEach(f=>require('fs').copyFileSync('host/'+f,f))\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "napi prepublish -t npm"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0-alpha.63",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">= 18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropics/hyperagent.git",
+    "directory": "deps/hyperlight-analysis-guest"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "hyperlight",
+    "security",
+    "code-analysis",
+    "sandbox",
+    "micro-vm"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+    "name": "test-plugin",
+    "version": "1.0.0",
+    "description": "A test plugin for unit tests",
+    "hostModules": ["testmod"],
+    "configSchema": {
+        "greeting": {
+            "type": "string",
+            "description": "Greeting prefix",
+            "default": "Hello"
+        },
+        "maxItems": {
+            "type": "number",
+            "description": "Maximum items to return",
+            "default": 10
+        },
+        "verbose": {
+            "type": "boolean",
+            "description": "Enable verbose output",
+            "default": false
+        },
+        "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags to apply",
+            "default": ["default"]
+        }
+    },
+    "systemMessage": "You have access to testmod via `import * as t from \"host:testmod\"`. Functions: t.greet(name), t.count()."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "ziplib",
+  "description": "Native DEFLATE compression/decompression (RFC 1951) via miniz_oxide",
+  "author": "system",
+  "mutable": false,
+  "type": "native",
+  "dtsHash": "sha256:db6fb4a2c4451a8e",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Low-level DEFLATE compression. Most users should use ha:zip-format instead.",
+    "relatedModules": ["ha:zip-format"]
+  }
+}

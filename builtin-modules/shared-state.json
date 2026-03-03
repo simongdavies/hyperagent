@@ -1,0 +1,29 @@
+{
+  "name": "shared-state",
+  "description": "Cross-handler shared mutable state - persists across execute calls and handler recompilation",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:2cebe9abd09c9048",
+  "dtsHash": "sha256:8bac312e748d998c",
+  "importStyle": "namespace",
+  "hints": {
+    "overview": "Cross-handler state that survives recompilation. The ONLY way to persist data across register_handler calls.",
+    "criticalRules": [
+      "register_handler RECOMPILES ALL CODE — module-level variables are LOST",
+      "Only shared-state survives recompilation",
+      "CAN store: strings, numbers, booleans, null, Uint8Array, arrays/objects of these",
+      "CANNOT store: objects with methods — they don't survive serialization",
+      "Use pres.serialize() for Presentation objects, not set('pres', pres)"
+    ],
+    "antiPatterns": [
+      "Don't store class instances or objects with methods",
+      "Don't assume module-level variables persist across handler registrations"
+    ],
+    "commonPatterns": [
+      "Handler 1 (research): fetch data → set('key', data)",
+      "Handler 2 (build): get('key') → use data",
+      "For images: fetchBinaryBatch([urls]) → set('images', results)",
+      "For PPTX: set('pres', pres.serialize()) → restorePresentation(get('pres'))"
+    ]
+  }
+}

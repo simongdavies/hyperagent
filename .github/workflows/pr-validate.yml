@@ -1,0 +1,152 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+name: Validate Pull Request
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Lint, typecheck, and unit tests (needs KVM for sandbox tests)
+  lint-and-test:
+    name: Lint & Test
+    runs-on: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - uses: hyperlight-dev/ci-setup-workflow@v1.8.0
+        with:
+          rust-toolchain: "1.89"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup
+        run: just setup
+
+      - name: Format check
+        run: npm run fmt:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: just test
+
+  # Build and test on all hypervisor configurations (1ES runners have Rust + just)
+  # NOTE: Windows WHP support is temporarily disabled pending upstream
+  # hyperlight fix for multiple SurrogateProcessManager instances.
+  # See: https://github.com/hyperlight-dev/hyperagent/issues/1
+  build-and-test:
+    name: Build & Test (${{ matrix.hypervisor }}-${{ matrix.config }})
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - linux-kvm-debug
+          - linux-kvm-release
+          - linux-mshv-debug
+          - linux-mshv-release
+        include:
+          - build: linux-kvm-debug
+            os: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd"]
+            hypervisor: kvm
+            config: debug
+          - build: linux-kvm-release
+            os: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd"]
+            hypervisor: kvm
+            config: release
+          - build: linux-mshv-debug
+            os: [self-hosted, Linux, X64, "1ES.Pool=hld-azlinux3-mshv-amd"]
+            hypervisor: mshv
+            config: debug
+          - build: linux-mshv-release
+            os: [self-hosted, Linux, X64, "1ES.Pool=hld-azlinux3-mshv-amd"]
+            hypervisor: mshv
+            config: release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - uses: hyperlight-dev/ci-setup-workflow@v1.8.0
+        with:
+          rust-toolchain: "1.89"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup
+        run: just setup
+
+      - name: Build binary
+        run: node scripts/build-binary.js ${{ matrix.config == 'release' && '--release' || '' }}
+
+      - name: Run tests
+        run: just test
+
+      - name: Upload binary artifact
+        if: matrix.config == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: hyperagent-linux-x64-${{ matrix.hypervisor }}
+          path: dist/
+          retention-days: 7
+
+  # Build Docker image (just setup clones deps so Dockerfile COPY works)
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - uses: hyperlight-dev/ci-setup-workflow@v1.8.0
+        with:
+          rust-toolchain: "1.89"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup
+        run: just setup
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: hyperagent:test
+          build-args: |
+            VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Gate PR merges on all jobs passing
+  ci-status:
+    name: CI Status
+    needs: [lint-and-test, build-and-test, build-docker]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        run: jq --exit-status 'all(.result == "success" or .result == "skipped")' <<< '${{ toJson(needs) }}'

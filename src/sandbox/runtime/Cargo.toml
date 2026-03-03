@@ -1,0 +1,29 @@
+[package]
+name = "hyperagent-runtime"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Prevent cargo from treating this as part of the parent workspace
+[workspace]
+members = ["modules/native-deflate", "modules/native-image", "modules/native-html", "modules/native-markdown", "modules/native-globals"]
+
+[[bin]]
+name = "hyperagent-runtime"
+path = "src/main.rs"
+
+[dependencies]
+hyperlight-js-runtime = { path = "../../../deps/hyperlight-js/src/hyperlight-js-runtime" }
+native-deflate = { path = "modules/native-deflate" }
+native-image = { path = "modules/native-image" }
+native-html = { path = "modules/native-html" }
+native-markdown = { path = "modules/native-markdown" }
+native-globals = { path = "modules/native-globals" }
+rquickjs = { version = "0.11", default-features = false, features = ["bindgen", "futures", "macro", "loader"] }
+
+# anyhow is only needed for the native CLI entry point, not the hyperlight guest
+[target.'cfg(not(hyperlight))'.dependencies]
+anyhow = "1.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(hyperlight)'] }

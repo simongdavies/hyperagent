@@ -1,0 +1,8 @@
+{
+  "name": "_save",
+  "description": "Internal: snapshot shared-state for persistence across sandbox rebuilds",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:7be9538c6195ac9a",
+  "importStyle": "named"
+}

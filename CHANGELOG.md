@@ -1,0 +1,70 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [v0.1.0] - 2026-03-20
+
+Initial public release.
+
+### Added
+
+- **Core Agent**
+  - Interactive REPL with GitHub Copilot SDK integration
+  - Sandboxed JavaScript execution in Hyperlight micro-VMs
+  - MinVer-style versioning from git tags
+  - Session management with persistence and resume
+  - Context compaction for infinite conversations
+  - Multi-model support with mid-conversation switching
+
+- **Plugin System**
+  - `fs-read` - Read-only filesystem access (path-jailed)
+  - `fs-write` - Write-only filesystem access (path-jailed)
+  - `fetch` - HTTPS fetch with SSRF protection
+  - LLM-based plugin security auditing with canary verification
+  - Plugin approval persistence with content-hash invalidation
+
+- **Skills System**
+  - Domain expertise via markdown files with YAML frontmatter
+  - Auto-matching via trigger keywords
+  - Tool restrictions per skill
+  - Built-in skills: pptx-expert, web-scraper, research-synthesiser, data-processor, report-builder, api-explorer
+
+- **Patterns System**
+  - Code generation templates for common tasks
+  - Built-in patterns: two-handler-pipeline, file-generation, fetch-and-process, data-transformation, data-extraction, image-embed
+
+- **Resource Profiles**
+  - Bundled limit and plugin presets
+  - Stackable profiles (max limits, union of plugins)
+  - Built-in profiles: default, file-builder, web-research, heavy-compute
+
+- **Module System**
+  - Built-in modules: str-bytes, crc32, base64, xml-escape, deflate, zip-format, ooxml-core, pptx, pptx-charts, pptx-tables
+  - User-defined modules persisted to ~/.hyperagent/modules/
+  - Shared state across handler recompiles via ha:shared-state
+
+- **Code Validation**
+  - Pre-execution validation in isolated Rust guest (hyperlight-analysis-guest)
+  - QuickJS parser for syntax checking
+  - Import validation against available modules
+  - Plugin source scanning for dangerous patterns
+
+- **CLI Features**
+  - Non-interactive mode with `--prompt` and `--auto-approve`
+  - Slash commands for runtime configuration
+  - Command suggestions extracted from LLM output
+  - Ctrl+R reverse history search
+  - Session transcript recording
+
+### Security
+
+- Hardware isolation via Hyperlight micro-VMs (KVM/MSHV/WHP)
+- Tool gating blocks all SDK built-in tools (bash, edit, grep, read, write)
+- LLM-based plugin security auditing with anti-prompt-injection canaries
+- Code validation before execution in isolated sandbox
+- Path jailing for filesystem plugins
+- SSRF protection for fetch plugin (DNS + post-connect IP validation)
+
+[v0.1.0]: https://github.com/hyperlight-dev/hyperagent/releases/tag/v0.1.0

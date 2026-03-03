@@ -1,0 +1,69 @@
+#!/bin/bash
+# Wrapper script for running hyperagent in Docker (Linux only)
+set -e
+
+# Detect hypervisor device and get its group
+if [ -e /dev/kvm ]; then
+    HYPERVISOR_DEVICE="/dev/kvm"
+    HYPERVISOR_GID=$(stat -c '%g' /dev/kvm)
+elif [ -e /dev/mshv ]; then
+    HYPERVISOR_DEVICE="/dev/mshv"
+    HYPERVISOR_GID=$(stat -c '%g' /dev/mshv)
+else
+    echo "Error: No hypervisor found (/dev/kvm or /dev/mshv required)"
+    echo "Hyperagent requires hardware virtualization support."
+    exit 1
+fi
+
+# Build auth args - try token first, then gh creds
+AUTH_ARGS=""
+if [ -n "$GITHUB_TOKEN" ]; then
+    AUTH_ARGS="-e GITHUB_TOKEN=$GITHUB_TOKEN"
+elif [ -n "$GH_TOKEN" ]; then
+    AUTH_ARGS="-e GITHUB_TOKEN=$GH_TOKEN"
+elif gh auth status >/dev/null 2>&1; then
+    # Extract token from gh CLI - the Copilot CLI needs it as an env var
+    GH_AUTH_TOKEN=$(gh auth token 2>/dev/null)
+    if [ -n "$GH_AUTH_TOKEN" ]; then
+        echo "Using gh CLI credentials"
+        AUTH_ARGS="-e GITHUB_TOKEN=$GH_AUTH_TOKEN"
+    else
+        echo "Error: Could not extract token from gh CLI"
+        exit 1
+    fi
+else
+    echo "Error: No GitHub authentication found."
+    echo "Either:"
+    echo "  1. Set GITHUB_TOKEN environment variable"
+    echo "  2. Run 'gh auth login' first"
+    exit 1
+fi
+
+# Ensure config dir exists
+mkdir -p "$HOME/.hyperagent"
+mkdir -p "$HOME/.hyperagent/tmp"
+
+# Use -it only if we have a TTY (for CI compatibility)
+TTY_FLAGS=""
+if [ -t 0 ]; then
+    TTY_FLAGS="-it"
+fi
+
+# Forward HYPERAGENT_*, HYPERLIGHT_*, and COPILOT_MODEL env vars into the container
+ENV_ARGS=""
+for var in $(env | grep -E '^(HYPERAGENT_|HYPERLIGHT_|COPILOT_MODEL)' | cut -d= -f1); do
+    ENV_ARGS="$ENV_ARGS -e $var"
+done
+
+exec docker run $TTY_FLAGS --rm \
+  --device="$HYPERVISOR_DEVICE" \
+  --group-add "$HYPERVISOR_GID" \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/home/hyperagent \
+  $AUTH_ARGS \
+  $ENV_ARGS \
+  -v "$HOME/.hyperagent:/home/hyperagent/.hyperagent" \
+  -v "$HOME/.hyperagent/tmp:/tmp" \
+  -v "$(pwd)":/workspace \
+  -w /workspace \
+  hyperagent "$@"

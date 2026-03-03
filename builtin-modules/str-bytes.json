@@ -1,0 +1,21 @@
+{
+  "name": "str-bytes",
+  "description": "String to binary conversion, uint LE encoding, array concatenation",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:2a9d1c75077400d8",
+  "dtsHash": "sha256:f810fabeeca88b35",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Latin-1 byte-per-char encoding and binary helpers for file format construction.",
+    "relatedModules": ["ha:zip-format", "ha:crc32", "ha:base64"],
+    "criticalRules": [
+      "strToBytes/bytesToStr are Latin-1 (single byte per char) — NOT UTF-8",
+      "For UTF-8 encoding, use strToUtf8Bytes or TextEncoder (globally available)",
+      "uint16LE/uint32LE are for binary format headers (ZIP, PPTX internal structures)"
+    ],
+    "commonPatterns": [
+      "Binary header: concatBytes([uint32LE(signature), uint16LE(version), strToBytes(data)])"
+    ]
+  }
+}

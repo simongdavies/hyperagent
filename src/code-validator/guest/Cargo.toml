@@ -1,0 +1,30 @@
+## Hyperlight Analysis Guest
+##
+## A Hyperlight-based guest binary for secure code analysis.
+## Provides ReDoS-safe parsing of JavaScript modules, plugins, and handlers.
+##
+## This crate is independent of hyperlight-js and can be used standalone.
+
+[workspace]
+resolver = "2"
+members = ["host", "runtime"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/anthropics/hyperagent"
+
+[workspace.dependencies]
+# Hyperlight dependencies - pinned to same revision as hyperlight-js
+hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "620339aa95d508e8cbd1d38b4374f09090aade7b", default-features = false }
+hyperlight-guest-bin = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "620339aa95d508e8cbd1d38b4374f09090aade7b" }
+hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "620339aa95d508e8cbd1d38b4374f09090aade7b" }
+hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "620339aa95d508e8cbd1d38b4374f09090aade7b", default-features = false, features = ["executable_heap", "init-paging", "kvm", "mshv3"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

@@ -1,0 +1,23 @@
+{
+  "name": "image",
+  "description": "Read image dimensions from PNG/JPEG/GIF/BMP headers (native Rust)",
+  "author": "system",
+  "mutable": false,
+  "type": "native",
+  "importStyle": "named",
+  "dtsHash": "sha256:c58e7d77a858d02f",
+  "hints": {
+    "overview": "Read image dimensions from binary headers without decoding the full image.",
+    "relatedModules": ["ha:pptx", "ha:base64"],
+    "optionalPlugins": ["fetch"],
+    "criticalRules": [
+      "Input must be Uint8Array (raw image bytes), not base64 string",
+      "Use detectImageDimensions(data) when format is unknown",
+      "Use getImageDimensions(data, format) when you know the format"
+    ],
+    "commonPatterns": [
+      "Download + measure: const img = fetchBinary(url); const dims = detectImageDimensions(img)",
+      "Aspect ratio: scale = Math.min(targetW/dims.width, targetH/dims.height)"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "xml-escape",
+  "description": "XML string escaping and simple element builder for OOXML/SVG/HTML",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:21e751269942bb60",
+  "dtsHash": "sha256:df392595863d1808",
+  "importStyle": "named",
+  "hints": {
+    "overview": "XML escaping and element construction. Used internally by PPTX modules.",
+    "relatedModules": ["ha:pptx", "ha:ooxml-core"]
+  }
+}

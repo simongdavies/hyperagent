@@ -1,0 +1,13 @@
+{
+  "name": "crc32",
+  "description": "CRC32 checksum (IEEE 802.3) for Uint8Array - used by ZIP, PNG, gzip",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:1c840a559c676a08",
+  "dtsHash": "sha256:f5e30cf548f802e4",
+  "importStyle": "named",
+  "hints": {
+    "overview": "CRC32 checksums for data integrity. Used internally by ha:zip-format.",
+    "relatedModules": ["ha:zip-format", "ha:str-bytes"]
+  }
+}

@@ -1,0 +1,9 @@
+{
+    "name": "companion-plugin",
+    "version": "1.0.0",
+    "description": "A plugin that declares test-plugin as a companion",
+    "hostModules": ["companion-mod"],
+    "companions": ["test-plugin"],
+    "configSchema": {},
+    "systemMessage": "Companion plugin with no config."
+}

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": ".",
+    "rootDir": "src",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "removeComments": false,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "typeRoots": ["src/types"],
+    "baseUrl": ".",
+    "paths": {
+      "ha:ooxml-core": ["./src/ooxml-core.ts"],
+      "ha:xml-escape": ["./src/xml-escape.ts"],
+      "ha:crc32": ["./src/crc32.ts"],
+      "ha:str-bytes": ["./src/str-bytes.ts"],
+      "ha:zip-format": ["./src/zip-format.ts"],
+      "ha:base64": ["./src/base64.ts"],
+      "ha:pptx": ["./src/pptx.ts"],
+      "ha:pptx-tables": ["./src/pptx-tables.ts"],
+      "ha:pptx-charts": ["./src/pptx-charts.ts"],
+      "ha:shared-state": ["./src/shared-state.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

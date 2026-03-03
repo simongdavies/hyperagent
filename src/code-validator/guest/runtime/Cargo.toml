@@ -1,0 +1,44 @@
+## Hyperlight Analysis Runtime
+##
+## Guest binary that runs inside the Hyperlight micro-VM.
+## Provides secure, ReDoS-safe code analysis functions.
+
+[package]
+name = "hyperlight-analysis-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Guest runtime for Hyperlight-based code analysis"
+
+[[bin]]
+name = "hyperlight-analysis-runtime"
+path = "src/main.rs"
+harness = false
+test = false
+
+[dependencies]
+anyhow = { version = "1.0", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+regex-automata = { version = "0.4", default-features = false, features = ["alloc", "meta", "nfa-pikevm"] }
+nom = { version = "8.0", default-features = false, features = ["alloc"] }
+spin = "0.10"
+rquickjs = { version = "0.11", default-features = false, features = ["bindgen", "loader"] }
+hashbrown = "0.15"
+sha2 = { version = "0.10", default-features = false }
+
+[target.'cfg(hyperlight)'.dependencies]
+hyperlight-common = { workspace = true, default-features = false }
+hyperlight-guest = { workspace = true }
+hyperlight-guest-bin = { workspace = true }
+
+[target.'cfg(not(hyperlight))'.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+
+[build-dependencies]
+bindgen = "0.72"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(hyperlight)'] }

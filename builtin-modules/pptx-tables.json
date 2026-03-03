@@ -1,0 +1,21 @@
+{
+  "name": "pptx-tables",
+  "description": "Styled tables for PPTX presentations - headers, borders, alternating rows",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:399b5349b1c8c187",
+  "dtsHash": "sha256:82d903ffbf4dfb1e",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Table generation for PPTX. Always used with ha:pptx.",
+    "relatedModules": ["ha:pptx"],
+    "criticalRules": [
+      "comparisonTable: options array must not be empty, each option needs {name, values}"
+    ],
+    "commonPatterns": [
+      "table({x, y, w, headers, rows, style}) for data tables",
+      "kvTable({x, y, w, items: [{key, value}]}) for key-value pairs",
+      "comparisonTable({x, y, w, features, options}) for feature grids"
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+deps/
+
+# TypeScript build output
+dist/
+
+# Generated builtin-modules files (compiled from src/*.ts or Rust source)
+# These are regenerated at install time via `npm run build:modules`
+# _restore.js and _save.js are hand-written, so exclude them from the glob.
+builtin-modules/*.js
+builtin-modules/*.d.ts
+builtin-modules/*.d.ts.map
+!builtin-modules/_restore.js
+!builtin-modules/_save.js
+
+# Temp directory for TypeScript source consistency tests
+.tmp-ts-check/
+
+# Rust build artifacts
+target/
+Cargo.lock
+*.node
+
+# Log files are written to ~/.hyperagent/logs/ (not in the repo)
+
+# User data — never commit (approvals, config, logs, cache)
+approved-plugins.json
+fetch-log.jsonl
+config.json
+*.jsonl
+.hyperagent_history
+!plugins/**/plugin.json
+
+# OS files
+.DS_Store
+Thumbs.db
+working_docs/
+working-docs/
+iteration-logs/
+.vscode/
+
+# Hyperagent runtime build artifacts
+src/sandbox/runtime/target/
+src/sandbox/runtime/Cargo.lock
+
+# Generated plugin files (compiled from *.ts)
+# These are regenerated via `npm run build:modules`
+plugins/*/index.d.ts
+plugins/*/index.js
+plugins/shared/*.d.ts
+plugins/shared/*.js
+plugins/plugin-schema-types.d.ts
+plugins/plugin-schema-types.js
+plugins/host-modules.d.ts

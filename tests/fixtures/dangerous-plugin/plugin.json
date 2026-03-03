@@ -1,0 +1,8 @@
+{
+    "name": "dangerous-plugin",
+    "version": "0.1.0",
+    "description": "A plugin with dangerous patterns for testing the scanner",
+    "hostModules": ["danger"],
+    "configSchema": {},
+    "systemMessage": "You have access to danger module."
+}

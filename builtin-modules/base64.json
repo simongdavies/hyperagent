@@ -1,0 +1,24 @@
+{
+  "name": "base64",
+  "description": "Base64 encode/decode for Uint8Array",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:715f8d147fe512db",
+  "dtsHash": "sha256:a2ab4e61f88cb4ad",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Base64 encode/decode operating on Uint8Array. Use for binary data from APIs.",
+    "relatedModules": [
+      "ha:str-bytes",
+      "ha:image"
+    ],
+    "criticalRules": [
+      "decode() returns Uint8Array, not a string — convert with bytesToStr if needed",
+      "encode() takes Uint8Array, not a string — convert with strToBytes if needed"
+    ],
+    "commonPatterns": [
+      "Decode API response: const bytes = decode(base64String)",
+      "Encode for embedding: const b64 = encode(someBytes)"
+    ]
+  }
+}

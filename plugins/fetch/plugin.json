@@ -1,0 +1,28 @@
+{
+  "name": "fetch",
+  "version": "1.0.0",
+  "description": "Secure HTTPS-only fetch for sandboxed JavaScript. Default-deny domain allowlist, SSRF protection, rate limiting, and audit logging.",
+  "hostModules": ["fetch"],
+  "hints": {
+    "overview": "HTTP(S) fetch for external data. All calls return synchronously.",
+    "relatedModules": ["ha:html", "ha:markdown", "ha:image"],
+    "criticalRules": [
+      "Only allowlisted domains work — non-allowlisted = blocked permanently",
+      "fetchJSON(url) for JSON APIs, fetchText(url) for HTML/text, fetchBinary(url) for images",
+      "fetchBinaryBatch([urls]) for multiple downloads — does NOT throw, check each result.error",
+      "Check rateLimit.remaining on responses — stop if 0",
+      "Use head(url) to check content type before downloading"
+    ],
+    "antiPatterns": [
+      "Don't use fetchJSON on non-JSON URLs (HTML, raw text) — use fetchText instead",
+      "Don't retry permanent errors (domain not allowlisted, POST not allowed, content type blocked)",
+      "Don't use manual read loops — use fetchText/fetchBinary/fetchBinaryBatch convenience methods"
+    ],
+    "commonPatterns": [
+      "JSON API: const data = fetchJSON(url)",
+      "Web page: const html = fetchText(url); const {text, links} = parseHtml(html)",
+      "Image download: const img = fetchBinary(url)",
+      "Batch images: const results = fetchBinaryBatch([url1, url2, url3])"
+    ]
+  }
+}

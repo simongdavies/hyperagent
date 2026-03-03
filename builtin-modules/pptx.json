@@ -1,0 +1,47 @@
+{
+  "name": "pptx",
+  "description": "PowerPoint PPTX presentation builder - slides, text, shapes, themes, layouts",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:a13871a41506a523",
+  "dtsHash": "sha256:2107e369816b4bd5",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Core PPTX slide building. Charts in ha:pptx-charts, tables in ha:pptx-tables.",
+    "relatedModules": [
+      "ha:pptx-charts",
+      "ha:pptx-tables",
+      "ha:ooxml-core",
+      "ha:image",
+      "ha:shared-state",
+      "ha:xml-escape",
+      "ha:zip-format"
+    ],
+    "requiredPlugins": [
+      "fs-write"
+    ],
+    "optionalPlugins": [
+      "fetch"
+    ],
+    "criticalRules": [
+      "ALL slide functions need pres as FIRST parameter: titleSlide(pres, opts)",
+      "Charts are NOT in this module — import from ha:pptx-charts",
+      "Tables are NOT in this module — import from ha:pptx-tables",
+      "Use getThemeNames() to see valid themes",
+      "DARK THEMES auto-handle contrast — don't use forceColor",
+      "Don't specify text color — theme auto-selects readable colours"
+    ],
+    "antiPatterns": [
+      "Don't store pres object in shared-state — use pres.serialize()",
+      "Don't write raw OOXML XML — use module functions",
+      "Don't guess function names — call module_info first",
+      "series.name is REQUIRED for all chart data series"
+    ],
+    "commonPatterns": [
+      "createPresentation({theme}) → add slides → exportToFile(pres, path, fsWrite)",
+      "pres.serialize() / restorePresentation() for cross-handler persistence",
+      "heroSlide for full-bleed images, statGridSlide for metrics, customSlide for complex layouts",
+      "Use layoutColumns(n, opts) for equal-width columns — never position manually"
+    ]
+  }
+}

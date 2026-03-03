@@ -1,0 +1,21 @@
+{
+  "name": "zip-format",
+  "description": "ZIP file builder with DEFLATE compression - creates valid ZIP archives for PPTX/DOCX/XLSX/EPUB",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:b17f9ada7a183729",
+  "dtsHash": "sha256:df5ae4616da42580",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Assembles arrays of {name, data} entries into valid ZIP files.",
+    "relatedModules": ["ha:ziplib", "ha:crc32", "ha:str-bytes", "ha:pptx"],
+    "requiredPlugins": ["fs-write"],
+    "criticalRules": [
+      "Returns Uint8Array — write with writeFileBinary, not writeFile"
+    ],
+    "commonPatterns": [
+      "Build entries → createZip(entries) → writeFileBinary(path, zipBytes)",
+      "For PPTX: pres.build() returns entries → createZip(entries) or use exportToFile()"
+    ]
+  }
+}

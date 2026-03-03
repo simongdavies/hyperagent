@@ -1,0 +1,16 @@
+[package]
+name = "native-deflate"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "native_deflate"
+path = "src/lib.rs"
+
+[dependencies]
+rquickjs = { version = "0.11", default-features = false, features = ["bindgen", "futures", "macro", "loader"] }
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(hyperlight)'] }

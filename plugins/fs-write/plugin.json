@@ -1,0 +1,28 @@
+{
+  "name": "fs-write",
+  "version": "1.0.0",
+  "description": "Write-only filesystem access jailed to a single base directory. Supports writeFile, appendFile, and mkdir. Defaults to a temp directory if unconfigured.",
+  "hostModules": ["fs-write"],
+  "companions": ["fs-read"],
+  "hints": {
+    "overview": "Write files to the jailed base directory. All paths are relative to baseDir.",
+    "criticalRules": [
+      "All paths are relative to baseDir — absolute paths become relative",
+      "Symlinks are REJECTED when writing",
+      "Dotfiles are BLOCKED (no .env, .git, etc.)",
+      "Per-call limit: 2MB — use multiple appends for larger files",
+      "Text functions return {error}, binary functions THROW",
+      "writeFileBinary for Uint8Array (PPTX, images), writeFile for text"
+    ],
+    "antiPatterns": [
+      "Don't use writeFile for binary data — use writeFileBinary",
+      "Don't forget to enable fs-write before calling write_output tool"
+    ],
+    "commonPatterns": [
+      "Write text: writeFile('output.txt', content)",
+      "Write binary: writeFileBinary('output.pptx', pres.buildZip())",
+      "Append: appendFile('log.txt', newLine)",
+      "Or use write_output tool directly for text (no handler needed)"
+    ]
+  }
+}

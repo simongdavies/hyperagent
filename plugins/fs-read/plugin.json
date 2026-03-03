@@ -1,0 +1,21 @@
+{
+  "name": "fs-read",
+  "version": "1.0.0",
+  "description": "Read-only filesystem access jailed to a single base directory. Supports readFile, listDir, and stat. Defaults to a temp directory if unconfigured.",
+  "hostModules": ["fs-read"],
+  "hints": {
+    "overview": "Read files from the jailed base directory. All paths are relative to baseDir.",
+    "criticalRules": [
+      "All paths are relative to baseDir — absolute paths become relative",
+      "Symlinks are REJECTED (security measure)",
+      "Dotfiles are BLOCKED (no .env, .git, etc.)",
+      "Per-call limit: 1MB — use readFileChunk for larger files",
+      "Text functions return {error}, binary functions THROW"
+    ],
+    "commonPatterns": [
+      "Read text: const result = readFile('data.json'); if (result.error) ...",
+      "Read binary: try { const bytes = readFileBinary('image.png') } catch (e) { ... }",
+      "List directory: const entries = listDir('.') // [{name, type}]"
+    ]
+  }
+}

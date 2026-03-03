@@ -1,0 +1,8 @@
+{
+  "name": "_restore",
+  "description": "Internal: restore shared-state from a saved snapshot after sandbox rebuild",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:500a3dc6c64bc144",
+  "importStyle": "named"
+}

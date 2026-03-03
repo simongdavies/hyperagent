@@ -1,0 +1,24 @@
+{
+  "name": "html",
+  "description": "Extract text and links from HTML (native Rust tag-soup parser)",
+  "author": "system",
+  "mutable": false,
+  "type": "native",
+  "importStyle": "named",
+  "dtsHash": "sha256:0b949851e3409800",
+  "hints": {
+    "overview": "Parse HTML to extract text and links. Handles malformed HTML gracefully.",
+    "relatedModules": ["ha:markdown"],
+    "optionalPlugins": ["fetch"],
+    "criticalRules": [
+      "parseHtml(html) returns {text, links} — most efficient for both",
+      "htmlToText(html) if you only need text, extractLinks(html) if you only need links"
+    ],
+    "antiPatterns": [
+      "Don't parse HTML with regex — use parseHtml() instead"
+    ],
+    "commonPatterns": [
+      "Fetch + parse: const html = fetchText(url); const {text, links} = parseHtml(html)"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "ooxml-core",
+  "description": "Shared OOXML infrastructure - units, colors, themes, Content_Types, relationships",
+  "author": "system",
+  "mutable": false,
+  "sourceHash": "sha256:24c8441a3504052f",
+  "dtsHash": "sha256:9f88e7c59a56854c",
+  "importStyle": "named",
+  "hints": {
+    "overview": "Low-level OOXML infrastructure. Most users should use ha:pptx instead.",
+    "relatedModules": [
+      "ha:pptx",
+      "ha:xml-escape"
+    ],
+    "criticalRules": [
+      "Don't use this module directly unless building custom OOXML content",
+      "Use ha:pptx high-level functions (titleSlide, contentSlide) instead"
+    ]
+  }
+}
