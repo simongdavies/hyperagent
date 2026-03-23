@@ -61,7 +61,7 @@ jobs:
 
   # Build and publish npm package (after tests pass)
   publish-npm:
-    name: Publish to GitHub Packages (npm)
+    name: Publish to npmjs.org
     needs: [test]
     runs-on: ubuntu-latest
     steps:
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          registry-url: "https://npm.pkg.github.com"
+          registry-url: "https://registry.npmjs.org"
 
       - uses: hyperlight-dev/ci-setup-workflow@v1.8.0
         with:
@@ -92,10 +92,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
 
-      - name: Publish to GitHub Packages
-        run: npm publish
+      - name: Publish to npmjs.org
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Build and publish Docker image (after tests pass)
   publish-docker:
