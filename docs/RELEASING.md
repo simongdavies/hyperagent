@@ -50,7 +50,7 @@ git push origin v0.1.1
 The [publish workflow](../.github/workflows/publish.yml) automatically:
 
 1. Runs tests on all hypervisors (KVM, MSHV, WHP)
-2. Publishes npm package to GitHub Packages (`@hyperlight-dev/hyperagent`)
+2. Publishes npm package to [npmjs.org](https://www.npmjs.com/package/@hyperlight-dev/hyperagent)
 3. Publishes Docker image to GitHub Container Registry (`ghcr.io/hyperlight-dev/hyperagent`)
 
 ## Manual Release (workflow_dispatch)
@@ -66,9 +66,6 @@ For testing or hotfixes without creating a git tag:
 ### npm package
 
 ```bash
-# Configure npm for GitHub Packages
-npm config set @hyperlight-dev:registry https://npm.pkg.github.com
-
 # Install specific version
 npm install @hyperlight-dev/hyperagent@0.1.0
 

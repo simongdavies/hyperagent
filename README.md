@@ -109,9 +109,6 @@ docker run -it --rm `
 ### Option 2: npm package
 
 ```bash
-# Configure npm for GitHub Packages
-npm config set @hyperlight-dev:registry https://npm.pkg.github.com
-
 # Install globally
 npm install -g @hyperlight-dev/hyperagent
 
