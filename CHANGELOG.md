@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.3] - 2026-03-24
+
+### Fixed
+
+- **Plugin loading under npm** — Plugins failed with "Stripping types is currently unsupported for files under node_modules" when installed via npm. Plugin loader now prefers compiled `.js` over `.ts` when running under `node_modules`, while still using `.ts` in dev mode for live editing
+- **Plugin hash/approval consistency** — `computePluginHash()`, `loadSource()`, and `verifySourceHash()` now use centralised `resolvePluginSource()` helper to ensure hashing and import use the same file
+
 ## [v0.1.2] - 2026-03-23
 
 ### Fixed
@@ -91,6 +98,7 @@ Initial public release.
 - Path jailing for filesystem plugins
 - SSRF protection for fetch plugin (DNS + post-connect IP validation)
 
+[v0.1.3]: https://github.com/hyperlight-dev/hyperagent/releases/tag/v0.1.3
 [v0.1.2]: https://github.com/hyperlight-dev/hyperagent/releases/tag/v0.1.2
 [v0.1.1]: https://github.com/hyperlight-dev/hyperagent/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/hyperlight-dev/hyperagent/releases/tag/v0.1.0

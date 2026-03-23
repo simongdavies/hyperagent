@@ -14,11 +14,36 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  # Skip heavy CI when only docs change (README, CHANGELOG, docs/, etc.)
+  # Note: skills/**/*.md and patterns/**/*.md are runtime content with
+  # integrity tests — they must NOT be skipped.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - 'skills/**'
+              - 'patterns/**'
+
   # Lint, typecheck, and unit tests (needs KVM for sandbox tests)
   lint-and-test:
     name: Lint & Test
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd"]
     steps:
       - uses: actions/checkout@v6
@@ -48,6 +73,8 @@ jobs:
   # See: https://github.com/hyperlight-dev/hyperagent/issues/1
   build-and-test:
     name: Build & Test (${{ matrix.hypervisor }}-${{ matrix.config }})
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -107,6 +134,8 @@ jobs:
   # Build Docker image (just setup clones deps so Dockerfile COPY works)
   build-docker:
     name: Build Docker Image
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -141,7 +170,7 @@ jobs:
   # Gate PR merges on all jobs passing
   ci-status:
     name: CI Status
-    needs: [lint-and-test, build-and-test, build-docker]
+    needs: [changes, lint-and-test, build-and-test, build-docker]
     if: always()
     runs-on: ubuntu-latest
     steps:
