@@ -322,59 +322,59 @@ fn validate_module_hashes(
         let is_system = meta.author == "system";
 
         // Check .js source hash
-        if let Some(expected_hash) = &meta.source_hash {
-            if let Some(js_source) = context.module_sources.get(specifier) {
-                let actual_hash = sha256_short(js_source);
-                if expected_hash != &actual_hash {
-                    let message = alloc::format!(
-                        "{}: .js hash mismatch (expected {}, got {}). Run: npm run build:modules",
-                        specifier,
-                        expected_hash,
-                        actual_hash
-                    );
-                    if is_system {
-                        errors.push(ValidationError {
-                            error_type: "integrity".to_string(),
-                            message,
-                            line: None,
-                            column: None,
-                        });
-                    } else {
-                        warnings.push(ValidationWarning {
-                            warning_type: "drift".to_string(),
-                            message,
-                            line: None,
-                        });
-                    }
+        if let Some(expected_hash) = &meta.source_hash
+            && let Some(js_source) = context.module_sources.get(specifier)
+        {
+            let actual_hash = sha256_short(js_source);
+            if expected_hash != &actual_hash {
+                let message = alloc::format!(
+                    "{}: .js hash mismatch (expected {}, got {}). Run: npm run build:modules",
+                    specifier,
+                    expected_hash,
+                    actual_hash
+                );
+                if is_system {
+                    errors.push(ValidationError {
+                        error_type: "integrity".to_string(),
+                        message,
+                        line: None,
+                        column: None,
+                    });
+                } else {
+                    warnings.push(ValidationWarning {
+                        warning_type: "drift".to_string(),
+                        message,
+                        line: None,
+                    });
                 }
             }
         }
 
         // Check .d.ts source hash
-        if let Some(expected_hash) = &meta.dts_hash {
-            if let Some(dts_source) = context.dts_sources.get(specifier) {
-                let actual_hash = sha256_short(dts_source);
-                if expected_hash != &actual_hash {
-                    let message = alloc::format!(
-                        "{}: .d.ts hash mismatch (expected {}, got {}). Run: npm run build:modules",
-                        specifier,
-                        expected_hash,
-                        actual_hash
-                    );
-                    if is_system {
-                        errors.push(ValidationError {
-                            error_type: "integrity".to_string(),
-                            message,
-                            line: None,
-                            column: None,
-                        });
-                    } else {
-                        warnings.push(ValidationWarning {
-                            warning_type: "drift".to_string(),
-                            message,
-                            line: None,
-                        });
-                    }
+        if let Some(expected_hash) = &meta.dts_hash
+            && let Some(dts_source) = context.dts_sources.get(specifier)
+        {
+            let actual_hash = sha256_short(dts_source);
+            if expected_hash != &actual_hash {
+                let message = alloc::format!(
+                    "{}: .d.ts hash mismatch (expected {}, got {}). Run: npm run build:modules",
+                    specifier,
+                    expected_hash,
+                    actual_hash
+                );
+                if is_system {
+                    errors.push(ValidationError {
+                        error_type: "integrity".to_string(),
+                        message,
+                        line: None,
+                        column: None,
+                    });
+                } else {
+                    warnings.push(ValidationWarning {
+                        warning_type: "drift".to_string(),
+                        message,
+                        line: None,
+                    });
                 }
             }
         }
@@ -592,12 +592,11 @@ pub fn validate_javascript(source: &str, context: &ValidationContext) -> Validat
             continue;
         }
         // Check if this is a native module (has module.json with type: "native")
-        if let Some(json_str) = context.module_jsons.get(import) {
-            if let Ok(meta) = serde_json::from_str::<ModuleJsonMeta>(json_str) {
-                if meta.r#type.as_deref() == Some("native") {
-                    continue;
-                }
-            }
+        if let Some(json_str) = context.module_jsons.get(import)
+            && let Ok(meta) = serde_json::from_str::<ModuleJsonMeta>(json_str)
+            && meta.r#type.as_deref() == Some("native")
+        {
+            continue;
         }
         missing_sources.push(import.clone());
     }
@@ -768,14 +767,14 @@ fn check_syntax_with_quickjs(source: &str) -> Option<ValidationError> {
                             let message = obj
                                 .get::<_, rquickjs::Value>("message")
                                 .ok()
-                                .and_then(|v| v.as_string().map(|s| s.to_string().ok()).flatten());
+                                .and_then(|v| v.as_string().and_then(|s| s.to_string().ok()));
 
                             // Get stack trace which contains line:column info
                             // Format: "    at __validate_0__:5:16\n"
                             let stack = obj
                                 .get::<_, rquickjs::Value>("stack")
                                 .ok()
-                                .and_then(|v| v.as_string().map(|s| s.to_string().ok()).flatten());
+                                .and_then(|v| v.as_string().and_then(|s| s.to_string().ok()));
 
                             // Extract line:col from stack trace manually
                             // Pattern: __:N:M where N is line, M is column
@@ -1122,11 +1121,11 @@ impl SymbolTable {
             }
 
             // Track type from simple function call
-            if let Some(ref func_name) = assign.func_name {
-                if let Some(&return_type) = func_return_types.get(func_name.as_str()) {
-                    self.bindings
-                        .insert(assign.var_name.clone(), return_type.to_string());
-                }
+            if let Some(ref func_name) = assign.func_name
+                && let Some(&return_type) = func_return_types.get(func_name.as_str())
+            {
+                self.bindings
+                    .insert(assign.var_name.clone(), return_type.to_string());
             }
 
             // Track type from chained method call - FULL CHAIN WALKING
@@ -1138,45 +1137,45 @@ impl SymbolTable {
             // Where pptx is `import * as pptx from "ha:pptx"`
             // The first call (createPresentation) is a function call on the namespace,
             // so we look up its return type directly from func_return_types.
-            if let Some(ref initial_obj) = assign.initial_object {
-                if !assign.method_chain.is_empty() {
-                    // Check if initial_obj is a namespace import
-                    let is_namespace = self.namespace_imports.contains_key(initial_obj);
+            if let Some(ref initial_obj) = assign.initial_object
+                && !assign.method_chain.is_empty()
+            {
+                // Check if initial_obj is a namespace import
+                let is_namespace = self.namespace_imports.contains_key(initial_obj);
 
-                    // Start with the initial object's type
-                    let mut current_type: Option<&str> = if is_namespace {
-                        // For namespace imports, the first method in the chain is a function call.
-                        // e.g., pptx.createPresentation() - look up createPresentation's return type
-                        if let Some(first_method) = assign.method_chain.first() {
-                            func_return_types.get(first_method.as_str()).copied()
-                        } else {
-                            None
-                        }
+                // Start with the initial object's type
+                let mut current_type: Option<&str> = if is_namespace {
+                    // For namespace imports, the first method in the chain is a function call.
+                    // e.g., pptx.createPresentation() - look up createPresentation's return type
+                    if let Some(first_method) = assign.method_chain.first() {
+                        func_return_types.get(first_method.as_str()).copied()
                     } else {
-                        // Normal case: look up the object's type
-                        self.bindings.get(initial_obj).map(|s| s.as_str())
-                    };
-
-                    // Walk through the method chain
-                    // For namespace imports, start from index 1 (we already handled the first)
-                    let start_index = if is_namespace { 1 } else { 0 };
-                    for method in assign.method_chain.iter().skip(start_index) {
-                        if let Some(obj_type) = current_type {
-                            // Look up this method's return type
-                            current_type = method_return_types
-                                .get(&(obj_type, method.as_str()))
-                                .copied();
-                        } else {
-                            // Lost track of type, can't continue
-                            break;
-                        }
+                        None
                     }
+                } else {
+                    // Normal case: look up the object's type
+                    self.bindings.get(initial_obj).map(|s| s.as_str())
+                };
 
-                    // Store the final type
-                    if let Some(final_type) = current_type {
-                        self.bindings
-                            .insert(assign.var_name.clone(), final_type.to_string());
+                // Walk through the method chain
+                // For namespace imports, start from index 1 (we already handled the first)
+                let start_index = if is_namespace { 1 } else { 0 };
+                for method in assign.method_chain.iter().skip(start_index) {
+                    if let Some(obj_type) = current_type {
+                        // Look up this method's return type
+                        current_type = method_return_types
+                            .get(&(obj_type, method.as_str()))
+                            .copied();
+                    } else {
+                        // Lost track of type, can't continue
+                        break;
                     }
+                }
+
+                // Store the final type
+                if let Some(final_type) = current_type {
+                    self.bindings
+                        .insert(assign.var_name.clone(), final_type.to_string());
                 }
             }
         }
@@ -1203,11 +1202,6 @@ impl SymbolTable {
     /// Check if a variable could be null (from ternary assignment).
     fn is_nullable(&self, var_name: &str) -> bool {
         self.nullable.contains(var_name)
-    }
-
-    /// Get the type of a variable, if known.
-    fn get_type(&self, var_name: &str) -> Option<&str> {
-        self.bindings.get(var_name).map(|s| s.as_str())
     }
 }
 
@@ -1244,35 +1238,34 @@ fn detect_guarded_scopes(
         // Look for if statements that guard a nullable variable
         if line.starts_with("if") && line.contains('(') {
             // Extract the condition from if (condition)
-            if let Some(start) = line.find('(') {
-                if let Some(end) = find_matching_paren(line, start) {
-                    let condition = &line[start + 1..end].trim();
+            if let Some(start) = line.find('(')
+                && let Some(end) = find_matching_paren(line, start)
+            {
+                let condition = &line[start + 1..end].trim();
 
-                    // Check if this condition guards a nullable variable
-                    for var in nullable_vars {
-                        // Simple guard: if (varName)
-                        if *condition == var.as_str() {
-                            if let Some(end_line) = find_block_end(&lines, i) {
-                                guarded_ranges
-                                    .entry(var.clone())
-                                    .or_default()
-                                    .push((line_num, end_line as u32 + 1));
-                            }
+                // Check if this condition guards a nullable variable
+                for var in nullable_vars {
+                    // Simple guard: if (varName)
+                    if *condition == var.as_str() {
+                        if let Some(end_line) = find_block_end(&lines, i) {
+                            guarded_ranges
+                                .entry(var.clone())
+                                .or_default()
+                                .push((line_num, end_line as u32 + 1));
                         }
-                        // Null check: if (varName !== null) or if (varName != null)
-                        else if condition.contains(var.as_str())
-                            && (condition.contains("!== null")
-                                || condition.contains("!= null")
-                                || condition.contains("!== undefined")
-                                || condition.contains("!= undefined"))
-                        {
-                            if let Some(end_line) = find_block_end(&lines, i) {
-                                guarded_ranges
-                                    .entry(var.clone())
-                                    .or_default()
-                                    .push((line_num, end_line as u32 + 1));
-                            }
-                        }
+                    }
+                    // Null check: if (varName !== null) or if (varName != null)
+                    else if condition.contains(var.as_str())
+                        && (condition.contains("!== null")
+                            || condition.contains("!= null")
+                            || condition.contains("!== undefined")
+                            || condition.contains("!= undefined"))
+                        && let Some(end_line) = find_block_end(&lines, i)
+                    {
+                        guarded_ranges
+                            .entry(var.clone())
+                            .or_default()
+                            .push((line_num, end_line as u32 + 1));
                     }
                 }
             }
@@ -1288,8 +1281,8 @@ fn find_matching_paren(input: &str, start: usize) -> Option<usize> {
     let bytes = input.as_bytes();
     let mut depth = 0;
 
-    for i in start..bytes.len() {
-        match bytes[i] {
+    for (i, &byte) in bytes.iter().enumerate().skip(start) {
+        match byte {
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -1348,7 +1341,7 @@ fn validate_method_calls(
         // Phase 4.5.4: Warn when calling methods on nullable variables
         // Skip warning if the call is within a guarded scope for this variable
         if symbols.is_nullable(&call.object) {
-            let is_guarded = guarded_ranges.get(&call.object).map_or(false, |ranges| {
+            let is_guarded = guarded_ranges.get(&call.object).is_some_and(|ranges| {
                 ranges
                     .iter()
                     .any(|(start, end)| call.line >= *start && call.line <= *end)
@@ -1467,9 +1460,10 @@ fn validate_function_call_params(
                     || name_lower == "options"
                     || name_lower == "config"
                     || name_lower == "settings"
-                    || param.param_type.as_ref().map_or(false, |t| {
-                        t == "Object" || t == "object" || t.starts_with("{")
-                    });
+                    || param
+                        .param_type
+                        .as_ref()
+                        .is_some_and(|t| t == "Object" || t == "object" || t.starts_with("{"));
                 if is_options_param {
                     continue; // Skip validation - single options object pattern
                 }
@@ -1521,10 +1515,10 @@ fn validate_void_returns(source: &str, context: &ValidationContext) -> Vec<Valid
 
     for metadata in context.module_metadata.values() {
         for export in &metadata.exports {
-            if let Some(ref return_type) = export.returns_type {
-                if return_type == "void" || return_type == "undefined" {
-                    void_functions.insert(export.name.as_str());
-                }
+            if let Some(ref return_type) = export.returns_type
+                && (return_type == "void" || return_type == "undefined")
+            {
+                void_functions.insert(export.name.as_str());
             }
         }
         for (class_name, class_info) in &metadata.classes {
@@ -1542,18 +1536,18 @@ fn validate_void_returns(source: &str, context: &ValidationContext) -> Vec<Valid
     // Check assignments for void function calls
     for assign in extract_all_assignments(source) {
         // Check simple function calls
-        if let Some(ref func_name) = assign.func_name {
-            if void_functions.contains(func_name.as_str()) {
-                warnings.push(ValidationWarning {
-                    warning_type: "void_return".to_string(),
-                    message: alloc::format!(
-                        "Function '{}' returns void, but its result is assigned to '{}'.",
-                        func_name,
-                        assign.var_name
-                    ),
-                    line: Some(assign.line),
-                });
-            }
+        if let Some(ref func_name) = assign.func_name
+            && void_functions.contains(func_name.as_str())
+        {
+            warnings.push(ValidationWarning {
+                warning_type: "void_return".to_string(),
+                message: alloc::format!(
+                    "Function '{}' returns void, but its result is assigned to '{}'.",
+                    func_name,
+                    assign.var_name
+                ),
+                line: Some(assign.line),
+            });
         }
 
         // Check chained method calls - warn if final method returns void
@@ -1630,7 +1624,7 @@ fn validate_property_accesses(
             let is_property = properties.contains(&access.property.as_str());
             let is_method = class_methods
                 .get(obj_type)
-                .map_or(false, |m| m.contains(&access.property.as_str()));
+                .is_some_and(|m| m.contains(&access.property.as_str()));
 
             if !is_property && !is_method {
                 let mut available = properties.clone();
@@ -1710,8 +1704,8 @@ fn validate_destructuring_accesses(
         // For object destructuring, validate each extracted name exists
         if destructure.is_object {
             for var_name in &destructure.extracted_vars {
-                let is_prop = props.map_or(false, |p| p.contains(&var_name.as_str()));
-                let is_method = methods.map_or(false, |m| m.contains(&var_name.as_str()));
+                let is_prop = props.is_some_and(|p| p.contains(&var_name.as_str()));
+                let is_method = methods.is_some_and(|m| m.contains(&var_name.as_str()));
 
                 if !is_prop && !is_method {
                     let mut available: Vec<&str> = Vec::new();

@@ -46,7 +46,7 @@ Individual commands:
 | `just fmt` | Format TS/JS with Prettier | Before committing |
 | `just lint` | `fmt-check` + `tsc --noEmit` | Quick validation |
 | `just test` | Run Vitest suite (30 test files, ~1700 tests) | After TS changes |
-| `just test-rust` | Run Rust tests in code-validator | After Rust changes |
+| `just test-analysis-guest` | Run Rust tests in code-validator | After Rust changes |
 | `just test-all` | Both TS + Rust tests | Full validation |
 | `just start` | Run agent with `tsx` (no build needed) | Dev/testing |
 | `just binary-release` | Build standalone binary to `dist/bin/hyperagent` | Release builds |
@@ -93,5 +93,5 @@ Before considering a change complete:
 1. `just fmt` — all code formatted
 2. `just lint` — TypeScript compiles with zero errors
 3. `just test` — all ~1700 tests pass
-4. If Rust code was changed: `just test-rust` passes
+4. If Rust code was changed: `just test-analysis-guest` passes
 5. No new `expect`/`unwrap`/`assert` in production TS code

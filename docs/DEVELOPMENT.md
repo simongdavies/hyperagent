@@ -160,7 +160,7 @@ npm test -- tests/plugin-manager.test.ts
 npm test -- --coverage
 
 # Rust tests only
-just test-rust               # Tests analysis-guest
+just test-analysis-guest      # Tests analysis-guest
 
 # All tests (TS + Rust)
 just test-all
@@ -187,10 +187,10 @@ just fmt           # Format TS/JS
 just lint          # Check format + typecheck
 
 # Rust only
-just fmt-rust      # Format analysis-guest Rust
-just lint-rust     # Clippy + format check for analysis-guest
-just fmt-runtime   # Format runtime Rust
-just lint-runtime  # Clippy + format check for runtime
+just fmt-analysis-guest  # Format analysis-guest Rust
+just lint-analysis-guest # Clippy + format check for analysis-guest
+just fmt-runtime         # Format runtime Rust
+just lint-runtime        # Clippy + format check for runtime
 
 # Everything (TS + Rust)
 just fmt-all       # Format all code

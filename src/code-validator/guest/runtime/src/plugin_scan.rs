@@ -61,6 +61,9 @@ struct ScanPattern {
 /// - Avoid `\b` entirely — use explicit patterns or accept minor false positives
 ///
 /// This keeps binary size small while still catching security patterns.
+// All regex patterns here are static string literals validated via Regex::new(...).expect(...).
+// Covered by test_get_patterns_compile() to catch regressions.
+#[allow(clippy::expect_used)]
 fn get_patterns() -> Vec<ScanPattern> {
     vec![
         // ── Process execution (DANGER) ───────────────────────────────
@@ -340,6 +343,16 @@ pub fn scan_plugin(source: &str, _config: &ScanConfig) -> ScanResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ensures every regex in get_patterns() compiles without panicking.
+    #[test]
+    fn test_get_patterns_compile() {
+        let patterns = get_patterns();
+        assert!(
+            !patterns.is_empty(),
+            "get_patterns() should return at least one pattern"
+        );
+    }
 
     fn scan(source: &str) -> Vec<ScanFinding> {
         scan_plugin(source, &ScanConfig::default()).findings

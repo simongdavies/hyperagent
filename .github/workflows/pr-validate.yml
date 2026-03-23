@@ -36,14 +36,11 @@ jobs:
       - name: Setup
         run: just setup
 
-      - name: Format check
-        run: npm run fmt:check
+      - name: Lint (TS + Rust)
+        run: just lint-all
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: just test
+      - name: Test (TS + Rust)
+        run: just test-all
 
   # Build and test on all hypervisor configurations (1ES runners have Rust + just)
   # NOTE: Windows WHP support is temporarily disabled pending upstream

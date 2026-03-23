@@ -163,7 +163,7 @@ Analyze a library tarball for security issues.
 just test
 
 # Rust tests only
-just test-rust
+just test-analysis-guest
 
 # Node.js tests only
 just test-node

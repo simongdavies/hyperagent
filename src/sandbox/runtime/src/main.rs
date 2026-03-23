@@ -14,10 +14,10 @@
 #![cfg_attr(hyperlight, no_main)]
 
 use native_deflate::js_deflate;
+use native_globals::setup_globals;
 use native_html::js_html;
 use native_image::js_image;
 use native_markdown::js_markdown;
-use native_globals::setup_globals;
 
 // Register native modules into the global registry.
 // Built-in modules (io, crypto, console, require) are inherited automatically.

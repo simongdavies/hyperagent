@@ -476,10 +476,7 @@ pub fn ternary_assignment(input: &str) -> IResult<&str, TernaryAssignment<'_>> {
     let (input, _) = ws(input)?;
 
     // Parse false branch (rest of line, stopping at ; or newline)
-    let false_branch = input
-        .split(|c| c == ';' || c == '\n')
-        .next()
-        .unwrap_or(input);
+    let false_branch = input.split([';', '\n']).next().unwrap_or(input);
 
     let true_is_null = is_null_or_undefined(true_branch);
     let false_is_null = is_null_or_undefined(false_branch);
@@ -505,20 +502,19 @@ pub fn extract_all_imports(source: &str) -> Vec<String> {
 
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("import") {
-            if let Ok((_, stmt)) = import_statement(trimmed) {
-                if !imports.iter().any(|s: &String| s == stmt.specifier) {
-                    imports.push(String::from(stmt.specifier));
-                }
-            }
+        if trimmed.starts_with("import")
+            && let Ok((_, stmt)) = import_statement(trimmed)
+            && !imports.iter().any(|s: &String| s == stmt.specifier)
+        {
+            imports.push(String::from(stmt.specifier));
         }
         // Also check for `from "..."` pattern on continuation lines
         if let Some(from_pos) = trimmed.find("from ") {
             let rest = &trimmed[from_pos + 5..];
-            if let Ok((_, specifier)) = string_literal(rest.trim()) {
-                if !imports.iter().any(|s: &String| s == specifier) {
-                    imports.push(String::from(specifier));
-                }
+            if let Ok((_, specifier)) = string_literal(rest.trim())
+                && !imports.iter().any(|s: &String| s == specifier)
+            {
+                imports.push(String::from(specifier));
             }
         }
     }
@@ -542,15 +538,15 @@ pub fn extract_all_named_imports(source: &str) -> Vec<NamedImport> {
 
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("import") {
-            if let Ok((_, stmt)) = import_statement(trimmed) {
-                // Only track named imports (not namespace or default)
-                if !stmt.names.is_empty() {
-                    imports.push(NamedImport {
-                        module: String::from(stmt.specifier),
-                        names: stmt.names.iter().map(|s| String::from(*s)).collect(),
-                    });
-                }
+        if trimmed.starts_with("import")
+            && let Ok((_, stmt)) = import_statement(trimmed)
+        {
+            // Only track named imports (not namespace or default)
+            if !stmt.names.is_empty() {
+                imports.push(NamedImport {
+                    module: String::from(stmt.specifier),
+                    names: stmt.names.iter().map(|s| String::from(*s)).collect(),
+                });
             }
         }
     }
@@ -695,10 +691,10 @@ pub fn extract_all_destructuring(source: &str) -> Vec<DestructuringInfo> {
             }
         }
         // Check for array destructuring: [ ... ] =
-        else if after_keyword.starts_with('[') {
-            if let Some(info) = parse_array_destructuring(after_keyword, line_num as u32 + 1) {
-                results.push(info);
-            }
+        else if after_keyword.starts_with('[')
+            && let Some(info) = parse_array_destructuring(after_keyword, line_num as u32 + 1)
+        {
+            results.push(info);
         }
     }
 
@@ -772,7 +768,7 @@ fn parse_array_destructuring(input: &str, line: u32) -> Option<DestructuringInfo
             && name
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_alphabetic() || c == '_')
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
         {
             extracted_vars.push(String::from(name));
         }
@@ -828,22 +824,22 @@ fn extract_destructure_names(pattern: &str) -> Vec<String> {
         if let Some(colon_pos) = trimmed.find(':') {
             let new_name = trimmed[colon_pos + 1..].trim();
             // Skip if it's a nested destructure
-            if !new_name.starts_with('{') && !new_name.starts_with('[') {
-                if !new_name.is_empty()
-                    && new_name
-                        .chars()
-                        .next()
-                        .map_or(false, |c| c.is_alphabetic() || c == '_')
-                {
-                    names.push(String::from(new_name));
-                }
+            if !new_name.starts_with('{')
+                && !new_name.starts_with('[')
+                && !new_name.is_empty()
+                && new_name
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+            {
+                names.push(String::from(new_name));
             }
         } else {
             // Simple name
             if trimmed
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_alphabetic() || c == '_')
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
             {
                 // Handle default values: `name = default`
                 let name = if let Some(eq_pos) = trimmed.find('=') {
@@ -1178,24 +1174,23 @@ pub fn extract_all_method_calls(source: &str) -> Vec<MethodCallInfo> {
                     && bytes[paren_check] == b'('
                     && obj_start < i
                     && method_start < method_end
-                {
-                    if let (Ok(object), Ok(method)) = (
+                    && let (Ok(object), Ok(method)) = (
                         core::str::from_utf8(&bytes[obj_start..i]),
                         core::str::from_utf8(&bytes[method_start..method_end]),
-                    ) {
-                        // Skip built-in methods and invalid identifiers
-                        if !is_builtin_method(method)
-                            && !object.is_empty()
-                            && (object.chars().next().unwrap().is_alphabetic()
-                                || object.starts_with('_')
-                                || object.starts_with('$'))
-                        {
-                            calls.push(MethodCallInfo {
-                                object: String::from(object),
-                                method: String::from(method),
-                                line: line_num as u32 + 1,
-                            });
-                        }
+                    )
+                {
+                    // Skip built-in methods and invalid identifiers
+                    if !is_builtin_method(method)
+                        && !object.is_empty()
+                        && (object.chars().next().is_some_and(|c| c.is_alphabetic())
+                            || object.starts_with('_')
+                            || object.starts_with('$'))
+                    {
+                        calls.push(MethodCallInfo {
+                            object: String::from(object),
+                            method: String::from(method),
+                            line: line_num as u32 + 1,
+                        });
                     }
                 }
             }
@@ -1264,23 +1259,22 @@ pub fn extract_all_function_calls(source: &str) -> Vec<FunctionCallInfo> {
                 // Check it's not a method call (preceded by .)
                 let is_method = func_start > 0 && bytes[func_start - 1] == b'.';
 
-                if !is_method && func_start < func_end {
-                    if let Ok(func_name) = core::str::from_utf8(&bytes[func_start..func_end]) {
-                        if !is_builtin_function(func_name)
-                            && !func_name.is_empty()
-                            && (func_name.chars().next().unwrap().is_alphabetic()
-                                || func_name.starts_with('_')
-                                || func_name.starts_with('$'))
-                        {
-                            // Count arguments
-                            if let Ok((_, arg_count)) = count_args(&line[i..]) {
-                                calls.push(FunctionCallInfo {
-                                    func_name: String::from(func_name),
-                                    arg_count,
-                                    line: line_num as u32 + 1,
-                                });
-                            }
-                        }
+                if !is_method
+                    && func_start < func_end
+                    && let Ok(func_name) = core::str::from_utf8(&bytes[func_start..func_end])
+                    && !is_builtin_function(func_name)
+                    && !func_name.is_empty()
+                    && (func_name.chars().next().is_some_and(|c| c.is_alphabetic())
+                        || func_name.starts_with('_')
+                        || func_name.starts_with('$'))
+                {
+                    // Count arguments
+                    if let Ok((_, arg_count)) = count_args(&line[i..]) {
+                        calls.push(FunctionCallInfo {
+                            func_name: String::from(func_name),
+                            arg_count,
+                            line: line_num as u32 + 1,
+                        });
                     }
                 }
             }
@@ -1307,34 +1301,35 @@ pub fn extract_all_assignments(source: &str) -> Vec<AssignmentInfo> {
         }
 
         // Try ternary assignment first (for nullable tracking)
-        if trimmed.contains('?') && trimmed.contains(':') {
-            if let Ok((_, ternary)) = ternary_assignment(trimmed) {
-                let func = ternary.true_expr.or(ternary.false_expr);
-                assignments.push(AssignmentInfo {
-                    var_name: String::from(ternary.var_name),
-                    func_name: func.map(String::from),
-                    method_chain: Vec::new(),
-                    initial_object: None,
-                    is_nullable: ternary.is_nullable,
-                    line: line_num as u32 + 1,
-                });
-                continue;
-            }
+        if trimmed.contains('?')
+            && trimmed.contains(':')
+            && let Ok((_, ternary)) = ternary_assignment(trimmed)
+        {
+            let func = ternary.true_expr.or(ternary.false_expr);
+            assignments.push(AssignmentInfo {
+                var_name: String::from(ternary.var_name),
+                func_name: func.map(String::from),
+                method_chain: Vec::new(),
+                initial_object: None,
+                is_nullable: ternary.is_nullable,
+                line: line_num as u32 + 1,
+            });
+            continue;
         }
 
         // Try chained method call: const x = obj.method1().method2()
-        if let Ok((_, (var_name, expr))) = var_decl_chained_call(trimmed) {
-            if !expr.chain.is_empty() {
-                assignments.push(AssignmentInfo {
-                    var_name: String::from(var_name),
-                    func_name: None,
-                    method_chain: expr.chain.iter().map(|m| String::from(m.method)).collect(),
-                    initial_object: Some(String::from(expr.object)),
-                    is_nullable: false,
-                    line: line_num as u32 + 1,
-                });
-                continue;
-            }
+        if let Ok((_, (var_name, expr))) = var_decl_chained_call(trimmed)
+            && !expr.chain.is_empty()
+        {
+            assignments.push(AssignmentInfo {
+                var_name: String::from(var_name),
+                func_name: None,
+                method_chain: expr.chain.iter().map(|m| String::from(m.method)).collect(),
+                initial_object: Some(String::from(expr.object)),
+                is_nullable: false,
+                line: line_num as u32 + 1,
+            });
+            continue;
         }
 
         // Try simple function call: const x = func()
@@ -1425,23 +1420,25 @@ pub fn extract_all_property_accesses(source: &str) -> Vec<PropertyAccessInfo> {
                 let is_method_call = next_check < bytes.len() && bytes[next_check] == b'(';
 
                 // Only capture if it's NOT a method call and has valid object/property
-                if !is_method_call && obj_start < i && prop_start < prop_end {
-                    if let (Ok(object), Ok(property)) = (
+                if !is_method_call
+                    && obj_start < i
+                    && prop_start < prop_end
+                    && let (Ok(object), Ok(property)) = (
                         core::str::from_utf8(&bytes[obj_start..i]),
                         core::str::from_utf8(&bytes[prop_start..prop_end]),
-                    ) {
-                        // Skip builtins and skip if object starts with uppercase (likely a class/static)
-                        if !is_builtin_property(property)
-                            && !object.is_empty()
-                            && !property.is_empty()
-                            && !object.chars().next().unwrap().is_uppercase()
-                        {
-                            accesses.push(PropertyAccessInfo {
-                                object: String::from(object),
-                                property: String::from(property),
-                                line: line_num as u32 + 1,
-                            });
-                        }
+                    )
+                {
+                    // Skip builtins and skip if object starts with uppercase (likely a class/static)
+                    if !is_builtin_property(property)
+                        && !object.is_empty()
+                        && !property.is_empty()
+                        && !object.chars().next().is_some_and(|c| c.is_uppercase())
+                    {
+                        accesses.push(PropertyAccessInfo {
+                            object: String::from(object),
+                            property: String::from(property),
+                            line: line_num as u32 + 1,
+                        });
                     }
                 }
 

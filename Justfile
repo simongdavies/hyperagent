@@ -171,17 +171,17 @@ lint: fmt-check typecheck
     @echo "✅ Lint passed — looking sharp"
 
 # Lint Rust code in analysis-guest
-lint-rust:
+lint-analysis-guest:
     cd "{{analysis-guest-dir}}" && cargo fmt --check && cargo clippy --workspace -- -D warnings
-    @echo "✅ Rust lint passed"
+    @echo "✅ Analysis-guest lint passed"
 
 # Format Rust code in analysis-guest
-fmt-rust:
+fmt-analysis-guest:
     cd "{{analysis-guest-dir}}" && cargo fmt
 
 # Test Rust code in analysis-guest
 # Note: --test-threads=1 required because QuickJS context isn't thread-safe
-test-rust:
+test-analysis-guest:
     cd "{{analysis-guest-dir}}" && cargo test --workspace -- --test-threads=1
 
 # ── HyperAgent Runtime (native modules) ──────────────────────────────
@@ -210,15 +210,15 @@ fmt-runtime:
     cd "{{runtime-dir}}" && cargo +1.89 fmt --all
 
 # Full lint: TypeScript + Rust (analysis-guest + runtime)
-lint-all: lint lint-rust lint-runtime
+lint-all: lint lint-analysis-guest lint-runtime
     @echo "✅ All lints passed"
 
 # Full format: TypeScript + Rust
-fmt-all: fmt fmt-rust fmt-runtime
+fmt-all: fmt fmt-analysis-guest fmt-runtime
     @echo "✅ All code formatted"
 
 # Full test: TypeScript + Rust
-test-all: test test-rust
+test-all: test test-analysis-guest
     @echo "✅ All tests passed"
 
 # ── OOXML Validation ─────────────────────────────────────────────────

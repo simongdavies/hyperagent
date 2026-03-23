@@ -6,7 +6,7 @@ Vitest test suite for Hyperagent.
 
 ```bash
 just test          # Run all TypeScript tests
-just test-rust     # Run Rust tests (analysis-guest)
+just test-analysis-guest  # Run Rust tests (analysis-guest)
 just test-all      # Run both
 ```
 

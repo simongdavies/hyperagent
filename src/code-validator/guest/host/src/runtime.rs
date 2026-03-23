@@ -94,13 +94,12 @@ pub(crate) fn get_analysis_runtime() -> Option<Handle> {
 ///
 /// After calling this, `get_analysis_runtime()` will return `None`.
 pub(crate) fn shutdown_runtime() {
-    if let Some(mutex) = ANALYSIS_RUNTIME.get() {
-        if let Ok(mut guard) = mutex.lock() {
-            if let Some(rt) = guard.take() {
-                eprintln!("[hyperlight-analysis] Shutting down runtime...");
-                rt.shutdown_timeout(SHUTDOWN_TIMEOUT);
-                eprintln!("[hyperlight-analysis] Runtime shutdown complete");
-            }
-        }
+    if let Some(mutex) = ANALYSIS_RUNTIME.get()
+        && let Ok(mut guard) = mutex.lock()
+        && let Some(rt) = guard.take()
+    {
+        eprintln!("[hyperlight-analysis] Shutting down runtime...");
+        rt.shutdown_timeout(SHUTDOWN_TIMEOUT);
+        eprintln!("[hyperlight-analysis] Runtime shutdown complete");
     }
 }

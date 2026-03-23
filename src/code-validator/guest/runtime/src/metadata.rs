@@ -363,10 +363,10 @@ pub fn extract_dts_metadata(source: &str, _config: &MetadataConfig) -> ModuleMet
             // Handle multi-line function declarations (e.g., shapes() with complex type params)
             if is_multiline_function_start(line) {
                 let (full_decl, next_i) = collect_multiline_function(&lines, i);
-                if let Some(export) = parse_dts_declaration(&full_decl, &[]) {
-                    if !exports.iter().any(|e| e.name == export.name) {
-                        exports.push(export);
-                    }
+                if let Some(export) = parse_dts_declaration(&full_decl, &[])
+                    && !exports.iter().any(|e| e.name == export.name)
+                {
+                    exports.push(export);
                 }
                 i = next_i;
                 continue;
@@ -641,8 +641,8 @@ fn parse_ts_params(params_str: &str, jsdoc: Option<&JsDocInfo>) -> Vec<ParamInfo
         }
 
         // Handle rest parameters: ...arrays: Uint8Array[]
-        let (part, is_rest) = if part.starts_with("...") {
-            (&part[3..], true)
+        let (part, is_rest) = if let Some(stripped) = part.strip_prefix("...") {
+            (stripped, true)
         } else {
             (part, false)
         };
@@ -786,22 +786,22 @@ fn parse_dts_interface_or_class(
         // Parse method: name(params): returnType;
         if member_line.contains('(') && member_line.contains(')') && !member_line.starts_with("//")
         {
-            if let Some((method_name, ret_type)) = parse_interface_method(member_line) {
-                if !method_name.starts_with('_') {
-                    methods.push(method_name.clone());
-                    if let Some(rt) = ret_type {
-                        method_returns.insert(method_name, rt);
-                    }
+            if let Some((method_name, ret_type)) = parse_interface_method(member_line)
+                && !method_name.starts_with('_')
+            {
+                methods.push(method_name.clone());
+                if let Some(rt) = ret_type {
+                    method_returns.insert(method_name, rt);
                 }
             }
         }
         // Parse property: name: Type;
-        else if member_line.contains(':') && !member_line.starts_with("//") {
-            if let Some(prop_name) = parse_interface_property(member_line) {
-                if !prop_name.starts_with('_') {
-                    properties.push(prop_name);
-                }
-            }
+        else if member_line.contains(':')
+            && !member_line.starts_with("//")
+            && let Some(prop_name) = parse_interface_property(member_line)
+            && !prop_name.starts_with('_')
+        {
+            properties.push(prop_name);
         }
 
         i += 1;
@@ -863,12 +863,11 @@ fn parse_interface_property(line: &str) -> Option<String> {
     let line = line.trim_start_matches("readonly ");
 
     // Skip if it's a method (has parentheses before colon)
-    if let Some(paren_pos) = line.find('(') {
-        if let Some(colon_pos) = line.find(':') {
-            if paren_pos < colon_pos {
-                return None;
-            }
-        }
+    if let Some(paren_pos) = line.find('(')
+        && let Some(colon_pos) = line.find(':')
+        && paren_pos < colon_pos
+    {
+        return None;
     }
 
     // Extract property name (before ':' or '?:')
@@ -1187,12 +1186,13 @@ fn extract_class_members(
         }
 
         // Extract this.propName = ... assignments in constructor
-        if in_constructor && depth >= constructor_depth {
-            if let Some(prop_name) = extract_this_assignment(trimmed) {
-                if !prop_name.starts_with('_') && !properties.contains(&prop_name) {
-                    properties.push(prop_name);
-                }
-            }
+        if in_constructor
+            && depth >= constructor_depth
+            && let Some(prop_name) = extract_this_assignment(trimmed)
+            && !prop_name.starts_with('_')
+            && !properties.contains(&prop_name)
+        {
+            properties.push(prop_name);
         }
 
         // Look for method definitions at depth 1 (direct class members)
@@ -1205,21 +1205,22 @@ fn extract_class_members(
             methods.push(method_name.clone());
 
             // Extract return type from JSDoc if present
-            if let Some(ref jsdoc_lines) = pending_jsdoc {
-                if let Some(return_type) = extract_jsdoc_return_type(jsdoc_lines) {
-                    method_returns.insert(method_name, return_type);
-                }
+            if let Some(ref jsdoc_lines) = pending_jsdoc
+                && let Some(return_type) = extract_jsdoc_return_type(jsdoc_lines)
+            {
+                method_returns.insert(method_name, return_type);
             }
             pending_jsdoc = None;
         }
 
         // Look for class field declarations at depth 1: propName = value;
-        if depth == 1 && parse_method_definition(trimmed).is_none() {
-            if let Some(prop_name) = extract_class_field(trimmed) {
-                if !prop_name.starts_with('_') && !properties.contains(&prop_name) {
-                    properties.push(prop_name);
-                }
-            }
+        if depth == 1
+            && parse_method_definition(trimmed).is_none()
+            && let Some(prop_name) = extract_class_field(trimmed)
+            && !prop_name.starts_with('_')
+            && !properties.contains(&prop_name)
+        {
+            properties.push(prop_name);
         }
 
         // Clear pending JSDoc if we hit a non-method line at depth 1
@@ -1227,10 +1228,9 @@ fn extract_class_members(
             && !trimmed.starts_with("/**")
             && !trimmed.is_empty()
             && !trimmed.starts_with("//")
+            && parse_method_definition(trimmed).is_none()
         {
-            if parse_method_definition(trimmed).is_none() {
-                pending_jsdoc = None;
-            }
+            pending_jsdoc = None;
         }
 
         // Update depth
@@ -1547,10 +1547,10 @@ fn parse_schema_object(content: &str) -> Option<ConfigSchema> {
         // Check if this is a new field declaration at depth 0
         if brace_depth == 0 && trimmed.contains(':') && !trimmed.starts_with("//") {
             // If we have a previous field, parse it
-            if let Some(name) = current_field_name.take() {
-                if let Some(field) = parse_schema_field(&current_field_content) {
-                    schema.insert(name, field);
-                }
+            if let Some(name) = current_field_name.take()
+                && let Some(field) = parse_schema_field(&current_field_content)
+            {
+                schema.insert(name, field);
             }
             current_field_content.clear();
 
@@ -1591,10 +1591,10 @@ fn parse_schema_object(content: &str) -> Option<ConfigSchema> {
     }
 
     // Don't forget the last field
-    if let Some(name) = current_field_name {
-        if let Some(field) = parse_schema_field(&current_field_content) {
-            schema.insert(name, field);
-        }
+    if let Some(name) = current_field_name
+        && let Some(field) = parse_schema_field(&current_field_content)
+    {
+        schema.insert(name, field);
     }
 
     if schema.is_empty() {
@@ -2661,7 +2661,12 @@ export declare function anotherFunc(y: string): void;
             "Function after multi-line 'anotherFunc' should be extracted. Got: {:?}",
             names
         );
-        assert_eq!(result.exports.len(), 3, "Expected 3 exports, got {:?}", names);
+        assert_eq!(
+            result.exports.len(),
+            3,
+            "Expected 3 exports, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2692,11 +2697,12 @@ export declare const FOO: string;
             "Should have re-exported kvTable. Got: {:?}",
             names
         );
-        assert!(
-            names.contains(&"FOO"),
-            "Should have FOO. Got: {:?}",
+        assert!(names.contains(&"FOO"), "Should have FOO. Got: {:?}", names);
+        assert_eq!(
+            result.exports.len(),
+            4,
+            "Expected 4 exports, got {:?}",
             names
         );
-        assert_eq!(result.exports.len(), 4, "Expected 4 exports, got {:?}", names);
     }
 }

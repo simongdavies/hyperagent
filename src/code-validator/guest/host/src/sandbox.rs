@@ -36,8 +36,8 @@ use hyperlight_host::sandbox::uninitialized::GuestBinary;
 use hyperlight_host::{MultiUseSandbox, UninitializedSandbox};
 use napi::bindgen_prelude::*;
 
-use crate::runtime::get_analysis_runtime;
 use crate::ANALYSIS_RUNTIME;
+use crate::runtime::get_analysis_runtime;
 
 /// Heap size for the guest (16 MB).
 const GUEST_HEAP_SIZE: u64 = 16 * 1024 * 1024;
@@ -76,12 +76,8 @@ const GUEST_OUTPUT_SIZE: usize = 4 * 1024 * 1024;
 pub async fn call_guest_function(function_name: &str, input: String) -> Result<String> {
     let function_name = function_name.to_string();
 
-    let handle = get_analysis_runtime().ok_or_else(|| {
-        Error::new(
-            Status::GenericFailure,
-            "Analysis runtime not available",
-        )
-    })?;
+    let handle = get_analysis_runtime()
+        .ok_or_else(|| Error::new(Status::GenericFailure, "Analysis runtime not available"))?;
 
     // Run the blocking Hyperlight operations on the runtime's thread pool
     handle
@@ -101,12 +97,8 @@ pub async fn call_guest_function_2(
 ) -> Result<String> {
     let function_name = function_name.to_string();
 
-    let handle = get_analysis_runtime().ok_or_else(|| {
-        Error::new(
-            Status::GenericFailure,
-            "Analysis runtime not available",
-        )
-    })?;
+    let handle = get_analysis_runtime()
+        .ok_or_else(|| Error::new(Status::GenericFailure, "Analysis runtime not available"))?;
 
     // Run the blocking Hyperlight operations on the runtime's thread pool
     handle

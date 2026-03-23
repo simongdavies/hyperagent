@@ -59,7 +59,10 @@ fn b64_decode_char(c: u8) -> Option<u8> {
 
 fn rust_atob(encoded: String) -> QjsResult<String> {
     // Strip whitespace (browsers are lenient)
-    let clean: Vec<u8> = encoded.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    let clean: Vec<u8> = encoded
+        .bytes()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect();
 
     let mut bytes = Vec::new();
     let mut i = 0;
@@ -152,7 +155,8 @@ pub fn setup_globals(ctx: &Ctx<'_>) -> QjsResult<()> {
     // We capture the Rust fn in a closure so it survives cleanup.
     let encode_fn = Function::new(ctx.clone(), text_encoder_encode)?;
     globals.set("__ha_encode", encode_fn)?;
-    ctx.eval::<(), _>(r#"
+    ctx.eval::<(), _>(
+        r#"
         (function() {
             const encode = globalThis.__ha_encode;
             globalThis.TextEncoder = function TextEncoder() {
@@ -169,7 +173,8 @@ pub fn setup_globals(ctx: &Ctx<'_>) -> QjsResult<()> {
             };
             delete globalThis.__ha_encode;
         })();
-    "#)?;
+    "#,
+    )?;
 
     // ── TextDecoder constructor ──────────────────────────────────
     // Rust function handles the UTF-8 decoding, JS wraps it.
@@ -216,13 +221,15 @@ pub fn setup_globals(ctx: &Ctx<'_>) -> QjsResult<()> {
     "#)?;
 
     // ── queueMicrotask ──────────────────────────────────────────
-    ctx.eval::<(), _>(r#"
+    ctx.eval::<(), _>(
+        r#"
         if (typeof globalThis.queueMicrotask === 'undefined') {
             globalThis.queueMicrotask = function(fn) {
                 Promise.resolve().then(fn);
             };
         }
-    "#)?;
+    "#,
+    )?;
 
     Ok(())
 }

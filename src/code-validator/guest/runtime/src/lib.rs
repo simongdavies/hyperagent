@@ -34,7 +34,6 @@ pub mod validator;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 pub use metadata::{

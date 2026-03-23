@@ -42,20 +42,20 @@ just start         # Run agent (tsx src/agent/index.ts)
 
 # ── Testing ──
 just test          # Run TypeScript tests
-just test-rust     # Run Rust tests (analysis-guest)
-just test-all      # Run all tests (TS + Rust)
+just test-analysis-guest  # Run Rust tests (analysis-guest)
+just test-all            # Run all tests (TS + Rust)
 
 # ── Formatting ──
-just fmt           # Format TypeScript/JavaScript
-just fmt-rust      # Format Rust (analysis-guest)
-just fmt-runtime   # Format Rust (sandbox/runtime)
-just fmt-all       # Format all code
+just fmt                 # Format TypeScript/JavaScript
+just fmt-analysis-guest  # Format Rust (analysis-guest)
+just fmt-runtime         # Format Rust (sandbox/runtime)
+just fmt-all             # Format all code
 
 # ── Linting ──
-just lint          # TypeScript: fmt-check + typecheck
-just lint-rust     # Rust: clippy + fmt-check (analysis-guest)
-just lint-runtime  # Rust: clippy + fmt-check (runtime)
-just lint-all      # All lints
+just lint                # TypeScript: fmt-check + typecheck
+just lint-analysis-guest # Rust: clippy + fmt-check (analysis-guest)
+just lint-runtime        # Rust: clippy + fmt-check (runtime)
+just lint-all            # All lints
 
 # ── Quality Gate ──
 just check         # Full quality gate: lint-all + test-all
