@@ -95,7 +95,8 @@ export function getVersion(): string {
 
   // Check for build-time injected version
   if (typeof __HYPERAGENT_VERSION__ !== "undefined") {
-    cachedVersion = __HYPERAGENT_VERSION__;
+    // Strip leading "v" if present — callers add their own prefix
+    cachedVersion = __HYPERAGENT_VERSION__.replace(/^v/i, "");
     return cachedVersion;
   }
 

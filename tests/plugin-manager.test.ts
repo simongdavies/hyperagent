@@ -82,6 +82,19 @@ describe("validateManifest", () => {
     expect(errors).toContain("hostModules must be an array");
   });
 
+  it('should reject version with "v" prefix', () => {
+    const manifest = {
+      name: "test",
+      version: "v1.0.0",
+      description: "Test",
+      hostModules: ["fs"],
+    };
+    const errors = validateManifest(manifest);
+    expect(errors).toContain(
+      'version must not start with "v" (use bare semver, e.g. "1.0.0")',
+    );
+  });
+
   it("should reject empty hostModules array", () => {
     const manifest = {
       name: "test",

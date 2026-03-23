@@ -84,7 +84,8 @@ function parseGitDescribe(describe) {
 function calculateMinVer() {
   // Allow override via environment (for Docker/CI)
   if (process.env.VERSION) {
-    return process.env.VERSION;
+    // Strip leading "v" if present — callers add their own prefix
+    return process.env.VERSION.replace(/^v/i, "");
   }
   try {
     const result = spawnSync("git", ["describe", "--tags", "--long", "--always", "--dirty"], {

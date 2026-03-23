@@ -209,6 +209,16 @@ export function validateManifest(raw: unknown): string[] {
   if ("version" in obj && typeof obj.version !== "string") {
     errors.push("version must be a string");
   }
+  if (
+    "version" in obj &&
+    typeof obj.version === "string" &&
+    /^v/i.test(obj.version)
+  ) {
+    // Callers prepend "v" for display — a prefixed version causes "vv1.0.0"
+    errors.push(
+      'version must not start with "v" (use bare semver, e.g. "1.0.0")',
+    );
+  }
   if ("description" in obj && typeof obj.description !== "string") {
     errors.push("description must be a string");
   }

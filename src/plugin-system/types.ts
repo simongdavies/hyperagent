@@ -61,7 +61,7 @@ export interface ConfigSchemaEntry {
 export interface PluginManifest {
   /** Unique plugin name (kebab-case, matches directory name). */
   name: string;
-  /** SemVer version string. */
+  /** SemVer version string (bare, no "v" prefix — e.g. "1.0.0" not "v1.0.0"). */
   version: string;
   /** One-line description of what the plugin does. */
   description: string;
