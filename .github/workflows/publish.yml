@@ -21,21 +21,21 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Test on all hypervisor configurations before publishing
-  # NOTE: Windows WHP temporarily disabled (see pr-validate.yml)
-  test:
-    name: Test (${{ matrix.build }})
+  # Build native addons on each platform and upload as artifacts.
+  # These are combined in the publish-npm job to create a cross-platform package.
+  build-native:
+    name: Build (${{ matrix.build }})
     strategy:
       fail-fast: true
       matrix:
-        build: [linux-kvm, linux-mshv]
+        build: [linux-kvm, windows-whp]
         include:
           - build: linux-kvm
             os: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd"]
             hypervisor: kvm
-          - build: linux-mshv
-            os: [self-hosted, Linux, X64, "1ES.Pool=hld-azlinux3-mshv-amd"]
-            hypervisor: mshv
+          - build: windows-whp
+            os: [self-hosted, Windows, X64, "1ES.Pool=hld-win2022-amd"]
+            hypervisor: whp
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -55,14 +55,28 @@ jobs:
 
       - name: Build release binary
         run: node scripts/build-binary.js --release
+        env:
+          VERSION: ${{ github.event.release.tag_name || inputs.version }}
 
       - name: Run tests
         run: just test
 
-  # Build and publish npm package (after tests pass)
+      # Upload the native .node addons so the publish job can combine them
+      - name: Upload native addons
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-addons-${{ matrix.build }}
+          path: |
+            deps/js-host-api/js-host-api.*.node
+            src/code-validator/guest/host/hyperlight-analysis.*.node
+            src/code-validator/guest/hyperlight-analysis.*.node
+          if-no-files-found: error
+          retention-days: 1
+
+  # Combine native addons from all platforms and publish a single npm package
   publish-npm:
     name: Publish to npmjs.org
-    needs: [test]
+    needs: [build-native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -78,10 +92,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Download all platform native addons into their expected locations
+      - name: Download all native addons
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-addons-*
+          merge-multiple: true
+
       - name: Setup
         run: just setup
 
-      - name: Build binary
+      - name: Build binary (with all platform addons present)
         run: VERSION="${{ github.event.release.tag_name || inputs.version }}" node scripts/build-binary.js --release
 
       - name: Set version from release tag
@@ -100,7 +121,7 @@ jobs:
   # Build and publish Docker image (after tests pass)
   publish-docker:
     name: Publish to GitHub Container Registry
-    needs: [test]
+    needs: [build-native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
