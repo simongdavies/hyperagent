@@ -92,15 +92,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Download all platform native addons into their expected locations
+      - name: Setup
+        run: just setup
+
+      # Download AFTER setup so artifacts land in the symlink/junction target
+      # that build-hyperlight creates (deps/js-host-api → Cargo checkout).
+      # Downloading before setup would be clobbered when setup re-creates the link.
       - name: Download all native addons
         uses: actions/download-artifact@v4
         with:
           pattern: native-addons-*
           merge-multiple: true
-
-      - name: Setup
-        run: just setup
 
       - name: Build binary (with all platform addons present)
         run: VERSION="${{ github.event.release.tag_name || inputs.version }}" node scripts/build-binary.js --release
