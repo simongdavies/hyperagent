@@ -24,3 +24,6 @@ updates:
       interval: "daily"
       time: "03:00"
     open-pull-requests-limit: 20
+    ignore:
+      # Build-time symlink to external Cargo checkout — not in the repo
+      - dependency-name: "@hyperlight/js-host-api"
