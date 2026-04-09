@@ -18,8 +18,8 @@ REPO="$1"
 echo "Checking for open Dependabot PRs to approve and merge in $REPO..."
 
 # Get all open PRs from dependabot
-# We filter so that only PRs that are not from forks and are in branches starting with "dependabot/cargo" are included.
-dependabot_prs=$(gh pr list -R "$REPO" --author "dependabot[bot]" --state open --json number,title,reviews,headRepositoryOwner,headRefName | jq --arg repo_owner "$(echo "$REPO" | cut -d'/' -f1)" '[.[] | select(.headRepositoryOwner.login == $repo_owner and (.headRefName | startswith("dependabot/cargo")))]')
+# We filter so that only PRs that are not from forks and are in branches starting with "dependabot/cargo" or "dependabot/npm_and_yarn" are included.
+dependabot_prs=$(gh pr list -R "$REPO" --author "dependabot[bot]" --state open --json number,title,reviews,headRepositoryOwner,headRefName | jq --arg repo_owner "$(echo "$REPO" | cut -d'/' -f1)" '[.[] | select(.headRepositoryOwner.login == $repo_owner and ((.headRefName | startswith("dependabot/cargo")) or (.headRefName | startswith("dependabot/npm_and_yarn"))))]')
 # Exit early if no PRs found
 if [ -z "$dependabot_prs" ] || [ "$dependabot_prs" = "[]" ]; then
     echo "No open Dependabot PRs found in $REPO"
@@ -39,16 +39,16 @@ echo "$dependabot_prs" | jq -c '.[]' | while read -r pr; do
     
     # Check if PR only modifies allowed files
     pr_files=$(gh pr view "$pr_number" -R "$REPO" --json files)
-    invalid_files=$(echo "$pr_files" | jq -r '.files[].path' | grep -v -E '(Cargo\.toml|Cargo\.lock)' || true)
+    invalid_files=$(echo "$pr_files" | jq -r '.files[].path' | grep -v -E '(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json)' || true)
     
     if [ -n "$invalid_files" ]; then
         echo "  ❌ PR #$pr_number modifies files that are not allowed for auto-merge:"
         printf '%s\n' "$invalid_files" | sed 's/^/    - /'
-        echo "  ℹ️ Only changes to Cargo.toml and Cargo.lock are allowed"
+        echo "  ℹ️ Only changes to Cargo.toml, Cargo.lock, package.json, and package-lock.json are allowed"
         continue
     fi
 
-    echo "  ✅ PR #$pr_number only modifies allowed files (Cargo.toml and Cargo.lock)"
+    echo "  ✅ PR #$pr_number only modifies allowed files (Cargo.toml, Cargo.lock, package.json, package-lock.json)"
 
     # First, get detailed PR information including all checks
     pr_details=$(gh pr view "$pr_number" -R "$REPO" --json statusCheckRollup,state)
