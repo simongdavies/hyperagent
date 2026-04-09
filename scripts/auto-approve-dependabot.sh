@@ -39,7 +39,7 @@ echo "$dependabot_prs" | jq -c '.[]' | while read -r pr; do
     
     # Check if PR only modifies allowed files
     pr_files=$(gh pr view "$pr_number" -R "$REPO" --json files)
-    invalid_files=$(echo "$pr_files" | jq -r '.files[].path' | grep -v -E '(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json)' || true)
+    invalid_files=$(echo "$pr_files" | jq -r '.files[].path' | grep -v -E '(^|/)(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json)$' || true)
     
     if [ -n "$invalid_files" ]; then
         echo "  ❌ PR #$pr_number modifies files that are not allowed for auto-merge:"
