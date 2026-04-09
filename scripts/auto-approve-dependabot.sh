@@ -43,7 +43,7 @@ echo "$dependabot_prs" | jq -c '.[]' | while read -r pr; do
     
     if [ -n "$invalid_files" ]; then
         echo "  ❌ PR #$pr_number modifies files that are not allowed for auto-merge:"
-        echo ${invalid_files/#/    - }
+        printf '%s\n' "$invalid_files" | sed 's/^/    - /'
         echo "  ℹ️ Only changes to Cargo.toml and Cargo.lock are allowed"
         continue
     fi
@@ -64,7 +64,7 @@ echo "$dependabot_prs" | jq -c '.[]' | while read -r pr; do
     # Check for permission-required checks
     permission_required_checks=$(echo "$pr_details" | jq -r '.statusCheckRollup[] | select(.status == "WAITING" or .status == "ACTION_REQUIRED" or (.status == "QUEUED" and .conclusion == null and .detailsUrl != null and (.detailsUrl | contains("waiting-for-approval")))) | .name')
     
-    # Dont approve if there are checks required that need permission to run 
+    # Don't approve if there are checks required that need permission to run 
     if [ -n "$permission_required_checks" ]; then
         echo "  🔐 PR #$pr_number has checks waiting for permission:"
         echo "$permission_required_checks" | sed 's/^/    - /'
@@ -122,21 +122,36 @@ echo "$dependabot_prs" | jq -c '.[]' | while read -r pr; do
     fi
     
     if [ "$has_pending_checks" = true ] || [ "$all_checks_pass" = true ]; then
-        # Check if PR is up-to-date with base branch
-        merge_status=$(gh pr view "$pr_number" -R "$REPO" --json mergeStateStatus -q '.mergeStateStatus')
-        
+        # Check if PR is draft and whether it is up-to-date with base branch
+        pr_merge_info=$(gh pr view "$pr_number" -R "$REPO" --json isDraft,mergeStateStatus)
+        is_draft=$(echo "$pr_merge_info" | jq -r '.isDraft')
+        merge_status=$(echo "$pr_merge_info" | jq -r '.mergeStateStatus')
+
+        if [ "$is_draft" = "true" ]; then
+            echo "  ⚠️ PR #$pr_number is a draft PR; skipping merge"
+            continue
+        fi
+
         if [ "$merge_status" != "CLEAN" ]; then
             echo "  ⚠️ PR #$pr_number is not up to date (status: $merge_status)"
             # Enable auto-merge to merge once checks pass
             echo "  ✅ Enabling auto-merge (squash strategy) for PR #$pr_number"
-            gh pr merge "$pr_number" -R "$REPO" --auto --squash
-            echo "  ✅ Auto-merge enabled for PR #$pr_number"
+            if gh pr merge "$pr_number" -R "$REPO" --auto --squash; then
+                echo "  ✅ Auto-merge enabled for PR #$pr_number"
+            else
+                echo "  ⚠️ Failed to enable auto-merge for PR #$pr_number; continuing to next PR"
+                continue
+            fi
         else
             echo "  ✅ PR #$pr_number is up to date with base branch"
             # PR is already clean/mergeable - merge directly instead of enabling auto-merge
             echo "  ✅ Merging PR #$pr_number directly (squash strategy)"
-            gh pr merge "$pr_number" -R "$REPO" --squash
-            echo "  ✅ PR #$pr_number merged successfully"
+            if gh pr merge "$pr_number" -R "$REPO" --squash; then
+                echo "  ✅ PR #$pr_number merged successfully"
+            else
+                echo "  ⚠️ Failed to merge PR #$pr_number; continuing to next PR"
+                continue
+            fi
         fi
     fi
     
