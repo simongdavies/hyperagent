@@ -1540,7 +1540,10 @@ describe("TABLE_STYLES", () => {
   });
 
   it("should have required properties on each style", () => {
-    for (const [name, style] of Object.entries(pdf.TABLE_STYLES) as [string, any][]) {
+    for (const [name, style] of Object.entries(pdf.TABLE_STYLES) as [
+      string,
+      any,
+    ][]) {
       expect(style.headerFg, `${name}.headerFg`).toBeDefined();
       expect(style.headerFont, `${name}.headerFont`).toBeDefined();
       expect(style.bodyFg, `${name}.bodyFg`).toBeDefined();

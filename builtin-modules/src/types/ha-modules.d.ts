@@ -787,7 +787,7 @@ declare module "ha:pdf" {
   /** A single drawing operation within a chart. */
   export interface ChartDrawOp {
       /** Operation type. */
-      type: "text" | "rect" | "line";
+      type: "text" | "rect" | "line" | "polygon";
       /** X coordinate relative to chart origin. */
       x: number;
       /** Y coordinate relative to chart origin. */
@@ -806,14 +806,16 @@ declare module "ha:pdf" {
       h?: number;
       /** For rect: fill colour. */
       fill?: string;
-      /** For rect/line: stroke colour. */
+      /** For rect/line/polygon: stroke colour. */
       stroke?: string;
       /** For line: end X relative to chart origin. */
       x2?: number;
       /** For line: end Y relative to chart origin. */
       y2?: number;
-      /** For rect/line: line width. */
+      /** For rect/line/polygon: line width. */
       lineWidth?: number;
+      /** For polygon: array of [x, y] points relative to chart origin. */
+      points?: Array<[number, number]>;
   }
   /** Options for paragraph(). */
   export interface ParagraphOptions {

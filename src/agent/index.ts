@@ -1171,8 +1171,9 @@ const registerHandlerTool = defineTool("register_handler", {
     // Warn if the handler imports ha:* modules that the LLM hasn't
     // called module_info on. This catches guessing-without-reading.
     const inspected: Set<string> = state.modulesInspected ?? new Set();
-    const importedModules = (code.match(/from\s+["']ha:([^"']+)["']/g) ?? [])
-      .map((m: string) => m.replace(/from\s+["']ha:/, "").replace(/["']$/, ""));
+    const importedModules = (
+      code.match(/from\s+["']ha:([^"']+)["']/g) ?? []
+    ).map((m: string) => m.replace(/from\s+["']ha:/, "").replace(/["']$/, ""));
     const uninspected = importedModules.filter(
       (m: string) => !inspected.has(m),
     );
@@ -1182,9 +1183,7 @@ const registerHandlerTool = defineTool("register_handler", {
     if (result.success) {
       // Warn about uninspected modules
       if (uninspected.length > 0) {
-        const modList = uninspected
-          .map((m: string) => `ha:${m}`)
-          .join(", ");
+        const modList = uninspected.map((m: string) => `ha:${m}`).join(", ");
         console.error(
           `  ${C.warn("⚠️")} You imported ${modList} without calling module_info first. ` +
             `Call module_info('${uninspected[0]}') to read the typeDefinitions and discover all available parameters.`,
@@ -3656,7 +3655,9 @@ const moduleInfoTool = defineTool("module_info", {
             "## Parameter Types",
             "",
             "**IMPORTANT: Read these type definitions to discover ALL available options.**",
-            "Call `module_info('" + name + "', 'functionName')` for details on a specific function.",
+            "Call `module_info('" +
+              name +
+              "', 'functionName')` for details on a specific function.",
             "",
           ];
           for (const [ifaceName, fields] of ifaces) {

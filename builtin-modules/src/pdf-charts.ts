@@ -331,12 +331,14 @@ export function barChart(opts: BarChartOptions): PdfElement {
       stroke: "EEEEEE",
       lineWidth: 0.25,
     });
-    // Label
+    // Label (right-aligned against the Y-axis)
+    const tickLabel = formatAxisValue(tick);
+    const tickLabelW = measureText(tickLabel, "Helvetica", AXIS_FONT_SIZE);
     ops.push({
       type: "text",
-      x: plotLeft - 4,
+      x: plotLeft - 4 - tickLabelW,
       y: y - AXIS_FONT_SIZE / 3,
-      text: formatAxisValue(tick),
+      text: tickLabel,
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
       color: textColor,
@@ -579,11 +581,14 @@ export function lineChart(opts: LineChartOptions): PdfElement {
       stroke: "EEEEEE",
       lineWidth: 0.25,
     });
+    // Label (right-aligned against the Y-axis)
+    const tickLabel = formatAxisValue(tick);
+    const tickLabelW = measureText(tickLabel, "Helvetica", AXIS_FONT_SIZE);
     ops.push({
       type: "text",
-      x: plotLeft - 4,
+      x: plotLeft - 4 - tickLabelW,
       y: y - AXIS_FONT_SIZE / 3,
-      text: formatAxisValue(tick),
+      text: tickLabel,
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
       color: textColor,
@@ -625,18 +630,25 @@ export function lineChart(opts: LineChartOptions): PdfElement {
       });
     }
 
-    // Data point markers
+    // Data point markers (circular, approximated with polygon)
+    const MARKER_RADIUS = 3;
+    const MARKER_SEGMENTS = 12; // Enough for a small circle
     for (let ci = 0; ci < s.values.length; ci++) {
-      const x = plotLeft + ci * catStep;
-      const y = plotBottom - ((s.values[ci] - axisMin) / axisRange) * plotH;
-      // Small filled circle (approximated with a square for now — Bézier circles come later)
-      const markerSize = 3;
+      const cx = plotLeft + ci * catStep;
+      const cy = plotBottom - ((s.values[ci] - axisMin) / axisRange) * plotH;
+      const circlePoints: Array<[number, number]> = [];
+      for (let seg = 0; seg <= MARKER_SEGMENTS; seg++) {
+        const angle = (seg / MARKER_SEGMENTS) * Math.PI * 2;
+        circlePoints.push([
+          cx + Math.cos(angle) * MARKER_RADIUS,
+          cy + Math.sin(angle) * MARKER_RADIUS,
+        ]);
+      }
       ops.push({
-        type: "rect",
-        x: x - markerSize / 2,
-        y: y - markerSize / 2,
-        w: markerSize,
-        h: markerSize,
+        type: "polygon",
+        x: 0,
+        y: 0,
+        points: circlePoints,
         fill: s.color,
       });
     }
@@ -757,84 +769,47 @@ export function pieChart(opts: PieChartOptions): PdfElement {
   const radius =
     Math.min(centerX - CHART_PADDING, centerY - CHART_PADDING) * 0.85;
 
-  // Draw slices as filled "pie wedges" using lines from center to arc points
-  // PDF doesn't have arc primitives, so we approximate each slice with
-  // line segments. We draw each slice as a separate filled polygon.
+  // Draw slices as filled polygon wedges.
+  // Each wedge is a polygon: center → arc points → center.
+  // PDF path rendering fills the polygon properly for solid pie slices.
   let startAngle = -Math.PI / 2; // Start from top (12 o'clock)
 
-  /** Number of line segments per full circle for smooth appearance. */
+  /** Number of line segments per full circle for smooth arc appearance. */
   const SEGMENTS_PER_CIRCLE = 72;
 
   for (let i = 0; i < values.length; i++) {
     const sliceAngle = (values[i] / total) * Math.PI * 2;
     const sliceSegments = Math.max(
-      2,
+      3,
       Math.ceil((sliceAngle / (Math.PI * 2)) * SEGMENTS_PER_CIRCLE),
     );
     const endAngle = startAngle + sliceAngle;
 
-    // For each slice, we draw lines from center → arc points → back to center
-    // This creates a filled wedge shape
-    // Since we can't do filled polygons with basic rect/line ops,
-    // we'll represent each slice as a coloured label + percentage text near the slice
+    // Build wedge polygon: center → arc points around the slice → back to center
+    const wedgePoints: Array<[number, number]> = [];
+    wedgePoints.push([centerX, centerY]); // Start at center
+    for (let seg = 0; seg <= sliceSegments; seg++) {
+      const angle = startAngle + (seg / sliceSegments) * sliceAngle;
+      wedgePoints.push([
+        centerX + Math.cos(angle) * radius,
+        centerY + Math.sin(angle) * radius,
+      ]);
+    }
+    // Path closes back to center automatically via closePath in polygonOp
 
-    // Draw a line from center to start of arc and to end of arc
-    // (visual representation of the slice boundaries)
-    const startX = centerX + Math.cos(startAngle) * radius;
-    const startY = centerY + Math.sin(startAngle) * radius;
-    const endX = centerX + Math.cos(endAngle) * radius;
-    const endY = centerY + Math.sin(endAngle) * radius;
-
-    // Draw radial lines for slice boundaries
+    // Emit filled polygon wedge
     ops.push({
-      type: "line",
-      x: centerX,
-      y: centerY,
-      x2: startX,
-      y2: startY,
-      stroke: colors[i],
-      lineWidth: 1,
+      type: "polygon",
+      x: 0,
+      y: 0,
+      points: wedgePoints,
+      fill: colors[i],
+      stroke: "FFFFFF", // White border between slices
+      lineWidth: 1.5,
     });
 
-    // Draw arc segments
-    for (let seg = 0; seg < sliceSegments; seg++) {
-      const a1 = startAngle + (seg / sliceSegments) * sliceAngle;
-      const a2 = startAngle + ((seg + 1) / sliceSegments) * sliceAngle;
-      const ax1 = centerX + Math.cos(a1) * radius;
-      const ay1 = centerY + Math.sin(a1) * radius;
-      const ax2 = centerX + Math.cos(a2) * radius;
-      const ay2 = centerY + Math.sin(a2) * radius;
-      ops.push({
-        type: "line",
-        x: ax1,
-        y: ay1,
-        x2: ax2,
-        y2: ay2,
-        stroke: colors[i],
-        lineWidth: 2,
-      });
-    }
-
-    // Fill wedge with a coloured rectangle at the midpoint (visual indicator)
-    const midAngle = startAngle + sliceAngle / 2;
-    const labelRadius = radius * 0.65;
-    const labelX = centerX + Math.cos(midAngle) * labelRadius;
-    const labelY = centerY + Math.sin(midAngle) * labelRadius;
-
-    // Draw a small coloured indicator at the midpoint
-    const indicatorSize = Math.min(20, sliceAngle * radius * 0.3);
-    if (indicatorSize >= 4) {
-      ops.push({
-        type: "rect",
-        x: labelX - indicatorSize / 2,
-        y: labelY - indicatorSize / 2,
-        w: indicatorSize,
-        h: indicatorSize,
-        fill: colors[i],
-      });
-    }
-
     // Percentage label outside the pie
+    const midAngle = startAngle + sliceAngle / 2;
     const pct = ((values[i] / total) * 100).toFixed(1) + "%";
     const pctRadius = radius * 1.15;
     const pctX = centerX + Math.cos(midAngle) * pctRadius;
@@ -851,6 +826,27 @@ export function pieChart(opts: PieChartOptions): PdfElement {
     });
 
     startAngle = endAngle;
+  }
+
+  // Donut hole — white circle over center (polygon approximation)
+  if (opts.donut) {
+    const holeRadius = radius * 0.5;
+    const holeSegments = SEGMENTS_PER_CIRCLE;
+    const holePoints: Array<[number, number]> = [];
+    for (let seg = 0; seg <= holeSegments; seg++) {
+      const angle = (seg / holeSegments) * Math.PI * 2;
+      holePoints.push([
+        centerX + Math.cos(angle) * holeRadius,
+        centerY + Math.sin(angle) * holeRadius,
+      ]);
+    }
+    ops.push({
+      type: "polygon",
+      x: 0,
+      y: 0,
+      points: holePoints,
+      fill: "FFFFFF",
+    });
   }
 
   // Legend
@@ -1043,11 +1039,14 @@ export function comboChart(opts: ComboChartOptions): PdfElement {
       stroke: "EEEEEE",
       lineWidth: 0.25,
     });
+    // Label (right-aligned against the Y-axis)
+    const tickLabel = formatAxisValue(tick);
+    const tickLabelW = measureText(tickLabel, "Helvetica", AXIS_FONT_SIZE);
     ops.push({
       type: "text",
-      x: plotLeft - 4,
+      x: plotLeft - 4 - tickLabelW,
       y: y - AXIS_FONT_SIZE / 3,
-      text: formatAxisValue(tick),
+      text: tickLabel,
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
       color: textColor,
@@ -1104,16 +1103,25 @@ export function comboChart(opts: ComboChartOptions): PdfElement {
         lineWidth: 2,
       });
     }
-    // Markers
+    // Markers (circular)
+    const COMBO_MARKER_RADIUS = 3;
+    const COMBO_MARKER_SEGS = 12;
     for (let ci = 0; ci < s.values.length; ci++) {
-      const x = plotLeft + ci * catStep;
-      const y = plotBottom - ((s.values[ci] - axisMin) / axisRange) * plotH;
+      const cx = plotLeft + ci * catStep;
+      const cy = plotBottom - ((s.values[ci] - axisMin) / axisRange) * plotH;
+      const circlePoints: Array<[number, number]> = [];
+      for (let seg = 0; seg <= COMBO_MARKER_SEGS; seg++) {
+        const angle = (seg / COMBO_MARKER_SEGS) * Math.PI * 2;
+        circlePoints.push([
+          cx + Math.cos(angle) * COMBO_MARKER_RADIUS,
+          cy + Math.sin(angle) * COMBO_MARKER_RADIUS,
+        ]);
+      }
       ops.push({
-        type: "rect",
-        x: x - 2,
-        y: y - 2,
-        w: 4,
-        h: 4,
+        type: "polygon",
+        x: 0,
+        y: 0,
+        points: circlePoints,
         fill: s.color,
       });
     }

@@ -226,9 +226,9 @@ describe("lineChart()", () => {
       categories: ["A", "B", "C"],
       series: [{ name: "S1", values: [10, 20, 30] }],
     });
-    // Markers are small filled rects
+    // Markers are filled polygon circles (one per data point)
     const markerOps = el._data.drawOps.filter(
-      (op: any) => op.type === "rect" && op.fill && (op.w ?? 0) <= 5,
+      (op: any) => op.type === "polygon" && op.fill && op.points,
     );
     expect(markerOps.length).toBe(3); // One per data point
   });
@@ -255,6 +255,24 @@ describe("lineChart()", () => {
       (op: any) => op.type === "line" && op.lineWidth === 2,
     );
     expect(dataLines.length).toBe(2);
+  });
+
+  it("should right-align Y-axis labels before the axis line", () => {
+    const el = charts.barChart({
+      categories: ["A", "B"],
+      series: [{ name: "Revenue", values: [1000, 2000] }],
+    });
+    // Y-axis labels are text ops that appear to the left of the plot area
+    // (plotLeft = Y_AXIS_LABEL_WIDTH = 50)
+    const yAxisLabels = el._data.drawOps.filter(
+      (op: any) =>
+        op.type === "text" && op.x < 50 && op.fontSize === 8 && op.text !== "",
+    );
+    expect(yAxisLabels.length).toBeGreaterThan(0);
+    // All Y-axis labels should have x < plotLeft (right edge of label before axis)
+    for (const label of yAxisLabels) {
+      expect(label.x).toBeLessThan(46); // plotLeft - 4 = 46, labels should start before that
+    }
   });
 });
 
@@ -332,6 +350,50 @@ describe("pieChart()", () => {
       colors: ["FF0000", "00FF00"],
     });
     expect(el._data.drawOps.length).toBeGreaterThan(0);
+  });
+
+  it("should render slices as filled polygon wedges, not wireframe lines", () => {
+    const el = charts.pieChart({
+      labels: ["A", "B", "C"],
+      values: [50, 30, 20],
+    });
+    // Each slice must be a filled polygon (not lines + rect indicators)
+    const polygonOps = el._data.drawOps.filter(
+      (op: any) => op.type === "polygon" && op.fill && op.points,
+    );
+    expect(polygonOps.length).toBe(3); // One filled wedge per slice
+
+    // Wedge polygons must start from center and have enough arc segments
+    for (const op of polygonOps) {
+      expect(op.points.length).toBeGreaterThanOrEqual(5); // center + at least 4 arc points
+    }
+
+    // No large rect indicators should exist inside the chart area
+    // (the old broken approach put coloured squares at slice midpoints)
+    const rectOps = el._data.drawOps.filter(
+      (op: any) => op.type === "rect" && op.fill && (op.w ?? 0) > 10,
+    );
+    const legendRects = el._data.drawOps.filter(
+      (op: any) => op.type === "rect" && op.fill && (op.w ?? 0) <= 10,
+    );
+    // Only small legend swatches should be rects — no big indicator squares
+    expect(rectOps.length).toBe(0);
+    expect(legendRects.length).toBe(3); // One swatch per legend item
+  });
+
+  it("should render donut with a white center hole", () => {
+    const el = charts.pieChart({
+      labels: ["A", "B"],
+      values: [60, 40],
+      donut: true,
+    });
+    const polygonOps = el._data.drawOps.filter(
+      (op: any) => op.type === "polygon",
+    );
+    // 2 slice wedges + 1 white donut hole
+    expect(polygonOps.length).toBe(3);
+    const holeOp = polygonOps.find((op: any) => op.fill === "FFFFFF");
+    expect(holeOp).toBeDefined();
   });
 });
 

@@ -18,7 +18,7 @@ it("xref byte offsets are correct", () => {
   const xrefStart = text.indexOf("xref\n");
   const xrefSection = text.substring(xrefStart);
   const entries = xrefSection.match(/(\d{10}) (\d{5}) ([nf]) /g);
-  
+
   console.log("=== XREF ENTRIES ===");
   entries?.forEach((e, i) => console.log(`  obj ${i}: ${e}`));
 
@@ -29,16 +29,19 @@ it("xref byte offsets are correct", () => {
     if (!parts) return;
     const offset = parseInt(parts[1], 10);
     const type = parts[3];
-    if (type === 'f') {
+    if (type === "f") {
       console.log(`  obj ${i}: FREE`);
       return;
     }
     // Check that the text at this offset starts with "N 0 obj"
     const atOffset = text.substring(offset, offset + 20);
     const expected = `${i} 0 obj`;
-    console.log(`  obj ${i}: offset=${offset}, found="${atOffset.replace(/\n/g, '\\n')}"`);
-    expect(atOffset.startsWith(expected), 
-      `Object ${i} at offset ${offset} should start with "${expected}" but found "${atOffset}"`
+    console.log(
+      `  obj ${i}: offset=${offset}, found="${atOffset.replace(/\n/g, "\\n")}"`,
+    );
+    expect(
+      atOffset.startsWith(expected),
+      `Object ${i} at offset ${offset} should start with "${expected}" but found "${atOffset}"`,
     ).toBe(true);
   });
 });

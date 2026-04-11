@@ -473,6 +473,38 @@ function lineOp(
   return parts.join("\n");
 }
 
+/**
+ * Build a filled polygon in a PDF content stream.
+ * Uses moveTo → lineTo → closePath → fill (or fill+stroke).
+ * @param points - Array of [x, y] coordinate pairs (PDF coordinates, already converted)
+ * @param opts - Fill colour, stroke colour, line width
+ */
+function polygonOp(
+  points: Array<[number, number]>,
+  opts?: { fill?: string; stroke?: string; lineWidth?: number },
+): string {
+  if (points.length < 3) return "";
+  const parts: string[] = [];
+  if (opts?.lineWidth) parts.push(`${opts.lineWidth.toFixed(2)} w`);
+  if (opts?.fill) parts.push(`${opts.fill} rg`);
+  if (opts?.stroke) parts.push(`${opts.stroke} RG`);
+  // moveTo first point
+  parts.push(`${points[0][0].toFixed(2)} ${points[0][1].toFixed(2)} m`);
+  // lineTo remaining points
+  for (let i = 1; i < points.length; i++) {
+    parts.push(`${points[i][0].toFixed(2)} ${points[i][1].toFixed(2)} l`);
+  }
+  // closePath + fill/stroke
+  if (opts?.fill && opts?.stroke) {
+    parts.push("b"); // closePath + fill + stroke
+  } else if (opts?.fill) {
+    parts.push("f"); // fill (implicitly closes path)
+  } else {
+    parts.push("s"); // closePath + stroke
+  }
+  return parts.join("\n");
+}
+
 // ── Text Encoding ────────────────────────────────────────────────────
 
 /** Encode a string to a Uint8Array using Latin-1 encoding. */
@@ -1537,7 +1569,7 @@ export function wrapText(
 /** A single drawing operation within a chart. */
 export interface ChartDrawOp {
   /** Operation type. */
-  type: "text" | "rect" | "line";
+  type: "text" | "rect" | "line" | "polygon";
   /** X coordinate relative to chart origin. */
   x: number;
   /** Y coordinate relative to chart origin. */
@@ -1556,14 +1588,16 @@ export interface ChartDrawOp {
   h?: number;
   /** For rect: fill colour. */
   fill?: string;
-  /** For rect/line: stroke colour. */
+  /** For rect/line/polygon: stroke colour. */
   stroke?: string;
   /** For line: end X relative to chart origin. */
   x2?: number;
   /** For line: end Y relative to chart origin. */
   y2?: number;
-  /** For rect/line: line width. */
+  /** For rect/line/polygon: line width. */
   lineWidth?: number;
+  /** For polygon: array of [x, y] points relative to chart origin. */
+  points?: Array<[number, number]>;
 }
 
 // ── Element Internal Data Types ──────────────────────────────────────
@@ -3385,6 +3419,36 @@ export function addContent(
                 { color: op.stroke, lineWidth: op.lineWidth },
               );
               break;
+            case "polygon": {
+              // Translate polygon points to absolute page coordinates,
+              // then convert to PDF bottom-up Y and emit a filled path.
+              const pts = op.points ?? [];
+              if (pts.length >= 3) {
+                const pages = internals._getPages();
+                const page = pages[pages.length - 1];
+                const pageH = page.size.height;
+                const pdfPoints: Array<[number, number]> = pts.map(
+                  ([px, py]) => [
+                    chartX + px,
+                    convertY(chartY + py, pageH),
+                  ],
+                );
+                const fillRgb = op.fill
+                  ? hexToRgb(requireHex(op.fill, "polygon.fill"))
+                  : undefined;
+                const strokeRgb = op.stroke
+                  ? hexToRgb(requireHex(op.stroke, "polygon.stroke"))
+                  : undefined;
+                page.contentOps.push(
+                  polygonOp(pdfPoints, {
+                    fill: fillRgb,
+                    stroke: strokeRgb,
+                    lineWidth: op.lineWidth,
+                  }),
+                );
+              }
+              break;
+            }
           }
         }
 
