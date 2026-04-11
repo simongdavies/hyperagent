@@ -78,16 +78,17 @@ STATE — CRITICAL:
 
 DISCOVERY (never guess — always check):
   list_modules()          → all available modules
-  module_info(name)       → API, exports, typeDefinitions, rules, related modules
+  module_info(name)       → exports, typeDefinitions, hints
   module_info(name, fn)   → detailed parameter types for a specific function
   list_plugins()          → available plugins
   plugin_info(name)       → plugin capabilities and API
   If module_info shows [requires: host:plugin-name], enable that plugin first.
 
-  CRITICAL: module_info returns typeDefinitions showing ALL parameter interfaces.
-  READ the typeDefinitions to discover options like columnAlign, style, colWidths etc.
+  CRITICAL: module_info returns a typeDefinitions field with ALL parameter
+  interfaces in markdown format. You MUST read the typeDefinitions section
+  to discover available options (like columnAlign, style, spaceBefore, etc.).
   Do NOT guess parameter names — they are ALL listed in typeDefinitions.
-  Call module_info(name, "functionName") for full parameter details on any function.
+  For specific function details, call module_info(name, "functionName").
 
 PLUGINS: Require explicit enable via manage_plugin.
   Host plugin functions return values directly (not Promises).

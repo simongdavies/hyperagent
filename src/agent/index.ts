@@ -3568,9 +3568,8 @@ const moduleInfoTool = defineTool("module_info", {
         };
       }
 
-      // For large modules (>10KB), omit source to avoid overwhelming the output.
-      // The LLM gets exports + JSDoc which is what it needs for API usage.
-      const includeSource = info.sizeBytes <= 10240;
+      // Source code is never included — exports + typeDefinitions + hints
+      // provide everything the LLM needs for API usage.
 
       // If signatures mode requested, return detailed parameter info
       if (signatures) {
@@ -3608,41 +3607,42 @@ const moduleInfoTool = defineTool("module_info", {
         };
       }
 
-      // For large modules, load .d.ts interfaces so the LLM can discover
-      // parameter shapes even when source is omitted. This is the primary way
-      // the LLM learns what fields an options object accepts.
+      // Always load type definitions from .d.ts so the LLM can discover
+      // parameter shapes. This is the primary way the LLM learns what fields
+      // an options object accepts. Source code is NEVER included — exports +
+      // types + hints are sufficient for API usage.
       let typeDefinitions: string | undefined;
-      if (!includeSource) {
-        try {
-          const { readFileSync } = await import("fs");
-          const { join: pathJoin } = await import("path");
-          const dtsPath = pathJoin(
-            process.cwd(),
-            "builtin-modules",
-            `${name}.d.ts`,
-          );
-          const dtsContent = readFileSync(dtsPath, "utf-8");
-          const ifaces = extractInterfaces(dtsContent);
-          if (ifaces.size > 0) {
-            const parts: string[] = [];
-            for (const [ifaceName, fields] of ifaces) {
-              parts.push(`${ifaceName} = {\n${fields}\n}`);
-            }
-            typeDefinitions = parts.join("\n\n");
+      try {
+        const { readFileSync } = await import("fs");
+        const { join: pathJoin } = await import("path");
+        const dtsPath = pathJoin(
+          process.cwd(),
+          "builtin-modules",
+          `${name}.d.ts`,
+        );
+        const dtsContent = readFileSync(dtsPath, "utf-8");
+        const ifaces = extractInterfaces(dtsContent);
+        if (ifaces.size > 0) {
+          // Format as markdown for better LLM readability
+          const parts: string[] = [
+            "## Parameter Types",
+            "",
+            "**IMPORTANT: Read these type definitions to discover ALL available options.**",
+            "Call `module_info('" + name + "', 'functionName')` for details on a specific function.",
+            "",
+          ];
+          for (const [ifaceName, fields] of ifaces) {
+            parts.push(`### ${ifaceName}\n\`\`\`\n${fields}\n\`\`\``);
           }
-        } catch {
-          // No .d.ts — skip
+          typeDefinitions = parts.join("\n");
         }
+      } catch {
+        // No .d.ts — skip (user modules or native modules)
       }
 
       const result = {
         name: info.name,
         description: info.description,
-        author: info.author,
-        mutable: info.mutable,
-        created: info.created,
-        modified: info.modified,
-        sizeBytes: info.sizeBytes,
         exports: formatExports(info.exports),
         ...(typeDefinitions ? { typeDefinitions } : {}),
         ...(info.structuredHints
@@ -3650,11 +3650,6 @@ const moduleInfoTool = defineTool("module_info", {
           : info.hints
             ? { hints: info.hints }
             : {}),
-        ...(includeSource
-          ? { source: info.source }
-          : {
-              sourceOmitted: `Source too large (${(info.sizeBytes / 1024).toFixed(1)}KB). Use exports above for API reference.`,
-            }),
         importAs:
           info.importStyle === "namespace"
             ? `import * as ${info.name.replace(/-/g, "")} from "ha:${info.name}"`
