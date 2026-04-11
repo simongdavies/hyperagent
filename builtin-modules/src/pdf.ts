@@ -2653,8 +2653,32 @@ export function addContent(
     }
   }
 
+  /**
+   * Estimate the height of the next element for orphan prevention.
+   * Used to ensure headings aren't stranded at the bottom of a page
+   * without their following content.
+   */
+  function estimateNextElementHeight(nextEl: PdfElement): number {
+    switch (nextEl._kind) {
+      case "chart":
+        return (nextEl._data as { height: number }).height ?? 250;
+      case "table":
+      case "kvTable":
+      case "comparisonTable":
+        // Tables are hard to estimate — assume at least header + 3 rows
+        return 100;
+      case "paragraph":
+        return 40; // At least a couple of lines
+      case "image":
+        return (nextEl._data as { height?: number }).height ?? 100;
+      default:
+        return 30;
+    }
+  }
+
   // ── Process each element ──
-  for (const el of elements) {
+  for (let elIdx = 0; elIdx < elements.length; elIdx++) {
+    const el = elements[elIdx];
     if (!isPdfElement(el)) {
       throw new Error(
         `addContent: expected a PdfElement from paragraph/heading/bulletList/etc, ` +
@@ -2698,10 +2722,17 @@ export function addContent(
         const spaceAfter = d.spaceAfter ?? (d.level <= 2 ? 8 : 6);
         const lineHeight = 1.3;
 
-        // Headings should not be orphaned at page bottom — need at least
-        // heading height + one line of body text after it
-        const minNeeded =
-          spaceBefore + lines.length * fontSize * lineHeight + spaceAfter + 20;
+        // Headings must NOT be orphaned at page bottom. Peek at the next
+        // element and ensure enough space for the heading PLUS a meaningful
+        // portion of the following content. This prevents headings landing
+        // at the bottom of a page with the chart/table on the next page.
+        const headingHeight =
+          spaceBefore + lines.length * fontSize * lineHeight + spaceAfter;
+        const nextEl = elIdx + 1 < elements.length ? elements[elIdx + 1] : null;
+        const followingHeight = nextEl
+          ? estimateNextElementHeight(nextEl as PdfElement)
+          : 30;
+        const minNeeded = headingHeight + followingHeight;
         cursorY += spaceBefore;
         ensureSpace(minNeeded);
 
@@ -3376,7 +3407,8 @@ export function addContent(
         if (d.title) {
           const titleSize = 14;
           ensureSpace(titleSize * 1.5 + d.height);
-          doc.drawText(d.title, margins.left, cursorY, {
+          // drawText Y is baseline — add fontSize so cursorY = visual top
+          doc.drawText(d.title, margins.left, cursorY + titleSize, {
             font: "Helvetica-Bold",
             fontSize: titleSize,
             color: resolveColor(undefined),
@@ -3397,7 +3429,10 @@ export function addContent(
         for (const op of d.drawOps) {
           switch (op.type) {
             case "text":
-              doc.drawText(op.text ?? "", chartX + op.x, chartY + op.y, {
+              // Chart text Y is the TOP of the text (like screen coords).
+              // drawText treats Y as the baseline, so we add fontSize to
+              // convert from top-of-text to baseline position.
+              doc.drawText(op.text ?? "", chartX + op.x, chartY + op.y + (op.fontSize ?? 8), {
                 font: op.font,
                 fontSize: op.fontSize,
                 color: op.color,

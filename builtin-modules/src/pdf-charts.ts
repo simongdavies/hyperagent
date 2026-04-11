@@ -406,7 +406,7 @@ export function barChart(opts: BarChartOptions): PdfElement {
     ops.push({
       type: "text",
       x: labelX - labelW / 2,
-      y: plotBottom + 4,
+      y: plotBottom + 8,
       text: categories[ci],
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
@@ -603,7 +603,7 @@ export function lineChart(opts: LineChartOptions): PdfElement {
     ops.push({
       type: "text",
       x: x - labelW / 2,
-      y: plotBottom + 4,
+      y: plotBottom + 8,
       text: categories[ci],
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
@@ -1134,7 +1134,7 @@ export function comboChart(opts: ComboChartOptions): PdfElement {
     ops.push({
       type: "text",
       x: labelX - labelW / 2,
-      y: plotBottom + 4,
+      y: plotBottom + 8,
       text: categories[ci],
       font: "Helvetica",
       fontSize: AXIS_FONT_SIZE,
