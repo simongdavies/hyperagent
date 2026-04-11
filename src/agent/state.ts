@@ -228,6 +228,13 @@ export interface AgentState {
   hasCalledListModules: boolean;
 
   /**
+   * Tracks which modules the LLM has called module_info() on.
+   * Used to warn when register_handler imports modules it hasn't inspected.
+   * Reset on each new prompt.
+   */
+  modulesInspected: Set<string>;
+
+  /**
    * Formatted guidance from the last runSuggestApproach invocation.
    * Stored in state so it survives compaction — re-injected via
    * additionalContext on every onUserPromptSubmitted.
@@ -308,6 +315,7 @@ export function createAgentState(
     // Approach guidance (auto-invoked)
     currentUserPrompt: "",
     hasCalledListModules: false,
+    modulesInspected: new Set<string>(),
     lastGuidance: null,
   };
 }

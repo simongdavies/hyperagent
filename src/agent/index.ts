@@ -1167,9 +1167,34 @@ const registerHandlerTool = defineTool("register_handler", {
       };
     }
 
+    // ── Check for uninspected module imports ──────────────────────
+    // Warn if the handler imports ha:* modules that the LLM hasn't
+    // called module_info on. This catches guessing-without-reading.
+    const inspected: Set<string> = state.modulesInspected ?? new Set();
+    const importedModules = (code.match(/from\s+["']ha:([^"']+)["']/g) ?? [])
+      .map((m: string) => m.replace(/from\s+["']ha:/, "").replace(/["']$/, ""));
+    const uninspected = importedModules.filter(
+      (m: string) => !inspected.has(m),
+    );
+
     // ── Proceed with registration ─────────────────────────────────
     const result = await sandbox.registerHandler(name, code, { isModule });
     if (result.success) {
+      // Warn about uninspected modules
+      if (uninspected.length > 0) {
+        const modList = uninspected
+          .map((m: string) => `ha:${m}`)
+          .join(", ");
+        console.error(
+          `  ${C.warn("⚠️")} You imported ${modList} without calling module_info first. ` +
+            `Call module_info('${uninspected[0]}') to read the typeDefinitions and discover all available parameters.`,
+        );
+        // Add warning to result so LLM sees it
+        (result as Record<string, unknown>).apiDiscoveryWarning =
+          `You imported ${modList} without calling module_info() first. ` +
+          `The typeDefinitions in module_info show ALL available parameters. ` +
+          `Call module_info('${uninspected[0]}') before using its functions.`;
+      }
       // Warn if handler code is large relative to input buffer
       const bufSizes = sandbox.getEffectiveBufferSizes();
       const codeBytes = Buffer.byteLength(code, "utf8");
@@ -3431,6 +3456,9 @@ const moduleInfoTool = defineTool("module_info", {
     // Track that the LLM has engaged with module discovery
     // This also satisfies the hasCalledListModules requirement for register_handler
     state.hasCalledListModules = true;
+    // Track this specific module as inspected
+    if (!state.modulesInspected) state.modulesInspected = new Set();
+    state.modulesInspected.add(name);
 
     try {
       // Block access to internal modules (names starting with _)
@@ -4063,6 +4091,8 @@ function buildSessionConfig() {
         // Capture prompt and reset per-prompt tracking flags
         state.currentUserPrompt = input.prompt;
         state.hasCalledListModules = false;
+        // Track which modules the LLM has called module_info on this turn
+        state.modulesInspected = new Set<string>();
 
         // Auto-invoke suggest_approach for non-trivial prompts
         const isNonTrivial = input.prompt.length > 25;
