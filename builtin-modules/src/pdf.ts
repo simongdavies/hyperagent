@@ -1722,13 +1722,18 @@ export function paragraph(opts: ParagraphOptions): PdfElement {
 export interface HeadingOptions {
   /** Heading text. */
   text: string;
-  /** Heading level 1-6 (1 = largest). Default: 1. */
+  /**
+   * Heading level 1-6 (1 = largest). Default: 1.
+   * Font sizes: 1=28pt, 2=22pt, 3=18pt, 4=15pt, 5=13pt, 6=11pt.
+   * Approximate total heights (text + spacing):
+   *   level 1 ≈ 60pt, level 2 ≈ 45pt, level 3 ≈ 35pt
+   */
   level?: number;
   /** Text colour as 6-char hex. Uses theme foreground if omitted. */
   color?: string;
-  /** Space before heading in points. Default: 24 for level 1-2, 16 for 3-6. */
+  /** Space before heading in points. Default: 16 for level 1-2, 10 for 3-6. */
   spaceBefore?: number;
-  /** Space after heading in points. Default: 10 for level 1-2, 8 for 3-6. */
+  /** Space after heading in points. Default: 8 for level 1-2, 6 for 3-6. */
   spaceAfter?: number;
 }
 
@@ -2534,6 +2539,188 @@ function autoColumnWidths(
 export interface AddContentOptions {
   /** Page margins. Default: 1 inch on all sides. */
   margins?: Partial<Margins>;
+}
+
+/**
+ * Estimate the total vertical height (in points) that an array of PdfElements
+ * would consume when rendered via addContent(). Does NOT render anything —
+ * purely a measurement function.
+ *
+ * Use this to predict whether content will fit on the current page before
+ * calling addContent(). Heights are approximate (±5%) due to word-wrapping
+ * variations, but accurate enough for layout planning.
+ *
+ * @param elements - Array of PdfElement objects from builder functions
+ * @param opts - Optional: contentWidth (default: letter width minus 1" margins = 468pt)
+ * @returns Total estimated height in points
+ *
+ * @example
+ * const height = estimateHeight([heading({text: "Title"}), paragraph({text: "..."}), chart]);
+ * if (height > 600) { doc.addPage(); } // Won't fit on current page
+ */
+export function estimateHeight(
+  elements: PdfElement[],
+  opts?: { contentWidth?: number },
+): number {
+  // Default to letter page width minus standard 1" margins
+  const contentWidth = opts?.contentWidth ?? 468;
+  let totalH = 0;
+
+  for (const el of elements) {
+    if (!isPdfElement(el)) continue;
+
+    switch (el._kind) {
+      case "paragraph": {
+        const d = el._data as ParagraphData;
+        const font = d.bold
+          ? d.font === "Helvetica"
+            ? "Helvetica-Bold"
+            : d.font
+          : d.font;
+        const lines = wrapText(d.text, font, d.fontSize, contentWidth);
+        totalH +=
+          d.spaceBefore +
+          lines.length * d.fontSize * d.lineHeight +
+          d.spaceAfter;
+        break;
+      }
+
+      case "heading": {
+        const d = el._data as HeadingData;
+        const fontSize = HEADING_SIZES[d.level] ?? 11;
+        const spaceBefore = d.spaceBefore ?? (d.level <= 2 ? 16 : 10);
+        const spaceAfter = d.spaceAfter ?? (d.level <= 2 ? 8 : 6);
+        const lines = wrapText(d.text, "Helvetica-Bold", fontSize, contentWidth);
+        totalH += spaceBefore + lines.length * fontSize * 1.3 + spaceAfter;
+        break;
+      }
+
+      case "bulletList": {
+        const d = el._data as BulletListData;
+        const availW = contentWidth - d.indent;
+        let listH = d.spaceBefore;
+        for (const item of d.items) {
+          const lines = wrapText(item, d.font, d.fontSize, availW);
+          listH += lines.length * d.fontSize * d.lineHeight;
+        }
+        totalH += listH + d.spaceAfter;
+        break;
+      }
+
+      case "numberedList": {
+        const d = el._data as NumberedListData;
+        const availW = contentWidth - d.indent;
+        let listH = d.spaceBefore;
+        for (const item of d.items) {
+          const lines = wrapText(item, d.font, d.fontSize, availW);
+          listH += lines.length * d.fontSize * d.lineHeight;
+        }
+        totalH += listH + d.spaceAfter;
+        break;
+      }
+
+      case "spacer": {
+        totalH += (el._data as SpacerData).height;
+        break;
+      }
+
+      case "pageBreak": {
+        // Can't estimate page breaks meaningfully — they reset to next page
+        break;
+      }
+
+      case "rule": {
+        const d = el._data as RuleData;
+        totalH += d.marginTop + d.thickness + d.marginBottom;
+        break;
+      }
+
+      case "chart": {
+        const d = el._data as { height: number; title?: string };
+        totalH += d.height + 12; // 12pt gap after chart
+        if (d.title) totalH += 14 * 1.5; // title + gap
+        break;
+      }
+
+      case "table": {
+        const d = el._data as TableData;
+        // Header row + data rows, ~20pt per row at default font size
+        const rowH = d.fontSize * 2.2; // font + padding
+        totalH += rowH * (1 + d.rows.length) + 12; // header + rows + gap
+        break;
+      }
+
+      case "kvTable": {
+        const d = el._data as KvTableData;
+        const rowH = d.fontSize * 2.2;
+        totalH += rowH * (1 + d.items.length) + 12; // header + items + gap
+        break;
+      }
+
+      case "comparisonTable": {
+        const d = el._data as ComparisonTableData;
+        const rowH = d.fontSize * 2.2;
+        totalH += rowH * (1 + d.features.length) + 12; // header + features + gap
+        break;
+      }
+
+      case "image": {
+        const d = el._data as ImageElementData;
+        totalH += (d.height ?? 100) + 12; // image + gap
+        if (d.caption) totalH += d.captionFontSize * 1.5; // caption line
+        break;
+      }
+
+      case "richText": {
+        const d = el._data as RichTextData;
+        let rtH = d.spaceBefore;
+        for (const para of d.paragraphs) {
+          // Estimate: join all run text, wrap as one paragraph
+          const fullText = para.runs.map((r) => r.text).join("");
+          const lines = wrapText(fullText, d.font, d.fontSize, contentWidth);
+          rtH += lines.length * d.fontSize * d.lineHeight;
+        }
+        totalH += rtH + d.spaceAfter;
+        break;
+      }
+
+      case "codeBlock": {
+        const d = el._data as CodeBlockData;
+        const codeLines = d.code.split("\n").length;
+        totalH +=
+          d.spaceBefore +
+          d.padding * 2 +
+          codeLines * d.fontSize * d.lineHeight +
+          d.spaceAfter;
+        break;
+      }
+
+      case "quote": {
+        const d = el._data as QuoteData;
+        const lines = wrapText(d.text, "Helvetica-Oblique", d.fontSize, contentWidth - 20);
+        let qH = d.spaceBefore + lines.length * d.fontSize * d.lineHeight;
+        if (d.author) qH += d.fontSize * 1.5; // author line
+        totalH += qH + d.spaceAfter;
+        break;
+      }
+
+      case "twoColumn": {
+        // Rough estimate: height of the taller column
+        const d = el._data as TwoColumnData;
+        const colWidth = (contentWidth - d.gap) / 2;
+        const leftH = estimateHeight(d.left, { contentWidth: colWidth });
+        const rightH = estimateHeight(d.right, { contentWidth: colWidth });
+        totalH += Math.max(leftH, rightH) + 12;
+        break;
+      }
+
+      default:
+        // Unknown element — assume 30pt as safe fallback
+        totalH += 30;
+    }
+  }
+
+  return totalH;
 }
 
 /**

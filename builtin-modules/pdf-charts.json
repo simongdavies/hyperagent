@@ -4,7 +4,7 @@
   "author": "system",
   "mutable": false,
   "sourceHash": "sha256:406c61d080b74406",
-  "dtsHash": "sha256:00e20890fe9ff7cc",
+  "dtsHash": "sha256:dd82a2dd0632de9d",
   "importStyle": "named",
   "hints": {
     "overview": "Render bar, line, pie, and combo charts in PDF documents. Charts are returned as PdfElement objects for use with addContent(). All chart values must be finite numbers.",

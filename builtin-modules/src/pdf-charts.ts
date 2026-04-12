@@ -209,7 +209,7 @@ export interface BarChartOptions {
   title?: string;
   /** Chart width in points. Default: 400. */
   width?: number;
-  /** Chart height in points. Default: 250. */
+  /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
   height?: number;
   /** If true, draw horizontal bars instead of vertical. Default: false. */
   horizontal?: boolean;
@@ -480,7 +480,7 @@ export interface LineChartOptions {
   title?: string;
   /** Chart width in points. Default: 400. */
   width?: number;
-  /** Chart height in points. Default: 250. */
+  /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
   height?: number;
   /** If true, draw area fill under lines. Default: false. */
   area?: boolean;
@@ -718,7 +718,7 @@ export interface PieChartOptions {
   title?: string;
   /** Chart width in points. Default: 400. */
   width?: number;
-  /** Chart height in points. Default: 250. */
+  /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
   height?: number;
   /** Slice colours as 6-char hex array. Auto-assigned if omitted. */
   colors?: string[];
@@ -915,7 +915,7 @@ export interface ComboChartOptions {
   title?: string;
   /** Chart width in points. Default: 400. */
   width?: number;
-  /** Chart height in points. Default: 250. */
+  /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
   height?: number;
   /** Text colour. Default: '333333'. */
   textColor?: string;

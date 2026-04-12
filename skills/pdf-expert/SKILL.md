@@ -301,6 +301,45 @@ A professional document is NOT a dump of raw data. Every document must tell a st
 4. Would a reader understand the data without the original request?
 5. Is there a logical flow from section to section?
 
+## Layout Budget — Vertical Space Reference
+
+Use `estimateHeight(elements)` to predict total height BEFORE rendering.
+This avoids trial-and-error page fitting.
+
+### Available space per page
+- **Letter** (612×792pt): 792 - 72 - 72 = **648pt** usable with default margins
+- **A4** (595×842pt): 842 - 72 - 72 = **698pt** usable with default margins
+- `contentPage()` heading consumes ~50pt (h1 28pt + spacing)
+
+### Approximate element heights
+| Element | Height (points) |
+|---------|----------------|
+| `heading({ level: 1 })` | ~60pt (28pt font + 16pt before + 8pt after + line height) |
+| `heading({ level: 2 })` | ~45pt (22pt font + 16pt before + 8pt after) |
+| `heading({ level: 3 })` | ~35pt (18pt font + 10pt before + 6pt after) |
+| `paragraph()` (3 lines) | ~50pt (11pt × 1.4 line height × 3 lines + spacing) |
+| `table()` per row | ~24pt (11pt font × 2.2 with padding) |
+| `kvTable()` per row | ~24pt (same as table) |
+| `barChart({ height: 200 })` | ~200pt (height = total including axes, legend) |
+| Chart with title | height + ~21pt (14pt title + 7pt gap) |
+| `spacer(12)` | 12pt |
+| `rule()` | ~16pt (4pt top + 0.5pt line + 12pt bottom) |
+| `bulletList()` per item | ~15pt (11pt × 1.4 line height) |
+| `pageBreak()` | forces new page — remaining space on current page is wasted |
+
+### Example: Fit check before rendering
+```javascript
+import { estimateHeight, heading, paragraph, table } from "ha:pdf";
+
+const elements = [
+  heading({ text: "Revenue", level: 2 }),
+  paragraph({ text: "Q1 showed strong growth..." }),
+  table({ headers: ["Metric", "Value"], rows: [["Rev", "$8.2M"], ["Orders", "142K"]] }),
+];
+const height = estimateHeight(elements);
+// Letter page usable = 648pt. If height > 600, content will overflow.
+```
+
 ### Example: GOOD vs BAD
 
 **BAD** (chart dumped on empty page):

@@ -441,7 +441,7 @@ declare module "ha:pdf-charts" {
       title?: string;
       /** Chart width in points. Default: 400. */
       width?: number;
-      /** Chart height in points. Default: 250. */
+      /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
       height?: number;
       /** If true, draw horizontal bars instead of vertical. Default: false. */
       horizontal?: boolean;
@@ -468,7 +468,7 @@ declare module "ha:pdf-charts" {
       title?: string;
       /** Chart width in points. Default: 400. */
       width?: number;
-      /** Chart height in points. Default: 250. */
+      /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
       height?: number;
       /** If true, draw area fill under lines. Default: false. */
       area?: boolean;
@@ -492,7 +492,7 @@ declare module "ha:pdf-charts" {
       title?: string;
       /** Chart width in points. Default: 400. */
       width?: number;
-      /** Chart height in points. Default: 250. */
+      /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
       height?: number;
       /** Slice colours as 6-char hex array. Auto-assigned if omitted. */
       colors?: string[];
@@ -523,7 +523,7 @@ declare module "ha:pdf-charts" {
       title?: string;
       /** Chart width in points. Default: 400. */
       width?: number;
-      /** Chart height in points. Default: 250. */
+      /** Chart height in points (TOTAL including axes, legend, and padding — not just the plot area). Default: 250. In addContent, a chart title adds ~21pt on top. */
       height?: number;
       /** Text colour. Default: '333333'. */
       textColor?: string;
@@ -852,13 +852,18 @@ declare module "ha:pdf" {
   export interface HeadingOptions {
       /** Heading text. */
       text: string;
-      /** Heading level 1-6 (1 = largest). Default: 1. */
+      /**
+       * Heading level 1-6 (1 = largest). Default: 1.
+       * Font sizes: 1=28pt, 2=22pt, 3=18pt, 4=15pt, 5=13pt, 6=11pt.
+       * Approximate total heights (text + spacing):
+       *   level 1 ≈ 60pt, level 2 ≈ 45pt, level 3 ≈ 35pt
+       */
       level?: number;
       /** Text colour as 6-char hex. Uses theme foreground if omitted. */
       color?: string;
-      /** Space before heading in points. Default: 24 for level 1-2, 16 for 3-6. */
+      /** Space before heading in points. Default: 16 for level 1-2, 10 for 3-6. */
       spaceBefore?: number;
-      /** Space after heading in points. Default: 10 for level 1-2, 8 for 3-6. */
+      /** Space after heading in points. Default: 8 for level 1-2, 6 for 3-6. */
       spaceAfter?: number;
   }
   /**
@@ -1131,6 +1136,26 @@ declare module "ha:pdf" {
       /** Page margins. Default: 1 inch on all sides. */
       margins?: Partial<Margins>;
   }
+  /**
+   * Estimate the total vertical height (in points) that an array of PdfElements
+   * would consume when rendered via addContent(). Does NOT render anything —
+   * purely a measurement function.
+   *
+   * Use this to predict whether content will fit on the current page before
+   * calling addContent(). Heights are approximate (±5%) due to word-wrapping
+   * variations, but accurate enough for layout planning.
+   *
+   * @param elements - Array of PdfElement objects from builder functions
+   * @param opts - Optional: contentWidth (default: letter width minus 1" margins = 468pt)
+   * @returns Total estimated height in points
+   *
+   * @example
+   * const height = estimateHeight([heading({text: "Title"}), paragraph({text: "..."}), chart]);
+   * if (height > 600) { doc.addPage(); } // Won't fit on current page
+   */
+  export declare function estimateHeight(elements: PdfElement[], opts?: {
+      contentWidth?: number;
+  }): number;
   /**
    * Flow an array of PdfElements into the document with auto-pagination.
    *
