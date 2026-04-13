@@ -1758,7 +1758,7 @@ export interface ParagraphOptions {
  * Create a paragraph element for flow layout.
  * Text is automatically word-wrapped to fit within page margins.
  *
- * @param opts - Paragraph options
+ * @param opts - ParagraphOptions
  * @returns PdfElement for use with addContent()
  */
 export function paragraph(opts: ParagraphOptions): PdfElement {
@@ -1801,7 +1801,7 @@ export interface HeadingOptions {
  * Font size is auto-determined from level (1=28pt, 2=22pt, ..., 6=11pt).
  * Always uses bold font. Includes spacing before and after.
  *
- * @param opts - Heading options
+ * @param opts - HeadingOptions
  * @returns PdfElement for use with addContent()
  */
 export function heading(opts: HeadingOptions): PdfElement {
@@ -1841,7 +1841,7 @@ export interface BulletListOptions {
 /**
  * Create a bulleted list element for flow layout.
  *
- * @param opts - Bullet list options
+ * @param opts - BulletListOptions
  * @returns PdfElement for use with addContent()
  */
 export function bulletList(opts: BulletListOptions): PdfElement {
@@ -1883,7 +1883,7 @@ export interface NumberedListOptions {
 /**
  * Create a numbered list element for flow layout.
  *
- * @param opts - Numbered list options
+ * @param opts - NumberedListOptions
  * @returns PdfElement for use with addContent()
  */
 export function numberedList(opts: NumberedListOptions): PdfElement {
@@ -1934,7 +1934,7 @@ export interface RuleOptions {
 
 /**
  * Create a horizontal rule element.
- * @param opts - Rule options
+ * @param opts - RuleOptions
  * @returns PdfElement for use with addContent()
  */
 export function rule(opts?: RuleOptions): PdfElement {
@@ -1981,7 +1981,7 @@ export interface TwoColumnOptions {
  * Unlike twoColumnPage(), this does NOT create a new page — it flows
  * inline with other elements.
  *
- * @param opts - Two column options
+ * @param opts - TwoColumnOptions
  * @returns PdfElement for use with addContent()
  */
 export function twoColumn(opts: TwoColumnOptions): PdfElement {
@@ -1994,6 +1994,70 @@ export function twoColumn(opts: TwoColumnOptions): PdfElement {
     spaceAfter: opts.spaceAfter ?? 8,
   };
   return _createPdfElement("twoColumn", data);
+}
+
+// ── N-Column Flow Element ────────────────────────────────────────────
+
+/** Internal data for columns element. */
+interface ColumnsData {
+  cols: PdfElement[][]; // array of column element arrays
+  widths: number[]; // column width ratios (must sum to ~1.0)
+  gap: number; // points between columns
+  spaceBefore: number;
+  spaceAfter: number;
+}
+
+/** Options for columns(). */
+export interface ColumnsOptions {
+  /** Array of column content. Each entry is an array of PdfElements for that column. */
+  cols: PdfElement[][];
+  /**
+   * Column width ratios. Length must match cols.length. Values sum to ~1.0.
+   * Default: equal widths (e.g. [0.333, 0.333, 0.333] for 3 columns).
+   */
+  widths?: number[];
+  /** Gap between columns in points. Default: 16. */
+  gap?: number;
+  /** Space before in points. Default: 0. */
+  spaceBefore?: number;
+  /** Space after in points. Default: 8. */
+  spaceAfter?: number;
+}
+
+/**
+ * Create an N-column layout element for flow content.
+ * Supports 2-6 columns with independent element arrays per column.
+ * For simple two-column layouts, twoColumn() is more convenient.
+ *
+ * @param opts - ColumnsOptions
+ * @returns PdfElement for use with addContent()
+ */
+export function columns(opts: ColumnsOptions): PdfElement {
+  const cols = requireArray<PdfElement[]>(opts.cols, "columns.cols", {
+    nonEmpty: true,
+  });
+  if (cols.length < 2 || cols.length > 6) {
+    throw new Error(
+      `columns.cols: expected 2-6 columns but got ${cols.length}.`,
+    );
+  }
+  // Default to equal widths
+  const n = cols.length;
+  const widths = opts.widths ?? Array(n).fill(1.0 / n);
+  if (widths.length !== n) {
+    throw new Error(
+      `columns.widths: length ${widths.length} doesn't match cols length ${n}.`,
+    );
+  }
+
+  const data: ColumnsData = {
+    cols,
+    widths,
+    gap: opts.gap ?? 16,
+    spaceBefore: opts.spaceBefore ?? 0,
+    spaceAfter: opts.spaceAfter ?? 8,
+  };
+  return _createPdfElement("columns", data);
 }
 
 // ── Table Style Presets ──────────────────────────────────────────────
@@ -2085,7 +2149,7 @@ interface TableData {
 }
 
 interface KvTableData {
-  items: { key: string; value: string }[];
+  items: { key: string; value: string; bold?: boolean }[];
   fontSize: number;
   style: TableStyle;
   keyWidth?: number; // portion of width for key column (0-1) or absolute points
@@ -2113,17 +2177,27 @@ interface ImageElementData {
 // ── Table Element Builders ───────────────────────────────────────────
 
 /** Options for table(). */
+/** Column definition for the columns-based table API. */
+export interface ColumnDef {
+  /** Column header text. */
+  header: string;
+  /** Column width as a ratio (0-1) of total table width. Auto if omitted. */
+  width?: number;
+  /** Text alignment for this column: "left", "center", or "right". */
+  align?: string;
+}
+
 export interface TableOptions {
-  /** Column header texts. */
+  /** Column header texts. Use EITHER headers+rows OR columns+rows. */
   headers?: string[];
   /** Row data — each row is an array of cell strings. Must match headers length. */
   rows?: string[][];
   /**
-   * Alternative column-based definition (LLMs often prefer this shape).
-   * Each column specifies { header, width? }. If provided, headers/rows
-   * are derived from this. Width is a ratio (0-1) of total width.
+   * Alternative column-based definition (instead of headers).
+   * Each column specifies header text, optional width ratio, and alignment.
+   * If provided, headers are derived from this automatically.
    */
-  columns?: { header: string; width?: number; align?: string }[];
+  columns?: ColumnDef[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
   /** Table style preset name or custom TableStyle. Default: 'default'. */
@@ -2151,7 +2225,7 @@ export interface TableOptions {
  * Accepts EITHER { headers, rows } OR { columns, rows } format.
  * LLMs use both interchangeably — we handle both.
  *
- * @param opts - Table options
+ * @param opts - TableOptions
  * @returns PdfElement for use with addContent()
  */
 export function table(opts: TableOptions): PdfElement {
@@ -2224,10 +2298,8 @@ export function table(opts: TableOptions): PdfElement {
 
 /** Options for kvTable(). */
 export interface KvTableOptions {
-  /** Key-value pairs (also accepts 'entries' as alias). */
-  items?: { key: string; value: string }[];
-  /** Alias for items — LLMs sometimes use 'entries' instead. */
-  entries?: { key: string; value: string }[];
+  /** Key-value pairs. Each item has a key, value, and optional bold flag. */
+  items?: { key: string; value: string; bold?: boolean }[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
   /** Table style preset name or custom TableStyle. Default: 'default'. */
@@ -2254,13 +2326,13 @@ export interface KvTableOptions {
  * Create a key-value table element for flow layout.
  * Two-column layout: Key | Value.
  *
- * @param opts - KvTable options
+ * @param opts - KvTableOptions
  * @returns PdfElement for use with addContent()
  */
 export function kvTable(opts: KvTableOptions): PdfElement {
-  // Accept either 'items' or 'entries' (LLMs use both interchangeably)
+  // Accept either 'items' or 'entries' (LLMs use both interchangeably — runtime alias)
   const rawItems = opts.items ?? (opts as Record<string, unknown>).entries;
-  const items = requireArray<{ key: string; value: string }>(
+  const items = requireArray<{ key: string; value: string; bold?: boolean }>(
     rawItems,
     "kvTable.items (or entries)",
     { nonEmpty: true },
@@ -2268,14 +2340,7 @@ export function kvTable(opts: KvTableOptions): PdfElement {
   const style = resolveTableStyle(opts.style);
 
   // keyWidth: if > 1, it's absolute points; if <= 1, it's a ratio
-  let keyWidth = opts.keyWidth ?? 0.35;
-  if (keyWidth > 1) {
-    // Convert absolute points to a ratio (will be applied to contentWidth later).
-    // Store as negative to signal "absolute" to the renderer.
-    // Actually, simpler: just store the ratio. We don't know contentWidth here,
-    // so store the raw value and let the renderer handle it.
-  }
-  // Just pass through — the renderer will handle the interpretation.
+  const keyWidth = opts.keyWidth ?? 0.35;
 
   const data: KvTableData = {
     items,
@@ -2309,7 +2374,7 @@ export interface ComparisonTableOptions {
  * Create a comparison table element for flow layout.
  * Feature matrix with ✓/✗ marks.
  *
- * @param opts - ComparisonTable options
+ * @param opts - ComparisonTableOptions
  * @returns PdfElement for use with addContent()
  */
 export function comparisonTable(opts: ComparisonTableOptions): PdfElement {
@@ -2384,7 +2449,7 @@ export interface ImageOptions {
  * Supports JPEG and PNG. At least one of width or height must be specified.
  * The other dimension is auto-calculated to preserve aspect ratio.
  *
- * @param opts - Image options
+ * @param opts - ImageOptions
  * @returns PdfElement for use with addContent()
  */
 export function image(opts: ImageOptions): PdfElement {
@@ -2446,6 +2511,8 @@ function renderTable(
   setCursorY: (v: number) => void,
   columnAlign?: ("left" | "center" | "right")[],
   compact?: boolean,
+  skipHeader?: boolean,
+  rowBold?: boolean[],
 ): void {
   const rowH = tableRowHeight(fontSize, compact);
   const headerH = rowH;
@@ -2509,43 +2576,46 @@ function renderTable(
   }
 
   // Record table start for vertical borders
-  ensureSpace(headerH);
+  ensureSpace(skipHeader ? rowH : headerH);
   const tableStartY = getCursorY();
   let curY = tableStartY;
+  let cellX: number;
 
-  // ── Header row ──
-  // Background fill FIRST (so text draws ON TOP)
-  if (style.headerBg) {
-    doc.drawRect(x, curY, totalWidth, headerH, { fill: style.headerBg });
-  }
+  // ── Header row (skipped for kvTable — key-value pairs don't need headers) ──
+  if (!skipHeader) {
+    // Background fill FIRST (so text draws ON TOP)
+    if (style.headerBg) {
+      doc.drawRect(x, curY, totalWidth, headerH, { fill: style.headerBg });
+    }
 
-  // Header text (drawn AFTER background — PDF paints in order)
-  let cellX = x;
-  for (let c = 0; c < headers.length; c++) {
-    const align = columnAlign?.[c] ?? "left";
-    const headerText = fitCellText(headers[c], style.headerFont, colWidths[c]);
-    const textX = cellTextX(
-      cellX,
-      colWidths[c],
-      headerText,
-      style.headerFont,
-      align,
-    );
-    doc.drawText(headerText, textX, curY + textYOffset, {
-      font: style.headerFont,
-      fontSize,
-      color: style.headerFg,
+    // Header text (drawn AFTER background — PDF paints in order)
+    cellX = x;
+    for (let c = 0; c < headers.length; c++) {
+      const align = columnAlign?.[c] ?? "left";
+      const headerText = fitCellText(headers[c], style.headerFont, colWidths[c]);
+      const textX = cellTextX(
+        cellX,
+        colWidths[c],
+        headerText,
+        style.headerFont,
+        align,
+      );
+      doc.drawText(headerText, textX, curY + textYOffset, {
+        font: style.headerFont,
+        fontSize,
+        color: style.headerFg,
+      });
+      cellX += colWidths[c];
+    }
+
+    // Header bottom border
+    doc.drawLine(x, curY + headerH, x + totalWidth, curY + headerH, {
+      color: style.borderColor,
+      lineWidth: style.borderWidth,
     });
-    cellX += colWidths[c];
+
+    setCursorY(curY + headerH);
   }
-
-  // Header bottom border
-  doc.drawLine(x, curY + headerH, x + totalWidth, curY + headerH, {
-    color: style.borderColor,
-    lineWidth: style.borderWidth,
-  });
-
-  setCursorY(curY + headerH);
 
   // ── Data rows ──
   for (let r = 0; r < rows.length; r++) {
@@ -2558,19 +2628,23 @@ function renderTable(
     }
 
     // Cell text AFTER background
+    const isBoldRow = rowBold?.[r] ?? false;
+    const cellFont = isBoldRow
+      ? (style.headerFont ?? style.bodyFont)
+      : style.bodyFont;
     cellX = x;
     for (let c = 0; c < rows[r].length; c++) {
       const align = columnAlign?.[c] ?? "left";
-      const cellText = fitCellText(rows[r][c], style.bodyFont, colWidths[c]);
+      const cellText = fitCellText(rows[r][c], cellFont, colWidths[c]);
       const textX = cellTextX(
         cellX,
         colWidths[c],
         cellText,
-        style.bodyFont,
+        cellFont,
         align,
       );
       doc.drawText(cellText, textX, curY + textYOffset, {
-        font: style.bodyFont,
+        font: cellFont,
         fontSize,
         color: style.bodyFg,
       });
@@ -2770,7 +2844,7 @@ export function estimateHeight(
       case "kvTable": {
         const d = el._data as KvTableData;
         const rowH = d.fontSize * 2.2;
-        totalH += rowH * (1 + d.items.length) + 12; // header + items + gap
+        totalH += rowH * d.items.length + 12; // items only (no header) + gap
         break;
       }
 
@@ -2844,6 +2918,21 @@ export function estimateHeight(
         break;
       }
 
+      case "columns": {
+        // Height of the tallest column
+        const d = el._data as ColumnsData;
+        const totalGap = d.gap * (d.cols.length - 1);
+        const usable = contentWidth - totalGap;
+        let maxColH = 0;
+        for (let ci = 0; ci < d.cols.length; ci++) {
+          const colW = usable * d.widths[ci];
+          const colH = estimateHeight(d.cols[ci], { contentWidth: colW });
+          if (colH > maxColH) maxColH = colH;
+        }
+        totalH += d.spaceBefore + maxColH + d.spaceAfter;
+        break;
+      }
+
       default:
         // Unknown element — assume 30pt as safe fallback
         totalH += 30;
@@ -2859,9 +2948,12 @@ export function estimateHeight(
  * Elements are rendered top-to-bottom. When content exceeds the available
  * space on the current page, a new page is automatically added.
  *
+ * For single-page documents (invoices, letters, resumes), set `maxPages: 1`
+ * to auto-shrink spacing so content fits without overflowing to a second page.
+ *
  * @param doc - PdfDocument to add content to
  * @param elements - Array of PdfElement objects from builder functions
- * @param opts - Optional margins
+ * @param opts - Layout options: margins, maxPages (set maxPages:1 for single-page docs)
  * @returns { lastY: number } — the Y position (in points from top) after the last element
  */
 export function addContent(
@@ -3033,6 +3125,261 @@ export function addContent(
       default:
         return 30;
     }
+  }
+
+  // ── Column renderer (shared by twoColumn and columns elements) ──
+  // Renders elements into a fixed-width column at a given X position.
+  // Handles ALL element types so nothing gets silently dropped.
+  // Returns the Y position after all elements.
+  function renderColumn(
+    colEls: PdfElement[],
+    colX: number,
+    colW: number,
+    cy: number,
+  ): number {
+    for (const ce of colEls) {
+      if (!isPdfElement(ce)) continue;
+      switch (ce._kind) {
+        case "paragraph": {
+          const pd = ce._data as ParagraphData;
+          const fn = resolveFont(pd.font, pd.bold, pd.italic);
+          const lns = wrapText(pd.text, fn, pd.fontSize, colW);
+          const lh = pd.fontSize * pd.lineHeight;
+          const clr = resolveColor(pd.color);
+          cy += pd.spaceBefore;
+          for (const ln of lns) {
+            let lx = colX;
+            if (pd.align === "center")
+              lx = colX + (colW - measureText(ln, fn, pd.fontSize)) / 2;
+            else if (pd.align === "right")
+              lx = colX + colW - measureText(ln, fn, pd.fontSize);
+            doc.drawText(ln, lx, cy + pd.fontSize, {
+              font: fn,
+              fontSize: pd.fontSize,
+              color: clr,
+            });
+            cy += lh;
+          }
+          cy += pd.spaceAfter;
+          break;
+        }
+        case "heading": {
+          const hd = ce._data as HeadingData;
+          const fs = HEADING_SIZES[hd.level] ?? 11;
+          const fa = Math.ceil(fs * 0.8);
+          const sb = hd.spaceBefore ?? (hd.level <= 2 ? 12 : 8) + fa;
+          const sa = hd.spaceAfter ?? (hd.level <= 2 ? 10 : 8);
+          cy += sb;
+          doc.drawText(hd.text, colX, cy + fs, {
+            font: "Helvetica-Bold",
+            fontSize: fs,
+            color: resolveColor(hd.color),
+          });
+          cy += fs * 1.3 + sa;
+          break;
+        }
+        case "kvTable": {
+          const kd = ce._data as KvTableData;
+          const tw = kd.maxWidth ? Math.min(kd.maxWidth, colW) : colW;
+          const rkw = kd.keyWidth ?? 0.35;
+          let kw = rkw > 1 ? rkw : tw * rkw;
+          // Auto-widen key column if text doesn't fit
+          const kFont = kd.style.bodyFont;
+          for (const item of kd.items) {
+            const needed =
+              measureText(
+                item.key,
+                item.bold ? kd.style.headerFont : kFont,
+                kd.fontSize,
+              ) +
+              CELL_PAD_H * 2;
+            if (needed > kw) kw = Math.min(needed, tw * 0.6);
+          }
+          const vw = tw - kw;
+          const kvH = ["", ""];
+          const kvR = kd.items.map((it) => [it.key, it.value]);
+          const kvBold = kd.items.map((it) => it.bold === true);
+          const kvCw: number[] = [kw, vw];
+          let tx = colX;
+          if (kd.align === "right" && tw < colW) tx = colX + colW - tw;
+          else if (kd.align === "center" && tw < colW)
+            tx = colX + (colW - tw) / 2;
+          const kvA: ("left" | "center" | "right")[] = ["left", "right"];
+          renderTable(
+            doc,
+            kvH,
+            kvR,
+            kd.style,
+            kd.fontSize,
+            tx,
+            cy,
+            tw,
+            kvCw,
+            () => {},
+            () => cy,
+            (v: number) => {
+              cy = v;
+            },
+            kvA,
+            false, // compact
+            true, // skipHeader
+            kvBold,
+          );
+          cy += 8;
+          break;
+        }
+        case "table": {
+          const td = ce._data as TableData;
+          let tcw: number[];
+          if (td.colWidths) {
+            const ar = td.colWidths.every((w) => w > 0 && w <= 1);
+            tcw = ar
+              ? td.colWidths.map((w) => w * colW)
+              : td.colWidths.map((w) =>
+                  w > 0 && w <= 1
+                    ? w * colW
+                    : w > 0
+                      ? w
+                      : colW / td.headers.length,
+                );
+          } else {
+            tcw = autoColumnWidths(
+              td.headers,
+              td.rows,
+              td.style.bodyFont,
+              td.fontSize,
+              colW,
+            );
+          }
+          renderTable(
+            doc,
+            td.headers,
+            td.rows,
+            td.style,
+            td.fontSize,
+            colX,
+            cy,
+            colW,
+            tcw,
+            () => {},
+            () => cy,
+            (v: number) => {
+              cy = v;
+            },
+            td.columnAlign,
+          );
+          cy += 8;
+          break;
+        }
+        case "rule": {
+          const rd = ce._data as RuleData;
+          const rc = rd.color
+            ? requireHex(rd.color, "rule.color")
+            : doc.theme.subtle;
+          cy += rd.marginTop;
+          doc.drawLine(colX, cy, colX + colW, cy, {
+            color: rc,
+            lineWidth: rd.thickness,
+          });
+          cy += rd.thickness + rd.marginBottom;
+          break;
+        }
+        case "spacer": {
+          cy += (ce._data as SpacerData).height;
+          break;
+        }
+        case "bulletList": {
+          const bd = ce._data as BulletListData;
+          const clr = resolveColor(bd.color);
+          const ls = bd.fontSize * bd.lineHeight;
+          const aw = colW - bd.indent;
+          cy += bd.spaceBefore;
+          for (const item of bd.items) {
+            const lns = wrapText(item, bd.font, bd.fontSize, aw);
+            doc.drawText(bd.bulletChar, colX, cy + bd.fontSize, {
+              font: bd.font,
+              fontSize: bd.fontSize,
+              color: clr,
+            });
+            for (const ln of lns) {
+              doc.drawText(ln, colX + bd.indent, cy + bd.fontSize, {
+                font: bd.font,
+                fontSize: bd.fontSize,
+                color: clr,
+              });
+              cy += ls;
+            }
+          }
+          cy += bd.spaceAfter;
+          break;
+        }
+        case "richText": {
+          const rt = ce._data as RichTextData;
+          cy += rt.spaceBefore;
+          for (const para of rt.paragraphs) {
+            const fullText = para.runs.map((r) => r.text).join("");
+            const firstRun = para.runs[0];
+            const rtFont = firstRun?.bold
+              ? "Helvetica-Bold"
+              : firstRun?.italic
+                ? "Helvetica-Oblique"
+                : rt.font;
+            const rtColor = resolveColor(firstRun?.color);
+            const rtSize = firstRun?.fontSize ?? rt.fontSize;
+            const lns = wrapText(fullText, rtFont, rtSize, colW);
+            for (const ln of lns) {
+              doc.drawText(ln, colX, cy + rtSize, {
+                font: rtFont,
+                fontSize: rtSize,
+                color: rtColor,
+              });
+              cy += rtSize * rt.lineHeight;
+            }
+          }
+          cy += rt.spaceAfter;
+          break;
+        }
+        case "metricCard": {
+          const mc = ce._data as MetricCardData;
+          const vfs = 24;
+          const lfs = 10;
+          const pd = 8;
+          const cfs = mc.change ? 12 : 0;
+          const ch = pd + vfs + (cfs > 0 ? cfs + 2 : 0) + 4 + lfs + pd;
+          const cw = mc.width ?? Math.min(colW, 200);
+          if (mc.bgColor && mc.bgColor.length === 6) {
+            doc.drawRect(colX, cy, cw, ch, { fill: mc.bgColor });
+          }
+          doc.drawText(mc.value, colX + pd, cy + pd + vfs, {
+            font: "Helvetica-Bold",
+            fontSize: vfs,
+            color: mc.color ?? doc.theme.accent1,
+          });
+          let mcY = cy + pd + vfs;
+          if (mc.change) {
+            mcY += 12 + 2;
+            const isPos = mc.change.startsWith("+");
+            const isNeg = mc.change.startsWith("-");
+            doc.drawText(mc.change, colX + pd, mcY, {
+              font: "Helvetica-Bold",
+              fontSize: 12,
+              color: isPos ? "4CAF50" : isNeg ? "F44336" : "757575",
+            });
+          }
+          doc.drawText(mc.label, colX + pd, mcY + 4 + lfs, {
+            font: "Helvetica",
+            fontSize: lfs,
+            color: resolveColor(undefined),
+          });
+          cy += ch + 8;
+          break;
+        }
+        default:
+          // Unsupported element in column — skip
+          break;
+      }
+    }
+    return cy;
   }
 
   // ── Process each element ──
@@ -3281,12 +3628,28 @@ export function addContent(
         const tableW = d.maxWidth
           ? Math.min(d.maxWidth, contentWidth)
           : contentWidth;
-        // keyWidth: if > 1, it's absolute points; if <= 1, it's a ratio
+
+        // Auto-size key column: measure all key text and ensure it fits
         const rawKW = d.keyWidth ?? 0.35;
-        const keyW = rawKW > 1 ? rawKW : tableW * rawKW;
+        let keyW = rawKW > 1 ? rawKW : tableW * rawKW;
+        // Ensure key column is wide enough for the widest key text
+        const keyFont = d.style.bodyFont;
+        for (const item of d.items) {
+          const needed =
+            measureText(
+              item.key,
+              item.bold ? d.style.headerFont : keyFont,
+              d.fontSize,
+            ) +
+            CELL_PAD_H * 2;
+          if (needed > keyW) keyW = Math.min(needed, tableW * 0.6);
+        }
         const valW = tableW - keyW;
-        const headers = ["Key", "Value"];
+
+        // kvTable has no header row — it's a key-value pair list, not a data grid
+        const kvHeaders = ["", ""];
         const rows = d.items.map((item) => [item.key, item.value]);
+        const rowBold = d.items.map((item) => item.bold === true);
         const colWidths: number[] = [keyW, valW];
 
         // Calculate X position based on alignment
@@ -3297,7 +3660,7 @@ export function addContent(
           tableX = margins.left + (contentWidth - tableW) / 2;
         }
 
-        ensureSpace(tableRowHeight(d.fontSize) * Math.min(3, 1 + rows.length));
+        ensureSpace(tableRowHeight(d.fontSize) * Math.min(3, rows.length));
 
         // Right-align the value column by default (financial data looks better right-aligned)
         const kvColumnAlign: ("left" | "center" | "right")[] = [
@@ -3307,7 +3670,7 @@ export function addContent(
 
         renderTable(
           doc,
-          headers,
+          kvHeaders,
           rows,
           d.style,
           d.fontSize,
@@ -3321,6 +3684,9 @@ export function addContent(
             cursorY = v;
           },
           kvColumnAlign,
+          false, // compact
+          true, // skipHeader — kvTable never shows headers
+          rowBold,
         );
         cursorY += 8;
         break;
@@ -3464,248 +3830,33 @@ export function addContent(
         const rightX = margins.left + leftW + d.gap;
         const startY = cursorY;
 
-        // Render elements into a column. Handles ALL element types so nothing
-        // gets silently dropped. Returns the Y position after all elements.
-        function renderColumn(
-          colEls: PdfElement[],
-          colX: number,
-          colW: number,
-          cy: number,
-        ): number {
-          for (const ce of colEls) {
-            if (!isPdfElement(ce)) continue;
-            switch (ce._kind) {
-              case "paragraph": {
-                const pd = ce._data as ParagraphData;
-                const fn = resolveFont(pd.font, pd.bold, pd.italic);
-                const lns = wrapText(pd.text, fn, pd.fontSize, colW);
-                const lh = pd.fontSize * pd.lineHeight;
-                const clr = resolveColor(pd.color);
-                cy += pd.spaceBefore;
-                for (const ln of lns) {
-                  let lx = colX;
-                  if (pd.align === "center")
-                    lx = colX + (colW - measureText(ln, fn, pd.fontSize)) / 2;
-                  else if (pd.align === "right")
-                    lx = colX + colW - measureText(ln, fn, pd.fontSize);
-                  doc.drawText(ln, lx, cy + pd.fontSize, {
-                    font: fn,
-                    fontSize: pd.fontSize,
-                    color: clr,
-                  });
-                  cy += lh;
-                }
-                cy += pd.spaceAfter;
-                break;
-              }
-              case "heading": {
-                const hd = ce._data as HeadingData;
-                const fs = HEADING_SIZES[hd.level] ?? 11;
-                const fa = Math.ceil(fs * 0.8);
-                const sb = hd.spaceBefore ?? (hd.level <= 2 ? 12 : 8) + fa;
-                const sa = hd.spaceAfter ?? (hd.level <= 2 ? 10 : 8);
-                cy += sb;
-                doc.drawText(hd.text, colX, cy + fs, {
-                  font: "Helvetica-Bold",
-                  fontSize: fs,
-                  color: resolveColor(hd.color),
-                });
-                cy += fs * 1.3 + sa;
-                break;
-              }
-              case "kvTable": {
-                const kd = ce._data as KvTableData;
-                const tw = kd.maxWidth ? Math.min(kd.maxWidth, colW) : colW;
-                const rkw = kd.keyWidth ?? 0.35;
-                const kw = rkw > 1 ? rkw : tw * rkw;
-                const vw = tw - kw;
-                const kvH = ["Key", "Value"];
-                const kvR = kd.items.map((it) => [it.key, it.value]);
-                const kvCw: number[] = [kw, vw];
-                let tx = colX;
-                if (kd.align === "right" && tw < colW) tx = colX + colW - tw;
-                else if (kd.align === "center" && tw < colW)
-                  tx = colX + (colW - tw) / 2;
-                const kvA: ("left" | "center" | "right")[] = ["left", "right"];
-                renderTable(
-                  doc,
-                  kvH,
-                  kvR,
-                  kd.style,
-                  kd.fontSize,
-                  tx,
-                  cy,
-                  tw,
-                  kvCw,
-                  () => {},
-                  () => cy,
-                  (v: number) => {
-                    cy = v;
-                  },
-                  kvA,
-                );
-                cy += 8;
-                break;
-              }
-              case "table": {
-                const td = ce._data as TableData;
-                let tcw: number[];
-                if (td.colWidths) {
-                  const ar = td.colWidths.every((w) => w > 0 && w <= 1);
-                  tcw = ar
-                    ? td.colWidths.map((w) => w * colW)
-                    : td.colWidths.map((w) =>
-                        w > 0 && w <= 1
-                          ? w * colW
-                          : w > 0
-                            ? w
-                            : colW / td.headers.length,
-                      );
-                } else {
-                  tcw = autoColumnWidths(
-                    td.headers,
-                    td.rows,
-                    td.style.bodyFont,
-                    td.fontSize,
-                    colW,
-                  );
-                }
-                renderTable(
-                  doc,
-                  td.headers,
-                  td.rows,
-                  td.style,
-                  td.fontSize,
-                  colX,
-                  cy,
-                  colW,
-                  tcw,
-                  () => {},
-                  () => cy,
-                  (v: number) => {
-                    cy = v;
-                  },
-                  td.columnAlign,
-                );
-                cy += 8;
-                break;
-              }
-              case "rule": {
-                const rd = ce._data as RuleData;
-                const rc = rd.color
-                  ? requireHex(rd.color, "rule.color")
-                  : doc.theme.subtle;
-                cy += rd.marginTop;
-                doc.drawLine(colX, cy, colX + colW, cy, {
-                  color: rc,
-                  lineWidth: rd.thickness,
-                });
-                cy += rd.thickness + rd.marginBottom;
-                break;
-              }
-              case "spacer": {
-                cy += (ce._data as SpacerData).height;
-                break;
-              }
-              case "bulletList": {
-                const bd = ce._data as BulletListData;
-                const clr = resolveColor(bd.color);
-                const ls = bd.fontSize * bd.lineHeight;
-                const aw = colW - bd.indent;
-                cy += bd.spaceBefore;
-                for (const item of bd.items) {
-                  const lns = wrapText(item, bd.font, bd.fontSize, aw);
-                  doc.drawText(bd.bulletChar, colX, cy + bd.fontSize, {
-                    font: bd.font,
-                    fontSize: bd.fontSize,
-                    color: clr,
-                  });
-                  for (const ln of lns) {
-                    doc.drawText(ln, colX + bd.indent, cy + bd.fontSize, {
-                      font: bd.font,
-                      fontSize: bd.fontSize,
-                      color: clr,
-                    });
-                    cy += ls;
-                  }
-                }
-                cy += bd.spaceAfter;
-                break;
-              }
-              case "richText": {
-                const rt = ce._data as RichTextData;
-                cy += rt.spaceBefore;
-                for (const para of rt.paragraphs) {
-                  const fullText = para.runs.map((r) => r.text).join("");
-                  const firstRun = para.runs[0];
-                  const rtFont = firstRun?.bold
-                    ? "Helvetica-Bold"
-                    : firstRun?.italic
-                      ? "Helvetica-Oblique"
-                      : rt.font;
-                  const rtColor = resolveColor(firstRun?.color);
-                  const rtSize = firstRun?.fontSize ?? rt.fontSize;
-                  const lns = wrapText(fullText, rtFont, rtSize, colW);
-                  for (const ln of lns) {
-                    doc.drawText(ln, colX, cy + rtSize, {
-                      font: rtFont,
-                      fontSize: rtSize,
-                      color: rtColor,
-                    });
-                    cy += rtSize * rt.lineHeight;
-                  }
-                }
-                cy += rt.spaceAfter;
-                break;
-              }
-              case "metricCard": {
-                const mc = ce._data as MetricCardData;
-                const vfs = 24;
-                const lfs = 10;
-                const pd = 8;
-                const cfs = mc.change ? 12 : 0;
-                const ch = pd + vfs + (cfs > 0 ? cfs + 2 : 0) + 4 + lfs + pd;
-                const cw = mc.width ?? Math.min(colW, 200);
-                if (mc.bgColor && mc.bgColor.length === 6) {
-                  doc.drawRect(colX, cy, cw, ch, { fill: mc.bgColor });
-                }
-                doc.drawText(mc.value, colX + pd, cy + pd + vfs, {
-                  font: "Helvetica-Bold",
-                  fontSize: vfs,
-                  color: mc.color ?? doc.theme.accent1,
-                });
-                let mcY = cy + pd + vfs;
-                if (mc.change) {
-                  mcY += 12 + 2;
-                  const isPos = mc.change.startsWith("+");
-                  const isNeg = mc.change.startsWith("-");
-                  doc.drawText(mc.change, colX + pd, mcY, {
-                    font: "Helvetica-Bold",
-                    fontSize: 12,
-                    color: isPos ? "4CAF50" : isNeg ? "F44336" : "757575",
-                  });
-                }
-                doc.drawText(mc.label, colX + pd, mcY + 4 + lfs, {
-                  font: "Helvetica",
-                  fontSize: lfs,
-                  color: resolveColor(undefined),
-                });
-                cy += ch + 8;
-                break;
-              }
-              default:
-                // Unsupported element in column — skip
-                break;
-            }
-          }
-          return cy;
-        }
-
         const yLeft = renderColumn(d.left, leftX, leftW, startY);
         const yRight = renderColumn(d.right, rightX, rightW, startY);
 
         // Advance cursor past the tallest column
         cursorY = Math.max(yLeft, yRight) + d.spaceAfter;
+        break;
+      }
+
+      case "columns": {
+        const d = el._data as ColumnsData;
+        cursorY += scaleSpacing(d.spaceBefore);
+
+        const totalGap = d.gap * (d.cols.length - 1);
+        const usable = contentWidth - totalGap;
+        const startY = cursorY;
+
+        // Render each column and track the tallest
+        let maxY = startY;
+        let colX = margins.left;
+        for (let ci = 0; ci < d.cols.length; ci++) {
+          const colW = usable * d.widths[ci];
+          const colY = renderColumn(d.cols[ci], colX, colW, startY);
+          if (colY > maxY) maxY = colY;
+          colX += colW + d.gap;
+        }
+
+        cursorY = maxY + d.spaceAfter;
         break;
       }
 
@@ -4136,7 +4287,7 @@ export interface RichTextOptions {
  *
  * Accepts "runs" or "spans" for the text segments (LLMs use both).
  *
- * @param opts - Rich text options
+ * @param opts - RichTextOptions
  * @returns PdfElement for use with addContent()
  */
 export function richText(opts: RichTextOptions): PdfElement {
@@ -4200,7 +4351,7 @@ export interface CodeBlockOptions {
 /**
  * Create a code block element with monospaced font and background.
  *
- * @param opts - Code block options
+ * @param opts - CodeBlockOptions
  * @returns PdfElement for use with addContent()
  */
 export function codeBlock(opts: CodeBlockOptions): PdfElement {
@@ -4239,7 +4390,7 @@ export interface QuoteOptions {
 /**
  * Create a quote block element with left accent border and optional author.
  *
- * @param opts - Quote options
+ * @param opts - QuoteOptions
  * @returns PdfElement for use with addContent()
  */
 export function quote(opts: QuoteOptions): PdfElement {
@@ -4291,7 +4442,7 @@ export interface MetricCardOptions {
  *
  * Use multiple metricCard() elements inside a twoColumn() for side-by-side KPIs.
  *
- * @param opts - Metric card options
+ * @param opts - MetricCardOptions
  * @returns PdfElement for use with addContent()
  */
 export function metricCard(opts: MetricCardOptions): PdfElement {
@@ -4334,7 +4485,7 @@ export interface TextBlockOptions {
  * contact info, or any text that needs tight line spacing without
  * individual paragraph() calls per line.
  *
- * @param opts - Text block options
+ * @param opts - TextBlockOptions
  * @returns PdfElement for use with addContent()
  *
  * @example
@@ -4382,7 +4533,7 @@ export interface TitlePageOptions {
  * Renders a centered title with optional subtitle, author, and date.
  *
  * @param doc - PdfDocument
- * @param opts - Title page options
+ * @param opts - TitlePageOptions
  */
 export function titlePage(doc: PdfDocument, opts: TitlePageOptions): void {
   const theme = doc.theme;
@@ -4454,7 +4605,7 @@ export interface ContentPageOptions {
  * Add a titled content page. Renders a heading then flows content elements.
  *
  * @param doc - PdfDocument
- * @param opts - Content page options
+ * @param opts - ContentPageOptions
  */
 export function contentPage(doc: PdfDocument, opts: ContentPageOptions): void {
   addContent(doc, [heading({ text: opts.title, level: 1 }), ...opts.content], {
@@ -4485,7 +4636,7 @@ export interface TwoColumnPageOptions {
  * This is a simplified approach — full column balancing comes in a later phase.
  *
  * @param doc - PdfDocument
- * @param opts - Two column page options
+ * @param opts - TwoColumnPageOptions
  */
 export function twoColumnPage(
   doc: PdfDocument,
@@ -4580,7 +4731,7 @@ export interface QuotePageOptions {
  * Centres the quote vertically with large italic text.
  *
  * @param doc - PdfDocument
- * @param opts - Quote page options
+ * @param opts - QuotePageOptions
  */
 export function quotePage(doc: PdfDocument, opts: QuotePageOptions): void {
   const theme = doc.theme;
@@ -4661,7 +4812,7 @@ export interface PageNumberOptions {
  * BEFORE buildPdf(). Numbers are drawn at the bottom of each page.
  *
  * @param doc - PdfDocument with all pages already added
- * @param opts - Page number options
+ * @param opts - PageNumberOptions
  */
 export function addPageNumbers(
   doc: PdfDocument,
@@ -4744,7 +4895,7 @@ export interface FooterOptions {
  * Add a footer to all pages. Call AFTER all content, BEFORE buildPdf().
  *
  * @param doc - PdfDocument
- * @param opts - Footer options
+ * @param opts - FooterOptions
  */
 export function addFooter(doc: PdfDocument, opts: FooterOptions): void {
   const fontSize = opts.fontSize ?? 8;

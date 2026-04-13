@@ -860,7 +860,7 @@ declare module "ha:pdf" {
    * Create a paragraph element for flow layout.
    * Text is automatically word-wrapped to fit within page margins.
    *
-   * @param opts - Paragraph options
+   * @param opts - ParagraphOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function paragraph(opts: ParagraphOptions): PdfElement;
@@ -887,7 +887,7 @@ declare module "ha:pdf" {
    * Font size is auto-determined from level (1=28pt, 2=22pt, ..., 6=11pt).
    * Always uses bold font. Includes spacing before and after.
    *
-   * @param opts - Heading options
+   * @param opts - HeadingOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function heading(opts: HeadingOptions): PdfElement;
@@ -915,7 +915,7 @@ declare module "ha:pdf" {
   /**
    * Create a bulleted list element for flow layout.
    *
-   * @param opts - Bullet list options
+   * @param opts - BulletListOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function bulletList(opts: BulletListOptions): PdfElement;
@@ -941,7 +941,7 @@ declare module "ha:pdf" {
   /**
    * Create a numbered list element for flow layout.
    *
-   * @param opts - Numbered list options
+   * @param opts - NumberedListOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function numberedList(opts: NumberedListOptions): PdfElement;
@@ -970,7 +970,7 @@ declare module "ha:pdf" {
   }
   /**
    * Create a horizontal rule element.
-   * @param opts - Rule options
+   * @param opts - RuleOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function rule(opts?: RuleOptions): PdfElement;
@@ -995,10 +995,35 @@ declare module "ha:pdf" {
    * Unlike twoColumnPage(), this does NOT create a new page — it flows
    * inline with other elements.
    *
-   * @param opts - Two column options
+   * @param opts - TwoColumnOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function twoColumn(opts: TwoColumnOptions): PdfElement;
+  /** Options for columns(). */
+  export interface ColumnsOptions {
+      /** Array of column content. Each entry is an array of PdfElements for that column. */
+      cols: PdfElement[][];
+      /**
+       * Column width ratios. Length must match cols.length. Values sum to ~1.0.
+       * Default: equal widths (e.g. [0.333, 0.333, 0.333] for 3 columns).
+       */
+      widths?: number[];
+      /** Gap between columns in points. Default: 16. */
+      gap?: number;
+      /** Space before in points. Default: 0. */
+      spaceBefore?: number;
+      /** Space after in points. Default: 8. */
+      spaceAfter?: number;
+  }
+  /**
+   * Create an N-column layout element for flow content.
+   * Supports 2-6 columns with independent element arrays per column.
+   * For simple two-column layouts, twoColumn() is more convenient.
+   *
+   * @param opts - ColumnsOptions
+   * @returns PdfElement for use with addContent()
+   */
+  export declare function columns(opts: ColumnsOptions): PdfElement;
   /** Style definition for table rendering. */
   export interface TableStyle {
       /** Header row background colour (6-char hex). */
@@ -1021,21 +1046,26 @@ declare module "ha:pdf" {
   /** Built-in table styles matching PPTX table styles. */
   export declare const TABLE_STYLES: Record<string, TableStyle>;
   /** Options for table(). */
+  /** Column definition for the columns-based table API. */
+  export interface ColumnDef {
+      /** Column header text. */
+      header: string;
+      /** Column width as a ratio (0-1) of total table width. Auto if omitted. */
+      width?: number;
+      /** Text alignment for this column: "left", "center", or "right". */
+      align?: string;
+  }
   export interface TableOptions {
-      /** Column header texts. */
+      /** Column header texts. Use EITHER headers+rows OR columns+rows. */
       headers?: string[];
       /** Row data — each row is an array of cell strings. Must match headers length. */
       rows?: string[][];
       /**
-       * Alternative column-based definition (LLMs often prefer this shape).
-       * Each column specifies { header, width? }. If provided, headers/rows
-       * are derived from this. Width is a ratio (0-1) of total width.
+       * Alternative column-based definition (instead of headers).
+       * Each column specifies header text, optional width ratio, and alignment.
+       * If provided, headers are derived from this automatically.
        */
-      columns?: {
-          header: string;
-          width?: number;
-          align?: string;
-      }[];
+      columns?: ColumnDef[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
       /** Table style preset name or custom TableStyle. Default: 'default'. */
@@ -1062,21 +1092,17 @@ declare module "ha:pdf" {
    * Accepts EITHER { headers, rows } OR { columns, rows } format.
    * LLMs use both interchangeably — we handle both.
    *
-   * @param opts - Table options
+   * @param opts - TableOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function table(opts: TableOptions): PdfElement;
   /** Options for kvTable(). */
   export interface KvTableOptions {
-      /** Key-value pairs (also accepts 'entries' as alias). */
+      /** Key-value pairs. Each item has a key, value, and optional bold flag. */
       items?: {
           key: string;
           value: string;
-      }[];
-      /** Alias for items — LLMs sometimes use 'entries' instead. */
-      entries?: {
-          key: string;
-          value: string;
+          bold?: boolean;
       }[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
@@ -1103,7 +1129,7 @@ declare module "ha:pdf" {
    * Create a key-value table element for flow layout.
    * Two-column layout: Key | Value.
    *
-   * @param opts - KvTable options
+   * @param opts - KvTableOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function kvTable(opts: KvTableOptions): PdfElement;
@@ -1129,7 +1155,7 @@ declare module "ha:pdf" {
    * Create a comparison table element for flow layout.
    * Feature matrix with ✓/✗ marks.
    *
-   * @param opts - ComparisonTable options
+   * @param opts - ComparisonTableOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function comparisonTable(opts: ComparisonTableOptions): PdfElement;
@@ -1153,7 +1179,7 @@ declare module "ha:pdf" {
    * Supports JPEG and PNG. At least one of width or height must be specified.
    * The other dimension is auto-calculated to preserve aspect ratio.
    *
-   * @param opts - Image options
+   * @param opts - ImageOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function image(opts: ImageOptions): PdfElement;
@@ -1197,9 +1223,12 @@ declare module "ha:pdf" {
    * Elements are rendered top-to-bottom. When content exceeds the available
    * space on the current page, a new page is automatically added.
    *
+   * For single-page documents (invoices, letters, resumes), set `maxPages: 1`
+   * to auto-shrink spacing so content fits without overflowing to a second page.
+   *
    * @param doc - PdfDocument to add content to
    * @param elements - Array of PdfElement objects from builder functions
-   * @param opts - Optional margins
+   * @param opts - Layout options: margins, maxPages (set maxPages:1 for single-page docs)
    * @returns { lastY: number } — the Y position (in points from top) after the last element
    */
   export declare function addContent(doc: PdfDocument, elements: PdfElement[], opts?: AddContentOptions): {
@@ -1249,7 +1278,7 @@ declare module "ha:pdf" {
    *
    * Accepts "runs" or "spans" for the text segments (LLMs use both).
    *
-   * @param opts - Rich text options
+   * @param opts - RichTextOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function richText(opts: RichTextOptions): PdfElement;
@@ -1277,7 +1306,7 @@ declare module "ha:pdf" {
   /**
    * Create a code block element with monospaced font and background.
    *
-   * @param opts - Code block options
+   * @param opts - CodeBlockOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function codeBlock(opts: CodeBlockOptions): PdfElement;
@@ -1301,7 +1330,7 @@ declare module "ha:pdf" {
   /**
    * Create a quote block element with left accent border and optional author.
    *
-   * @param opts - Quote options
+   * @param opts - QuoteOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function quote(opts: QuoteOptions): PdfElement;
@@ -1327,7 +1356,7 @@ declare module "ha:pdf" {
    *
    * Use multiple metricCard() elements inside a twoColumn() for side-by-side KPIs.
    *
-   * @param opts - Metric card options
+   * @param opts - MetricCardOptions
    * @returns PdfElement for use with addContent()
    */
   export declare function metricCard(opts: MetricCardOptions): PdfElement;
@@ -1355,7 +1384,7 @@ declare module "ha:pdf" {
    * contact info, or any text that needs tight line spacing without
    * individual paragraph() calls per line.
    *
-   * @param opts - Text block options
+   * @param opts - TextBlockOptions
    * @returns PdfElement for use with addContent()
    *
    * @example
@@ -1378,7 +1407,7 @@ declare module "ha:pdf" {
    * Renders a centered title with optional subtitle, author, and date.
    *
    * @param doc - PdfDocument
-   * @param opts - Title page options
+   * @param opts - TitlePageOptions
    */
   export declare function titlePage(doc: PdfDocument, opts: TitlePageOptions): void;
   /** Options for contentPage(). */
@@ -1394,7 +1423,7 @@ declare module "ha:pdf" {
    * Add a titled content page. Renders a heading then flows content elements.
    *
    * @param doc - PdfDocument
-   * @param opts - Content page options
+   * @param opts - ContentPageOptions
    */
   export declare function contentPage(doc: PdfDocument, opts: ContentPageOptions): void;
   /** Options for twoColumnPage(). */
@@ -1419,7 +1448,7 @@ declare module "ha:pdf" {
    * This is a simplified approach — full column balancing comes in a later phase.
    *
    * @param doc - PdfDocument
-   * @param opts - Two column page options
+   * @param opts - TwoColumnPageOptions
    */
   export declare function twoColumnPage(doc: PdfDocument, opts: TwoColumnPageOptions): void;
   /** Options for quotePage(). */
@@ -1436,7 +1465,7 @@ declare module "ha:pdf" {
    * Centres the quote vertically with large italic text.
    *
    * @param doc - PdfDocument
-   * @param opts - Quote page options
+   * @param opts - QuotePageOptions
    */
   export declare function quotePage(doc: PdfDocument, opts: QuotePageOptions): void;
   /** Options for addPageNumbers(). */
@@ -1455,7 +1484,7 @@ declare module "ha:pdf" {
    * BEFORE buildPdf(). Numbers are drawn at the bottom of each page.
    *
    * @param doc - PdfDocument with all pages already added
-   * @param opts - Page number options
+   * @param opts - PageNumberOptions
    */
   export declare function addPageNumbers(doc: PdfDocument, opts?: PageNumberOptions): void;
   /** Options for addFooter(). */
@@ -1473,7 +1502,7 @@ declare module "ha:pdf" {
    * Add a footer to all pages. Call AFTER all content, BEFORE buildPdf().
    *
    * @param doc - PdfDocument
-   * @param opts - Footer options
+   * @param opts - FooterOptions
    */
   export declare function addFooter(doc: PdfDocument, opts: FooterOptions): void;
   /** Serialized document state for cross-handler persistence. */

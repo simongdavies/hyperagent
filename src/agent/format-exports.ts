@@ -209,9 +209,10 @@ export function extractInterfaces(dtsContent: string): Map<string, string> {
         const propName = propMatch[2];
         const optional = propMatch[3] ? "?" : "";
         let propType = propMatch[4].replace(/;$/, "").trim();
-        // Truncate very long types to keep output readable
-        if (propType.length > 80) {
-          propType = propType.slice(0, 77) + "...";
+        // Truncate extremely long types but keep enough for LLM to understand the shape.
+        // 200 chars preserves inline object types like { header: string; width?: number; ... }
+        if (propType.length > 200) {
+          propType = propType.slice(0, 197) + "...";
         }
         fields.push(`  ${propName}${optional}: ${propType}`);
       }
