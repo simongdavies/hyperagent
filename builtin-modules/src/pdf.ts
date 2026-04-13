@@ -3005,15 +3005,22 @@ export function addContent(
   // ── maxPages: auto-scale spacing to fit ──
   // If maxPages is set, estimate total height and calculate a scale factor
   // to reduce spacing (spaceBefore, spaceAfter, lineHeight) so content fits.
-  // Font sizes are NOT reduced — only whitespace.
+  // When spacing alone isn't sufficient, font sizes are also reduced slightly.
   let spacingScale = 1.0;
+  let fontScale = 1.0;
   if (opts?.maxPages && opts.maxPages > 0) {
     const usableH = pageBottom - cursorY; // remaining on current page
     const totalAvailable = usableH + (opts.maxPages - 1) * (pageBottom - margins.top);
     const estimated = estimateHeight(elements, { contentWidth });
     if (estimated > totalAvailable && totalAvailable > 0) {
-      // Scale spacing down. Clamp to minimum 0.4 to avoid unreadable compression.
-      spacingScale = Math.max(0.4, totalAvailable / estimated);
+      const rawScale = totalAvailable / estimated;
+      // First try spacing-only compression (clamp at 0.3 min)
+      spacingScale = Math.max(0.3, rawScale);
+      // If spacing alone can't fit, also reduce font sizes slightly
+      // This kicks in when content is >3x available space
+      if (rawScale < 0.5) {
+        fontScale = Math.max(0.8, 0.5 + rawScale);
+      }
     }
   }
 
@@ -3022,6 +3029,14 @@ export function addContent(
    */
   function scaleSpacing(value: number): number {
     return spacingScale < 1.0 ? Math.round(value * spacingScale) : value;
+  }
+
+  /**
+   * Apply font scale when maxPages compression needs to reduce text size.
+   * Only active when spacing alone can't fit content within maxPages.
+   */
+  function scaleFontSize(value: number): number {
+    return fontScale < 1.0 ? Math.round(value * fontScale * 10) / 10 : value;
   }
 
   /**
@@ -3397,17 +3412,18 @@ export function addContent(
         const d = el._data as ParagraphData;
         const font = resolveFont(d.font, d.bold, d.italic);
         const color = resolveColor(d.color);
-        const lines = wrapText(d.text, font, d.fontSize, contentWidth);
+        const fs = scaleFontSize(d.fontSize);
+        const lines = wrapText(d.text, font, fs, contentWidth);
         const sb = scaleSpacing(d.spaceBefore);
         const sa = scaleSpacing(d.spaceAfter);
         const lh = spacingScale < 1.0 ? d.lineHeight * spacingScale : d.lineHeight;
-        const totalHeight = sb + lines.length * d.fontSize * lh + sa;
+        const totalHeight = sb + lines.length * fs * lh + sa;
 
         // Add space before
         cursorY += sb;
-        ensureSpace(d.fontSize * lh); // At least one line must fit
+        ensureSpace(fs * lh); // At least one line must fit
 
-        renderLines(lines, font, d.fontSize, lh, color, d.align);
+        renderLines(lines, font, fs, lh, color, d.align);
 
         // Add space after
         cursorY += sa;
@@ -3417,7 +3433,7 @@ export function addContent(
 
       case "heading": {
         const d = el._data as HeadingData;
-        const fontSize = HEADING_SIZES[d.level] ?? 11;
+        const fontSize = scaleFontSize(HEADING_SIZES[d.level] ?? 11);
         const font = "Helvetica-Bold";
         const color = resolveColor(d.color);
         const lines = wrapText(d.text, font, fontSize, contentWidth);
