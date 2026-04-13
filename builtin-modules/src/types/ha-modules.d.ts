@@ -1401,8 +1401,13 @@ declare module "ha:pdf" {
       font?: string;
       /** Text colour as 6-char hex. Uses theme foreground if omitted. */
       color?: string;
-      /** Bold. Default: false. */
+      /** Bold all lines. Default: false. */
       bold?: boolean;
+      /**
+       * Make the first line bold (e.g. name in an address block).
+       * Overrides bold for just the first line. Default: false.
+       */
+      firstLineBold?: boolean;
       /** Line height multiplier. Default: 1.2 (tight). */
       lineHeight?: number;
       /** Space before block in points. Default: 0. */

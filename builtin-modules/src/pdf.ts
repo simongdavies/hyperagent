@@ -4615,8 +4615,13 @@ export interface TextBlockOptions {
   font?: string;
   /** Text colour as 6-char hex. Uses theme foreground if omitted. */
   color?: string;
-  /** Bold. Default: false. */
+  /** Bold all lines. Default: false. */
   bold?: boolean;
+  /**
+   * Make the first line bold (e.g. name in an address block).
+   * Overrides bold for just the first line. Default: false.
+   */
+  firstLineBold?: boolean;
   /** Line height multiplier. Default: 1.2 (tight). */
   lineHeight?: number;
   /** Space before block in points. Default: 0. */
@@ -4640,8 +4645,30 @@ export function textBlock(opts: TextBlockOptions): PdfElement {
   const fs = opts.fontSize ?? 11;
   const font = opts.font ?? "Helvetica";
   const lh = opts.lineHeight ?? 1.2;
-  // Render as a single paragraph with newline-joined text
-  // Using paragraph internally for consistency with flow layout
+
+  // If firstLineBold is set, use richText to render first line bold
+  if (opts.firstLineBold && opts.lines.length > 0) {
+    const paragraphs: RichParagraph[] = opts.lines.map((line, idx) => ({
+      runs: [
+        {
+          text: line,
+          bold: idx === 0 ? true : (opts.bold ?? false),
+          color: opts.color,
+        },
+      ],
+    }));
+    const rtData: RichTextData = {
+      paragraphs,
+      font,
+      fontSize: fs,
+      lineHeight: lh,
+      spaceBefore: opts.spaceBefore ?? 0,
+      spaceAfter: opts.spaceAfter ?? 8,
+    };
+    return _createPdfElement("richText", rtData);
+  }
+
+  // Simple path: render as a single paragraph with newline-joined text
   const data: ParagraphData = {
     text: opts.lines.join("\n"),
     fontSize: fs,
