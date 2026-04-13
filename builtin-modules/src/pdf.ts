@@ -2908,6 +2908,15 @@ export function estimateHeight(
         break;
       }
 
+      case "calloutBox": {
+        const cb = el._data as CalloutBoxData;
+        const pad = 12;
+        const titleH = cb.title ? cb.fontSize * 1.5 + 4 : 0;
+        const bodyLines = wrapText(cb.text, "Helvetica", cb.fontSize, contentWidth - pad * 2 - 4);
+        totalH += cb.spaceBefore + pad + titleH + bodyLines.length * cb.fontSize * 1.4 + pad + cb.spaceAfter;
+        break;
+      }
+
       case "twoColumn": {
         // Rough estimate: height of the taller column
         const d = el._data as TwoColumnData;
@@ -4085,6 +4094,63 @@ export function addContent(
         break;
       }
 
+      case "calloutBox": {
+        const d = el._data as CalloutBoxData;
+        cursorY += scaleSpacing(d.spaceBefore);
+
+        const pad = 12;
+        const borderW = 4; // left accent border width
+        const textW = contentWidth - pad * 2 - borderW;
+        const fs = scaleFontSize(d.fontSize);
+
+        // Calculate box height
+        const titleH = d.title ? fs * 1.5 + 4 : 0;
+        const bodyLines = wrapText(d.text, "Helvetica", fs, textW);
+        const bodyH = bodyLines.length * fs * 1.4;
+        const boxH = pad + titleH + bodyH + pad;
+
+        ensureSpace(boxH);
+
+        // Background fill
+        doc.drawRect(margins.left, cursorY, contentWidth, boxH, {
+          fill: d.bgColor,
+        });
+
+        // Left accent border
+        const borderColor = d.borderColor ?? doc.theme.accent1;
+        doc.drawRect(margins.left, cursorY, borderW, boxH, {
+          fill: borderColor,
+        });
+
+        let textY = cursorY + pad;
+        const textX = margins.left + borderW + pad;
+
+        // Title (bold)
+        if (d.title) {
+          const titleColor = d.titleColor ?? resolveColor(undefined);
+          doc.drawText(d.title, textX, textY + fs, {
+            font: "Helvetica-Bold",
+            fontSize: fs,
+            color: titleColor,
+          });
+          textY += fs * 1.5 + 4;
+        }
+
+        // Body text
+        const bodyColor = d.textColor ?? resolveColor(undefined);
+        for (const line of bodyLines) {
+          doc.drawText(line, textX, textY + fs, {
+            font: "Helvetica",
+            fontSize: fs,
+            color: bodyColor,
+          });
+          textY += fs * 1.4;
+        }
+
+        cursorY += boxH + scaleSpacing(d.spaceAfter);
+        break;
+      }
+
       case "chart": {
         // Chart elements contain pre-computed drawing operations from
         // ha:pdf-charts. We translate them relative to current cursor position.
@@ -4471,6 +4537,69 @@ export function metricCard(opts: MetricCardOptions): PdfElement {
     width: opts.width,
   };
   return _createPdfElement("metricCard", data);
+}
+
+// ── Callout Box Element ──────────────────────────────────────────────
+// Colored background box with optional title and body text.
+// Useful for highlights, warnings, key takeaways, info boxes.
+
+/** Internal data for calloutBox element. */
+interface CalloutBoxData {
+  title?: string;
+  text: string;
+  bgColor: string; // 6-char hex background
+  borderColor?: string; // left accent border colour
+  textColor?: string;
+  titleColor?: string;
+  fontSize: number;
+  spaceBefore: number;
+  spaceAfter: number;
+}
+
+/** Options for calloutBox(). */
+export interface CalloutBoxOptions {
+  /** Body text content. */
+  text: string;
+  /** Optional title rendered in bold above the body. */
+  title?: string;
+  /** Background colour as 6-char hex. Default: theme-based light tint. */
+  bgColor?: string;
+  /** Left accent border colour as 6-char hex. Default: theme accent1. */
+  borderColor?: string;
+  /** Body text colour as 6-char hex. */
+  textColor?: string;
+  /** Title text colour as 6-char hex. */
+  titleColor?: string;
+  /** Font size in points. Default: 10. */
+  fontSize?: number;
+  /** Space before in points. Default: 8. */
+  spaceBefore?: number;
+  /** Space after in points. Default: 12. */
+  spaceAfter?: number;
+}
+
+/**
+ * Create a callout/highlight box element for flow content.
+ * Renders as a colored background box with optional left accent border,
+ * optional bold title, and body text. Ideal for key takeaways, warnings,
+ * or info boxes in reports and dashboards.
+ *
+ * @param opts - CalloutBoxOptions
+ * @returns PdfElement for use with addContent()
+ */
+export function calloutBox(opts: CalloutBoxOptions): PdfElement {
+  const data: CalloutBoxData = {
+    text: requireString(opts.text, "calloutBox.text"),
+    title: opts.title,
+    bgColor: opts.bgColor ?? "EEF2FF",
+    borderColor: opts.borderColor,
+    textColor: opts.textColor,
+    titleColor: opts.titleColor,
+    fontSize: opts.fontSize ?? 10,
+    spaceBefore: opts.spaceBefore ?? 8,
+    spaceAfter: opts.spaceAfter ?? 12,
+  };
+  return _createPdfElement("calloutBox", data);
 }
 
 // ── Text Block Element ───────────────────────────────────────────────

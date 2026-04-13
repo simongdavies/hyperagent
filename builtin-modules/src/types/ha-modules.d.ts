@@ -1360,6 +1360,37 @@ declare module "ha:pdf" {
    * @returns PdfElement for use with addContent()
    */
   export declare function metricCard(opts: MetricCardOptions): PdfElement;
+  /** Options for calloutBox(). */
+  export interface CalloutBoxOptions {
+      /** Body text content. */
+      text: string;
+      /** Optional title rendered in bold above the body. */
+      title?: string;
+      /** Background colour as 6-char hex. Default: theme-based light tint. */
+      bgColor?: string;
+      /** Left accent border colour as 6-char hex. Default: theme accent1. */
+      borderColor?: string;
+      /** Body text colour as 6-char hex. */
+      textColor?: string;
+      /** Title text colour as 6-char hex. */
+      titleColor?: string;
+      /** Font size in points. Default: 10. */
+      fontSize?: number;
+      /** Space before in points. Default: 8. */
+      spaceBefore?: number;
+      /** Space after in points. Default: 12. */
+      spaceAfter?: number;
+  }
+  /**
+   * Create a callout/highlight box element for flow content.
+   * Renders as a colored background box with optional left accent border,
+   * optional bold title, and body text. Ideal for key takeaways, warnings,
+   * or info boxes in reports and dashboards.
+   *
+   * @param opts - CalloutBoxOptions
+   * @returns PdfElement for use with addContent()
+   */
+  export declare function calloutBox(opts: CalloutBoxOptions): PdfElement;
   /** Options for textBlock(). */
   export interface TextBlockOptions {
       /** Array of text lines to render with tight spacing. */
