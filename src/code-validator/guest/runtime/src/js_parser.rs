@@ -1380,16 +1380,59 @@ pub fn is_builtin_property(name: &str) -> bool {
 
 /// Extract all property accesses (non-method) from source code.
 /// Returns accesses like `obj.property` but NOT `obj.method()`.
+/// Skips content inside string literals and template literals to avoid false positives
+/// (e.g. `"docs.rust-lang.org"` should not flag `.rust` as a property access).
 pub fn extract_all_property_accesses(source: &str) -> Vec<PropertyAccessInfo> {
     let mut accesses = Vec::new();
+    // Track multi-line template literal state across lines
+    let mut in_template_literal = false;
 
     for (line_num, line) in source.lines().enumerate() {
         // Find all `.identifier` patterns that are NOT followed by (
         let bytes = line.as_bytes();
         let mut i = 0;
+        // Track whether we're inside a string literal on this line
+        let mut in_single_quote = false;
+        let mut in_double_quote = false;
 
         while i < bytes.len() {
-            if bytes[i] == b'.' {
+            let ch = bytes[i];
+
+            // Handle escape sequences — skip the next character
+            if ch == b'\\' && (in_single_quote || in_double_quote || in_template_literal) {
+                i += 2; // skip escaped char
+                continue;
+            }
+
+            // Track string literal boundaries
+            if ch == b'\'' && !in_double_quote && !in_template_literal {
+                in_single_quote = !in_single_quote;
+                i += 1;
+                continue;
+            }
+            if ch == b'"' && !in_single_quote && !in_template_literal {
+                in_double_quote = !in_double_quote;
+                i += 1;
+                continue;
+            }
+            if ch == b'`' && !in_single_quote && !in_double_quote {
+                in_template_literal = !in_template_literal;
+                i += 1;
+                continue;
+            }
+
+            // Skip everything inside string/template literals
+            if in_single_quote || in_double_quote || in_template_literal {
+                i += 1;
+                continue;
+            }
+
+            // Skip single-line comments
+            if ch == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                break; // rest of line is comment
+            }
+
+            if ch == b'.' {
                 // Scan backwards for object name
                 let mut obj_start = i;
                 while obj_start > 0
