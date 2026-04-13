@@ -1422,6 +1422,108 @@ const editHandlerTool = defineTool("edit_handler", {
     oldString: string;
     newString: string;
   }) => {
+    // ── Pre-validate the edit before committing ──────────────────
+    // Get the current handler source, apply the edit locally, and
+    // validate the result. This prevents using edit_handler to bypass
+    // the static analysis validator (which register_handler enforces).
+    const sourceResult = sandbox.getHandlerSource(name, {
+      lineNumbers: false,
+    });
+    if (!sourceResult.success) {
+      console.error(`  ${C.err("❌ " + sourceResult.error)}`);
+      return sourceResult;
+    }
+
+    const currentCode = sourceResult.code as string;
+    const occurrences = currentCode.split(oldString).length - 1;
+    if (occurrences === 0) {
+      const err = `oldString not found in handler "${name}"`;
+      console.error(`  ${C.err("❌ " + err)}`);
+      return { success: false, error: err };
+    }
+    if (occurrences > 1) {
+      const err = `oldString found ${occurrences} times in handler "${name}" — must be unique`;
+      console.error(`  ${C.err("❌ " + err)}`);
+      return { success: false, error: err };
+    }
+
+    const editedCode = currentCode.replace(oldString, newString);
+
+    // Run the same validation as register_handler
+    const registeredHandlers = sandbox.getHandlers().filter((h) => h !== name);
+    const availableModules = sandbox.getAvailableModules();
+
+    let validationContext: ValidationContext = {
+      handlerName: name,
+      registeredHandlers,
+      availableModules,
+      expectHandler: true,
+    };
+
+    try {
+      let validation = await validateJavaScriptGuest(
+        editedCode,
+        validationContext,
+      );
+
+      const maxIterations = 20;
+      let iterations = 0;
+      while (
+        !validation.deepValidationDone &&
+        validation.missingSources.length > 0 &&
+        validation.errors.length === 0 &&
+        iterations < maxIterations
+      ) {
+        iterations++;
+        const {
+          sources: newSources,
+          dtsSources: newDtsSources,
+          moduleJsons: newModuleJsons,
+        } = loadModuleFilesForValidator(
+          validation.missingSources,
+          pluginManager,
+        );
+        validationContext = {
+          ...validationContext,
+          moduleSources: {
+            ...validationContext.moduleSources,
+            ...newSources,
+          },
+          dtsSources: { ...validationContext.dtsSources, ...newDtsSources },
+          moduleJsons: { ...validationContext.moduleJsons, ...newModuleJsons },
+        };
+        validation = await validateJavaScriptGuest(
+          editedCode,
+          validationContext,
+        );
+      }
+
+      if (validation.errors.length > 0) {
+        const errMsg = validation.errors
+          .map((e) => {
+            const loc = e.line ? ` (line ${e.line})` : "";
+            return `${e.type}: ${e.message}${loc}`;
+          })
+          .join("\n");
+        console.error(`  ${C.err("❌ Validation failed for edited handler:")}`);
+        console.error(`     ${errMsg.replace(/\n/g, "\n     ")}`);
+        return {
+          success: false,
+          error: `Validation failed:\n${errMsg}`,
+          hint: "This handler was NOT modified. Fix the validation errors and try again.",
+        };
+      }
+    } catch (e) {
+      // If validation itself crashes, log but still allow the edit
+      // (analysis guest may not be available in all environments)
+      if (state.verboseOutput) {
+        console.error(
+          `  ⚠️ Validation skipped for edit_handler: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    // Validation passed — commit the edit
     const result = await sandbox.editHandler(name, oldString, newString);
     if (result.success) {
       console.error(
