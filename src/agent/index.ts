@@ -3689,11 +3689,43 @@ const moduleInfoTool = defineTool("module_info", {
           };
         });
 
+        // Collect relevant type definitions for the queried functions.
+        // This ensures the LLM sees full parameter shapes even when querying
+        // specific functions (previously only returned in the full module view).
+        let relevantTypes: string | undefined;
+        if (interfaces.size > 0) {
+          const resolved = resolveTypeReferences(interfaces);
+          const relevant = new Set<string>();
+          for (const fn of foundFns) {
+            for (const p of fn.params ?? []) {
+              if (p.type) {
+                // Extract base type name (strip [], <>, ?, |)
+                const base = p.type
+                  .replace(/\[\]$/, "")
+                  .replace(/<.*>/, "")
+                  .replace(/\s*\|.*/, "")
+                  .replace(/\?$/, "")
+                  .trim();
+                if (resolved.has(base)) relevant.add(base);
+              }
+            }
+          }
+          if (relevant.size > 0) {
+            const parts: string[] = [];
+            for (const typeName of relevant) {
+              const fields = resolved.get(typeName);
+              if (fields) parts.push(`${typeName} = {\n${fields}\n}`);
+            }
+            relevantTypes = parts.join("\n\n");
+          }
+        }
+
         // For single function, return flat; for multiple, return array
         if (results.length === 1) {
           return {
             name: info.name,
             ...results[0],
+            ...(relevantTypes ? { typeDefinitions: relevantTypes } : {}),
             importAs: `import { ${results[0].functionName} } from "ha:${info.name}"`,
           };
         }
@@ -3701,6 +3733,7 @@ const moduleInfoTool = defineTool("module_info", {
         return {
           name: info.name,
           functions: results,
+          ...(relevantTypes ? { typeDefinitions: relevantTypes } : {}),
           ...(notFound.length > 0 ? { notFound } : {}),
           importAs: `import { ${foundFns.map((f) => f.name).join(", ")} } from "ha:${info.name}"`,
         };
