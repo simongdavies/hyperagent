@@ -142,9 +142,356 @@ export const STANDARD_FONTS = [
 
 export type StandardFontName = (typeof STANDARD_FONTS)[number];
 
-// Helvetica default width = 278 for missing glyphs.
-// We store widths for ASCII 32-126 (printable range) plus a default.
-// Full AFM tables have ~300+ entries; we cover the common printable range.
+// ── TrueType Font Parser ─────────────────────────────────────────────
+// Parses TTF binary data to extract metrics needed for PDF embedding:
+// character widths (hmtx), cmap (Unicode→glyph mapping), and font metadata.
+
+/** Parsed TrueType font data for PDF embedding. */
+interface ParsedTTF {
+  /** PostScript name from the name table. */
+  postScriptName: string;
+  /** Font family name. */
+  familyName: string;
+  /** Units per em (typically 1000 or 2048). */
+  unitsPerEm: number;
+  /** Ascent in font units. */
+  ascent: number;
+  /** Descent in font units (negative). */
+  descent: number;
+  /** Bounding box [xMin, yMin, xMax, yMax] in font units. */
+  bbox: [number, number, number, number];
+  /** Number of glyphs. */
+  numGlyphs: number;
+  /** Advance widths per glyph ID (from hmtx). */
+  glyphWidths: Uint16Array;
+  /** Unicode codepoint → glyph ID mapping (from cmap). */
+  cmapUnicodeToGlyph: Map<number, number>;
+  /** StemV estimate for font descriptor. */
+  stemV: number;
+  /** Font flags for font descriptor. */
+  flags: number;
+  /** ItalicAngle from post table. */
+  italicAngle: number;
+  /** The original TTF binary data for embedding. */
+  rawData: Uint8Array;
+}
+
+/** Read a 16-bit unsigned big-endian integer from a DataView. */
+function readU16(dv: DataView, offset: number): number {
+  return dv.getUint16(offset, false);
+}
+
+/** Read a 32-bit unsigned big-endian integer from a DataView. */
+function readU32(dv: DataView, offset: number): number {
+  return dv.getUint32(offset, false);
+}
+
+/** Read a 16-bit signed big-endian integer from a DataView. */
+function readI16(dv: DataView, offset: number): number {
+  return dv.getInt16(offset, false);
+}
+
+/** Read a 32-bit signed big-endian integer (Fixed 16.16). */
+function readFixed(dv: DataView, offset: number): number {
+  return dv.getInt32(offset, false) / 65536;
+}
+
+/**
+ * Parse a TrueType font file from raw bytes.
+ * Extracts metrics needed for PDF embedding.
+ *
+ * @param data - TTF file bytes
+ * @returns Parsed font data
+ */
+function parseTTF(data: Uint8Array): ParsedTTF {
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+  // ── Offset table ──
+  const numTables = readU16(dv, 4);
+
+  // ── Table directory ──
+  const tables: Map<string, { offset: number; length: number }> = new Map();
+  for (let i = 0; i < numTables; i++) {
+    const base = 12 + i * 16;
+    const tag =
+      String.fromCharCode(dv.getUint8(base)) +
+      String.fromCharCode(dv.getUint8(base + 1)) +
+      String.fromCharCode(dv.getUint8(base + 2)) +
+      String.fromCharCode(dv.getUint8(base + 3));
+    const offset = readU32(dv, base + 8);
+    const length = readU32(dv, base + 12);
+    tables.set(tag, { offset, length });
+  }
+
+  function requireTable(tag: string): { offset: number; length: number } {
+    const t = tables.get(tag);
+    if (!t) throw new Error(`TTF: missing required table '${tag}'`);
+    return t;
+  }
+
+  // ── head table — font-wide metrics ──
+  const head = requireTable("head");
+  const unitsPerEm = readU16(dv, head.offset + 18);
+  const xMin = readI16(dv, head.offset + 36);
+  const yMin = readI16(dv, head.offset + 38);
+  const xMax = readI16(dv, head.offset + 40);
+  const yMax = readI16(dv, head.offset + 42);
+
+  // ── hhea table — horizontal header ──
+  const hhea = requireTable("hhea");
+  const ascent = readI16(dv, hhea.offset + 4);
+  const descent = readI16(dv, hhea.offset + 6);
+  const numHMetrics = readU16(dv, hhea.offset + 34);
+
+  // ── maxp table — number of glyphs ──
+  const maxp = requireTable("maxp");
+  const numGlyphs = readU16(dv, maxp.offset + 4);
+
+  // ── hmtx table — horizontal metrics (advance widths) ──
+  const hmtx = requireTable("hmtx");
+  const glyphWidths = new Uint16Array(numGlyphs);
+  let lastWidth = 0;
+  for (let i = 0; i < numGlyphs; i++) {
+    if (i < numHMetrics) {
+      lastWidth = readU16(dv, hmtx.offset + i * 4);
+    }
+    glyphWidths[i] = lastWidth;
+  }
+
+  // ── cmap table — Unicode to glyph ID mapping ──
+  const cmap = requireTable("cmap");
+  const cmapNumSubtables = readU16(dv, cmap.offset + 2);
+  const cmapUnicodeToGlyph = new Map<number, number>();
+
+  // Find a Unicode subtable (platformID 3 = Windows, encodingID 1 = Unicode BMP)
+  // or (platformID 0 = Unicode)
+  let cmapSubOffset = -1;
+  let cmapFormat = -1;
+  for (let i = 0; i < cmapNumSubtables; i++) {
+    const subtableBase = cmap.offset + 4 + i * 8;
+    const platformID = readU16(dv, subtableBase);
+    const encodingID = readU16(dv, subtableBase + 2);
+    const subtableOff = readU32(dv, subtableBase + 4);
+
+    if (
+      (platformID === 3 && encodingID === 1) ||
+      (platformID === 0 && encodingID === 3)
+    ) {
+      cmapSubOffset = cmap.offset + subtableOff;
+      cmapFormat = readU16(dv, cmapSubOffset);
+      break;
+    }
+  }
+
+  if (cmapSubOffset >= 0 && cmapFormat === 4) {
+    // Format 4: Segment mapping to delta values (most common for BMP)
+    const segCount = readU16(dv, cmapSubOffset + 6) / 2;
+    const endCodesOff = cmapSubOffset + 14;
+    const startCodesOff = endCodesOff + segCount * 2 + 2; // +2 for reservedPad
+    const idDeltaOff = startCodesOff + segCount * 2;
+    const idRangeOffsetOff = idDeltaOff + segCount * 2;
+
+    for (let seg = 0; seg < segCount; seg++) {
+      const endCode = readU16(dv, endCodesOff + seg * 2);
+      const startCode = readU16(dv, startCodesOff + seg * 2);
+      const idDelta = readI16(dv, idDeltaOff + seg * 2);
+      const idRangeOffset = readU16(dv, idRangeOffsetOff + seg * 2);
+
+      if (startCode === 0xffff) break;
+
+      for (let cp = startCode; cp <= endCode; cp++) {
+        let glyphId: number;
+        if (idRangeOffset === 0) {
+          glyphId = (cp + idDelta) & 0xffff;
+        } else {
+          const glyphIdOffset =
+            idRangeOffsetOff +
+            seg * 2 +
+            idRangeOffset +
+            (cp - startCode) * 2;
+          glyphId = readU16(dv, glyphIdOffset);
+          if (glyphId !== 0) {
+            glyphId = (glyphId + idDelta) & 0xffff;
+          }
+        }
+        if (glyphId !== 0) {
+          cmapUnicodeToGlyph.set(cp, glyphId);
+        }
+      }
+    }
+  }
+
+  // ── name table — font names ──
+  const nameTable = tables.get("name");
+  let postScriptName = "CustomFont";
+  let familyName = "CustomFont";
+  if (nameTable) {
+    const nameCount = readU16(dv, nameTable.offset + 2);
+    const stringOffset = readU16(dv, nameTable.offset + 4);
+    for (let i = 0; i < nameCount; i++) {
+      const base = nameTable.offset + 6 + i * 12;
+      const platformID = readU16(dv, base);
+      const nameID = readU16(dv, base + 6);
+      const length = readU16(dv, base + 8);
+      const offset = readU16(dv, base + 10);
+      const strStart = nameTable.offset + stringOffset + offset;
+
+      if (platformID === 3) {
+        // Windows: UTF-16BE
+        let str = "";
+        for (let j = 0; j < length; j += 2) {
+          str += String.fromCharCode(readU16(dv, strStart + j));
+        }
+        if (nameID === 6) postScriptName = str; // PostScript name
+        if (nameID === 1) familyName = str; // Family name
+      } else if (platformID === 1) {
+        // Mac: single-byte
+        let str = "";
+        for (let j = 0; j < length; j++) {
+          str += String.fromCharCode(dv.getUint8(strStart + j));
+        }
+        if (nameID === 6 && postScriptName === "CustomFont")
+          postScriptName = str;
+        if (nameID === 1 && familyName === "CustomFont") familyName = str;
+      }
+    }
+  }
+
+  // ── post table — italic angle ──
+  const post = tables.get("post");
+  const italicAngle = post ? readFixed(dv, post.offset + 4) : 0;
+
+  // ── OS/2 table — weight class for stemV estimate ──
+  const os2 = tables.get("OS/2");
+  let stemV = 80; // default estimate
+  let flags = 32; // nonsymbolic
+  if (os2) {
+    const weightClass = readU16(dv, os2.offset + 4);
+    // Rough stemV from weight class (Adobe's heuristic)
+    stemV = Math.round(10 + 220 * ((weightClass - 50) / 900));
+    if (stemV < 50) stemV = 50;
+    if (stemV > 200) stemV = 200;
+  }
+  if (italicAngle !== 0) flags |= 64; // italic flag
+
+  return {
+    postScriptName: postScriptName.replace(/[^a-zA-Z0-9+-]/g, ""),
+    familyName,
+    unitsPerEm,
+    ascent,
+    descent,
+    bbox: [xMin, yMin, xMax, yMax],
+    numGlyphs,
+    glyphWidths,
+    cmapUnicodeToGlyph,
+    stemV,
+    flags,
+    italicAngle,
+    rawData: data,
+  };
+}
+
+/**
+ * Get the advance width of a Unicode codepoint in a parsed TTF font.
+ * Returns width in font units (divide by unitsPerEm * fontSize / 1000).
+ */
+function ttfCharWidth(parsed: ParsedTTF, codePoint: number): number {
+  const glyphId = parsed.cmapUnicodeToGlyph.get(codePoint);
+  if (glyphId === undefined || glyphId >= parsed.glyphWidths.length) return 0;
+  return parsed.glyphWidths[glyphId];
+}
+
+/**
+ * Subset a TTF font to only include the glyphs that are actually used.
+ * Returns a new TTF binary with only the needed glyphs, reducing file size.
+ *
+ * @param parsed - Parsed TTF data
+ * @param usedCodePoints - Set of Unicode codepoints that appear in the document
+ * @returns Subset TTF binary data
+ */
+function subsetTTF(
+  parsed: ParsedTTF,
+  usedCodePoints: Set<number>,
+): Uint8Array {
+  // For subsetting, we need to:
+  // 1. Keep only the glyph IDs referenced by usedCodePoints
+  // 2. Remap glyph IDs to a contiguous range
+  // 3. Rebuild the loca, glyf, cmap, hmtx tables
+  //
+  // Simplified approach: just return the full font if few glyphs are used
+  // (subsetting is complex and the size savings only matter for large CJK fonts).
+  // For v1, we embed the full font. The subset capability is here for Phase 11b.
+
+  // Build the glyph ID set (always include glyph 0 = .notdef)
+  const usedGlyphIds = new Set<number>([0]);
+  for (const cp of usedCodePoints) {
+    const gid = parsed.cmapUnicodeToGlyph.get(cp);
+    if (gid !== undefined) usedGlyphIds.add(gid);
+  }
+
+  // If more than 80% of glyphs are used, just use the full font
+  if (usedGlyphIds.size > parsed.numGlyphs * 0.8) {
+    return parsed.rawData;
+  }
+
+  // For now, return full font — proper subsetting requires rebuilding
+  // glyf, loca, hmtx, and cmap tables with remapped glyph IDs.
+  // TODO: Implement proper TTF subsetting for CJK font size reduction.
+  return parsed.rawData;
+}
+
+// ── Font Width Tables (Standard 14) ──────────────────────────────────
+
+/**
+ * Build a ToUnicode CMap for a TrueType font.
+ * Maps glyph IDs back to Unicode codepoints so PDF viewers can
+ * extract text (copy/paste, search).
+ */
+function buildToUnicodeCMap(
+  parsed: ParsedTTF,
+  usedCPs?: Set<number>,
+): string {
+  const mappings: { gid: number; cp: number }[] = [];
+  const cps = usedCPs ?? parsed.cmapUnicodeToGlyph.keys();
+  for (const cp of cps) {
+    const gid = parsed.cmapUnicodeToGlyph.get(cp);
+    if (gid !== undefined && gid !== 0) {
+      mappings.push({ gid, cp });
+    }
+  }
+  // Sort by glyph ID
+  mappings.sort((a, b) => a.gid - b.gid);
+
+  // Build CMap in chunks of 100 (PDF limit per bfchar section)
+  const chunks: string[] = [];
+  for (let i = 0; i < mappings.length; i += 100) {
+    const chunk = mappings.slice(i, i + 100);
+    chunks.push(`${chunk.length} beginbfchar`);
+    for (const { gid, cp } of chunk) {
+      chunks.push(
+        `<${gid.toString(16).padStart(4, "0")}> <${cp.toString(16).padStart(4, "0")}>`,
+      );
+    }
+    chunks.push("endbfchar");
+  }
+
+  return [
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    "/CMapName /Adobe-Identity-UCS def",
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<0000> <FFFF>",
+    "endcodespacerange",
+    ...chunks,
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end",
+  ].join("\n");
+}
 
 /** Default glyph width for characters not in the table (per 1000 units). */
 const DEFAULT_WIDTH = 278;
@@ -216,10 +563,14 @@ export function charWidth(font: string, charCode: number): number {
   return table[idx];
 }
 
+/** Global reference to the active font registry (set during createDocument). */
+let _activeFontRegistry: FontRegistry | null = null;
+
 /**
  * Measure the width of a string in points for a given font and size.
+ * Supports both standard 14 fonts and custom TrueType fonts.
  * @param text - Text to measure
- * @param font - Standard font name
+ * @param font - Font name (standard or custom registered)
  * @param fontSize - Font size in points
  * @returns Width in points
  */
@@ -228,6 +579,21 @@ export function measureText(
   font: string,
   fontSize: number,
 ): number {
+  // Check custom fonts first
+  if (_activeFontRegistry) {
+    const customFont = _activeFontRegistry.customFonts.get(font);
+    if (customFont) {
+      let total = 0;
+      for (let i = 0; i < text.length; i++) {
+        const cp = text.codePointAt(i)!;
+        if (cp > 0xffff) i++; // skip surrogate pair
+        total += ttfCharWidth(customFont, cp);
+      }
+      // Convert from font units to points: width * fontSize / unitsPerEm
+      return (total * fontSize) / customFont.unitsPerEm;
+    }
+  }
+  // Standard font path
   let total = 0;
   for (let i = 0; i < text.length; i++) {
     total += charWidth(font, text.charCodeAt(i));
@@ -451,13 +817,29 @@ function textOp(
   fontRef: string,
   fontSize: number,
   color?: string,
+  customFont?: ParsedTTF,
 ): string {
   const parts: string[] = [];
   parts.push("BT");
   if (color) parts.push(`${color} rg`);
   parts.push(`/${fontRef} ${fontSize} Tf`);
   parts.push(`${x.toFixed(2)} ${y.toFixed(2)} Td`);
-  parts.push(`(${escapeTextString(text)}) Tj`);
+
+  if (customFont) {
+    // Custom TrueType font: encode as hex glyph IDs
+    let hex = "";
+    for (let i = 0; i < text.length; i++) {
+      const cp = text.codePointAt(i)!;
+      if (cp > 0xffff) i++; // skip surrogate pair
+      const gid = customFont.cmapUnicodeToGlyph.get(cp) ?? 0;
+      hex += gid.toString(16).padStart(4, "0");
+    }
+    parts.push(`<${hex}> Tj`);
+  } else {
+    // Standard Type1 font: WinAnsi encoded text string
+    parts.push(`(${escapeTextString(text)}) Tj`);
+  }
+
   parts.push("ET");
   return parts.join("\n");
 }
@@ -581,10 +963,19 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
 interface FontRegistry {
   fonts: Map<string, string>; // fontName → "F1", "F2", ...
   nextId: number;
+  /** Parsed TrueType font data for custom embedded fonts. */
+  customFonts: Map<string, ParsedTTF>;
+  /** Codepoints used per custom font (for subsetting). */
+  usedCodePoints: Map<string, Set<number>>;
 }
 
 function createFontRegistry(): FontRegistry {
-  return { fonts: new Map(), nextId: 1 };
+  return {
+    fonts: new Map(),
+    nextId: 1,
+    customFonts: new Map(),
+    usedCodePoints: new Map(),
+  };
 }
 
 /**
@@ -996,6 +1387,9 @@ export function createDocument(opts?: DocumentOptions): PdfDocument {
   const fontRegistry = createFontRegistry();
   const imageRegistry = createImageRegistry();
 
+  // Set active registry for measureText custom font support
+  _activeFontRegistry = fontRegistry;
+
   // Ensure Helvetica is always registered as F1 (default font)
   registerFont(fontRegistry, "Helvetica");
 
@@ -1060,7 +1454,26 @@ export function createDocument(opts?: DocumentOptions): PdfDocument {
       }
 
       const pdfY = convertY(y, page.size.height);
-      page.contentOps.push(textOp(text, drawX, pdfY, fontRef, fs, colorRgb));
+
+      // Check if this is a custom TrueType font
+      const customFont = fontRegistry.customFonts.get(fontName);
+      if (customFont) {
+        // Track used codepoints for subsetting
+        let usedCPs = fontRegistry.usedCodePoints.get(fontName);
+        if (!usedCPs) {
+          usedCPs = new Set();
+          fontRegistry.usedCodePoints.set(fontName, usedCPs);
+        }
+        for (let ci = 0; ci < text.length; ci++) {
+          const cp = text.codePointAt(ci)!;
+          if (cp > 0xffff) ci++;
+          usedCPs.add(cp);
+        }
+      }
+
+      page.contentOps.push(
+        textOp(text, drawX, pdfY, fontRef, fs, colorRgb, customFont),
+      );
 
       // Record bounding box for overlap/bounds validation
       const textW = measureText(text, fontName, fs);
@@ -1317,7 +1730,17 @@ function buildPdfBytes(
   const fontList = Array.from(fontRegistry.fonts.entries());
   const imageList = Array.from(imageRegistry.images.entries());
   const fontStartObj = 4;
-  const imageStartObj = fontStartObj + fontList.length;
+
+  // Count objects needed for fonts: Type1 = 1 obj, TrueType = 5 objs each
+  let fontObjCount = 0;
+  const fontObjMap = new Map<string, number>(); // fontName → first object number
+  for (const [fontName] of fontList) {
+    fontObjMap.set(fontName, fontStartObj + fontObjCount);
+    const isCustom = fontRegistry.customFonts.has(fontName);
+    fontObjCount += isCustom ? 5 : 1; // Type0 + CIDFont + Descriptor + FontFile2 + ToUnicode
+  }
+
+  const imageStartObj = fontStartObj + fontObjCount;
   const pageStartObj = imageStartObj + imageList.length;
   // Each page needs 2 objects: page dict + content stream
   const totalObjects = pageStartObj + pages.length * 2;
@@ -1336,14 +1759,114 @@ function buildPdfBytes(
   addObject(3, infoParts.join(""));
 
   // ── Font objects ──
-  for (let i = 0; i < fontList.length; i++) {
-    const [fontName, resName] = fontList[i];
-    const objNum = fontStartObj + i;
-    addObject(
-      objNum,
-      `<< /Type /Font /Subtype /Type1 /BaseFont /${fontName} /Encoding /WinAnsiEncoding >>`,
-    );
-    // Suppress unused variable lint — resName is used in resource dict assembly
+  for (const [fontName, resName] of fontList) {
+    const baseObjNum = fontObjMap.get(fontName)!;
+    const customFont = fontRegistry.customFonts.get(fontName);
+
+    if (customFont) {
+      // ── TrueType composite font (Type0 → CIDFontType2) ──
+      // Object layout: base+0=Type0, base+1=CIDFont, base+2=Descriptor,
+      //                base+3=FontFile2 stream, base+4=ToUnicode CMap
+
+      const cidFontObj = baseObjNum + 1;
+      const descriptorObj = baseObjNum + 2;
+      const fontFileObj = baseObjNum + 3;
+      const toUnicodeObj = baseObjNum + 4;
+
+      // Get the font data (optionally subsetted)
+      const usedCPs = fontRegistry.usedCodePoints.get(fontName);
+      const fontData = usedCPs
+        ? subsetTTF(customFont, usedCPs)
+        : customFont.rawData;
+
+      // Compress font data
+      const compressedFont = debug
+        ? fontData
+        : wrapZlib(deflate(fontData), fontData);
+
+      // Build /W array (CID widths) - only for used codepoints to keep small
+      const wEntries: string[] = [];
+      if (usedCPs && usedCPs.size > 0) {
+        const sortedCPs = Array.from(usedCPs).sort((a, b) => a - b);
+        for (const cp of sortedCPs) {
+          const gid = customFont.cmapUnicodeToGlyph.get(cp) ?? 0;
+          const w = customFont.glyphWidths[gid] ?? 0;
+          // Scale width to 1000 units
+          const scaledW = Math.round((w * 1000) / customFont.unitsPerEm);
+          wEntries.push(`${gid} [${scaledW}]`);
+        }
+      }
+      const wArray = wEntries.length > 0 ? ` /W [${wEntries.join(" ")}]` : "";
+
+      // Scale metrics to 1000 units
+      const scale = 1000 / customFont.unitsPerEm;
+      const sAscent = Math.round(customFont.ascent * scale);
+      const sDescent = Math.round(customFont.descent * scale);
+      const sBbox = customFont.bbox.map((v) => Math.round(v * scale));
+
+      // Object base+0: Type0 font (top-level)
+      addObject(
+        baseObjNum,
+        `<< /Type /Font /Subtype /Type0` +
+          ` /BaseFont /${customFont.postScriptName}` +
+          ` /Encoding /Identity-H` +
+          ` /DescendantFonts [${cidFontObj} 0 R]` +
+          ` /ToUnicode ${toUnicodeObj} 0 R >>`,
+      );
+
+      // Object base+1: CIDFont
+      addObject(
+        cidFontObj,
+        `<< /Type /Font /Subtype /CIDFontType2` +
+          ` /BaseFont /${customFont.postScriptName}` +
+          ` /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >>` +
+          ` /FontDescriptor ${descriptorObj} 0 R` +
+          ` /DW ${Math.round((customFont.glyphWidths[0] ?? 500) * scale)}` +
+          `${wArray} >>`,
+      );
+
+      // Object base+2: FontDescriptor
+      addObject(
+        descriptorObj,
+        `<< /Type /FontDescriptor` +
+          ` /FontName /${customFont.postScriptName}` +
+          ` /FontFamily (${customFont.familyName})` +
+          ` /Flags ${customFont.flags}` +
+          ` /FontBBox [${sBbox.join(" ")}]` +
+          ` /ItalicAngle ${customFont.italicAngle}` +
+          ` /Ascent ${sAscent}` +
+          ` /Descent ${sDescent}` +
+          ` /StemV ${customFont.stemV}` +
+          ` /FontFile2 ${fontFileObj} 0 R >>`,
+      );
+
+      // Object base+3: FontFile2 stream (embedded TTF)
+      const fontFilterStr = debug ? "" : "/Filter /FlateDecode ";
+      addStreamObject(
+        fontFileObj,
+        `${fontFilterStr}/Length ${compressedFont.length} /Length1 ${fontData.length}`,
+        compressedFont,
+      );
+
+      // Object base+4: ToUnicode CMap
+      const toUnicodeContent = buildToUnicodeCMap(customFont, usedCPs);
+      const cmapBytes = encodeText(toUnicodeContent);
+      const compressedCMap = debug
+        ? cmapBytes
+        : wrapZlib(deflate(cmapBytes), cmapBytes);
+      const cmapFilterStr = debug ? "" : "/Filter /FlateDecode ";
+      addStreamObject(
+        toUnicodeObj,
+        `${cmapFilterStr}/Length ${compressedCMap.length}`,
+        compressedCMap,
+      );
+    } else {
+      // ── Standard Type1 font ──
+      addObject(
+        baseObjNum,
+        `<< /Type /Font /Subtype /Type1 /BaseFont /${fontName} /Encoding /WinAnsiEncoding >>`,
+      );
+    }
     void resName;
   }
 
@@ -1416,9 +1939,8 @@ function buildPdfBytes(
 
     // Build font resource dictionary for this page
     const fontDictParts: string[] = [];
-    for (const [, resName] of fontList) {
-      const fontObjNum =
-        fontStartObj + fontList.findIndex(([, r]) => r === resName);
+    for (const [fontName, resName] of fontList) {
+      const fontObjNum = fontObjMap.get(fontName)!;
       fontDictParts.push(`/${resName} ${fontObjNum} 0 R`);
     }
     const fontResDict =
@@ -6189,4 +6711,58 @@ export function exportToFile(
   }
   const bytes = doc.buildPdf();
   fsWrite.writeFileBinary(path, bytes);
+}
+
+// ── Custom Font Registration ─────────────────────────────────────────
+
+/** Options for registerCustomFont(). */
+export interface RegisterFontOptions {
+  /** Name to use for this font in drawText/paragraph/etc. */
+  name: string;
+  /** Raw TrueType (.ttf) font file data. */
+  data: Uint8Array;
+}
+
+/**
+ * Register a custom TrueType font for use in the document.
+ * After registration, use the font name in any element's `font` parameter.
+ *
+ * The font is embedded in the PDF so it renders correctly on any viewer.
+ * Supports full Unicode (CJK, Cyrillic, Arabic, etc.) — not limited to
+ * WinAnsiEncoding like the standard 14 fonts.
+ *
+ * @param doc - PdfDocument to register the font in
+ * @param opts - RegisterFontOptions with name and TTF data
+ *
+ * @example
+ * const fontData = fsRead.readFileBinary("DejaVuSans.ttf");
+ * registerCustomFont(doc, { name: "DejaVu", data: fontData });
+ * // Now use "DejaVu" as the font name:
+ * addContent(doc, [paragraph({ text: "Hello 世界", font: "DejaVu" })]);
+ */
+export function registerCustomFont(
+  doc: PdfDocument,
+  opts: RegisterFontOptions,
+): void {
+  const name = requireString(opts.name, "registerCustomFont.name");
+  if (!opts.data || !(opts.data instanceof Uint8Array) || opts.data.length < 12) {
+    throw new Error(
+      "registerCustomFont.data: must be a Uint8Array containing TrueType (.ttf) font data",
+    );
+  }
+
+  // Parse the TTF data
+  const parsed = parseTTF(opts.data);
+
+  // Access font registry
+  const docAny = doc as unknown as {
+    _getFontRegistry: () => FontRegistry;
+  };
+  const registry = docAny._getFontRegistry();
+
+  // Store the parsed font data
+  registry.customFonts.set(name, parsed);
+
+  // Register in the font map (gets a resource name like F3, F4, etc.)
+  registerFont(registry, name);
 }

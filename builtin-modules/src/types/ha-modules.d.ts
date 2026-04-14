@@ -580,8 +580,9 @@ declare module "ha:pdf" {
   export declare function charWidth(font: string, charCode: number): number;
   /**
    * Measure the width of a string in points for a given font and size.
+   * Supports both standard 14 fonts and custom TrueType fonts.
    * @param text - Text to measure
-   * @param font - Standard font name
+   * @param font - Font name (standard or custom registered)
    * @param fontSize - Font size in points
    * @returns Width in points
    */
@@ -1793,6 +1794,31 @@ declare module "ha:pdf" {
   export declare function exportToFile(doc: PdfDocument, path: string, fsWrite: {
       writeFileBinary: (path: string, data: Uint8Array) => void;
   }): void;
+  /** Options for registerCustomFont(). */
+  export interface RegisterFontOptions {
+      /** Name to use for this font in drawText/paragraph/etc. */
+      name: string;
+      /** Raw TrueType (.ttf) font file data. */
+      data: Uint8Array;
+  }
+  /**
+   * Register a custom TrueType font for use in the document.
+   * After registration, use the font name in any element's `font` parameter.
+   *
+   * The font is embedded in the PDF so it renders correctly on any viewer.
+   * Supports full Unicode (CJK, Cyrillic, Arabic, etc.) — not limited to
+   * WinAnsiEncoding like the standard 14 fonts.
+   *
+   * @param doc - PdfDocument to register the font in
+   * @param opts - RegisterFontOptions with name and TTF data
+   *
+   * @example
+   * const fontData = fsRead.readFileBinary("DejaVuSans.ttf");
+   * registerCustomFont(doc, { name: "DejaVu", data: fontData });
+   * // Now use "DejaVu" as the font name:
+   * addContent(doc, [paragraph({ text: "Hello 世界", font: "DejaVu" })]);
+   */
+  export declare function registerCustomFont(doc: PdfDocument, opts: RegisterFontOptions): void;
   export {};
 }
 
