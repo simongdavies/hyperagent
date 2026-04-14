@@ -1,0 +1,56 @@
+# Unicode symbols + multilingual — tests custom font with special characters
+# Uses DejaVu Sans which has ✔✘★❤☺☃▶☂ but NOT colour emoji
+name: unicode-showcase
+description: Document using Unicode symbols and multilingual text with custom TrueType font
+skill: pdf-expert
+profiles: file-builder
+timeout: 240
+expected_file: unicode-showcase.pdf
+expected_min_pages: 1
+expected_content:
+  - Unicode
+  - Symbols
+prompt: |
+  Create a PDF document showcasing Unicode symbol and multilingual text support.
+
+  CRITICAL STEPS — follow exactly:
+  1. Enable fs-read and fs-write plugins
+  2. Load the DejaVu Sans font: readFileBinary("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+  3. Register it: registerCustomFont(doc, { name: "DejaVu", data: fontData })
+  4. Use font: "DejaVu" for ALL text that contains special characters
+
+  Content:
+
+  Title page:
+  - Title: "Unicode Showcase"
+  - Subtitle: "Symbols, Scripts & Special Characters"
+
+  Page 2 — "Symbols & Icons" section:
+  Use DejaVu font for ALL of these. Create a simple table with 2 columns (Symbol, Meaning):
+  - ✔ = Approved (U+2714)
+  - ✘ = Rejected (U+2718)
+  - ★ = Favourite (U+2605)
+  - ❤ = Love (U+2764)
+  - ☺ = Happy (U+263A)
+  - ☃ = Winter (U+2603)
+  - ▶ = Play (U+25B6)
+  - ☂ = Rain (U+2602)
+
+  Then add a paragraph (in DejaVu font):
+  "Status: ✔ Approved ★★★★☆ (4/5 stars)"
+
+  Page 3 — "Multilingual Greetings" section:
+  Each greeting on its own line using DejaVu font:
+  - English: Hello World
+  - French: Bonjour le monde
+  - German: Hallo Welt — Ästhetik und Überlegung
+  - Polish: Zażółć gęślą jaźń
+  - Czech: Příliš žluťoučký kůň úpěl ďábelské ódy
+  - Turkish: İstanbul'da güneşli bir gün
+
+  Then a calloutBox with the text:
+  "This document uses an embedded DejaVu Sans TrueType font to render characters
+  that are impossible with standard PDF fonts (Helvetica, Times, Courier).
+  Standard fonts only support ~220 Western European characters via WinAnsiEncoding."
+
+  Use the "corporate-blue" theme. Save as unicode-showcase.pdf.

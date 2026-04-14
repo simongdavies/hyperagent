@@ -537,24 +537,70 @@ function subsetTTF(
     }
   }
 
-  // Now trim: find the actual end of used data in glyf table.
-  // The zeroed-out regions at the end can be removed entirely.
-  // Find the last used glyph's end offset.
-  let maxUsedEnd = 0;
+  // Now compact: the zeroed glyf regions waste space even though they
+  // compress well. Since ha:ziplib deflate may not handle large inputs
+  // well, we physically remove the trailing empty glyf data and update
+  // the glyf table length in the table directory.
+  // Find the last byte of used glyph data in the glyf table.
+  let lastUsedByte = 0;
   for (const gid of usedGlyphIds) {
     if (gid + 1 <= parsed.numGlyphs) {
-      const end = glyphOffsets[gid + 1];
-      if (end > maxUsedEnd) maxUsedEnd = end;
+      const endOff = glyphOffsets[gid + 1];
+      if (endOff > lastUsedByte) lastUsedByte = endOff;
     }
   }
 
-  // If significant savings, rebuild the font with a trimmed glyf table
-  if (savedBytes > parsed.rawData.length * 0.3) {
-    // Significant savings — rebuild with smaller glyf.
-    // For simplicity, just truncate trailing zeros from glyf, which handles
-    // the common case where high-numbered glyphs (rare chars) are dropped.
-    // A full rebuild would repack all tables — too complex for the benefit.
-    return result; // Return zeroed-out version (compresses well with deflate)
+  // Calculate how much of glyf we can trim
+  const originalGlyfLen = glyfTable.length;
+  const trimmedGlyfLen = Math.max(lastUsedByte, 4); // at least 4 bytes
+  const bytesToTrim = originalGlyfLen - trimmedGlyfLen;
+
+  if (bytesToTrim > 1000) {
+    // Significant savings — rebuild with trimmed glyf.
+    // Update the glyf table length in the table directory.
+    for (let i = 0; i < numTables; i++) {
+      const base = 12 + i * 16;
+      const tag =
+        String.fromCharCode(result[base]) +
+        String.fromCharCode(result[base + 1]) +
+        String.fromCharCode(result[base + 2]) +
+        String.fromCharCode(result[base + 3]);
+      if (tag === "glyf") {
+        // Update length field
+        const newLen = trimmedGlyfLen;
+        rdv.setUint32(base + 12, newLen, false);
+        break;
+      }
+    }
+
+    // Truncate the result at glyf end + remaining tables after glyf
+    // Actually, just return a slice up to the end of all data minus the trim
+    // The simplest correct approach: set the glyf table length and return
+    // a view that excludes the trailing zeros.
+    // Since other tables may follow glyf, we can't just truncate.
+    // Instead, return the full array — the /Length1 in the PDF will use
+    // this trimmed length, and PDF readers will respect it.
+    // Actually, /Length1 is set to fontData.length which would still be 757KB.
+    // We need to physically shrink the array.
+
+    // Copy everything before glyf end + everything after glyf
+    const glyfEnd = glyfTable.offset + originalGlyfLen;
+    const afterGlyf = result.slice(glyfEnd);
+    const newResult = new Uint8Array(glyfTable.offset + trimmedGlyfLen + afterGlyf.length);
+    newResult.set(result.slice(0, glyfTable.offset + trimmedGlyfLen));
+    newResult.set(afterGlyf, glyfTable.offset + trimmedGlyfLen);
+
+    // Update table offsets for tables that come after glyf
+    const ndv = new DataView(newResult.buffer, newResult.byteOffset, newResult.byteLength);
+    for (let i = 0; i < numTables; i++) {
+      const base = 12 + i * 16;
+      const tableOff = readU32(ndv, base + 8);
+      if (tableOff > glyfTable.offset) {
+        ndv.setUint32(base + 8, tableOff - bytesToTrim, false);
+      }
+    }
+
+    return newResult;
   }
 
   return result;
