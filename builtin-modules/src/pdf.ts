@@ -5222,6 +5222,18 @@ export function addContent(
         const textW = contentWidth - pad * 2 - borderW;
         const fs = scaleFontSize(d.fontSize);
 
+        // Theme-aware defaults: on dark themes, use darker callout bg
+        // so text remains readable. The default "EEF2FF" is only good on light pages.
+        let cbBgColor = d.bgColor;
+        if (cbBgColor === "EEF2FF" && doc.theme.isDark) {
+          cbBgColor = "2A3040"; // dark blue-grey that works on dark backgrounds
+        }
+        // Text color: on dark bg use light text, on light bg use dark text
+        const cbTextColor =
+          d.textColor ?? (doc.theme.isDark ? "E0E0E0" : doc.theme.fg);
+        const cbTitleColor =
+          d.titleColor ?? (doc.theme.isDark ? "FFFFFF" : doc.theme.fg);
+
         // Calculate box height
         const titleH = d.title ? fs * 1.5 + 4 : 0;
         const bodyLines = wrapText(d.text, d.font, fs, textW);
@@ -5232,7 +5244,7 @@ export function addContent(
 
         // Background fill
         doc.drawRect(margins.left, cursorY, contentWidth, boxH, {
-          fill: d.bgColor,
+          fill: cbBgColor,
         });
 
         // Left accent border
@@ -5246,22 +5258,20 @@ export function addContent(
 
         // Title (bold)
         if (d.title) {
-          const titleColor = d.titleColor ?? resolveColor(undefined);
           doc.drawText(d.title, textX, textY + fs, {
             font: d.font === "Helvetica" ? "Helvetica-Bold" : d.font,
             fontSize: fs,
-            color: titleColor,
+            color: cbTitleColor,
           });
           textY += fs * 1.5 + 4;
         }
 
         // Body text
-        const bodyColor = d.textColor ?? resolveColor(undefined);
         for (const line of bodyLines) {
           doc.drawText(line, textX, textY + fs, {
             font: d.font,
             fontSize: fs,
-            color: bodyColor,
+            color: cbTextColor,
           });
           textY += fs * 1.4;
         }
