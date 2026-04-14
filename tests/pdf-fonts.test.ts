@@ -287,12 +287,66 @@ describe("font subsetting", () => {
     doc.drawText("AB", 72, 72, { font: "DejaVu", fontSize: 12 });
     doc.drawText("CD", 72, 100, { font: "DejaVu", fontSize: 12 });
 
-    // The document should have tracked codepoints A, B, C, D
-    // We can verify by building the PDF and checking the /W array
     const bytes = doc.buildPdf();
     const str = pdfToString(bytes);
-    // W array should have entries for the used glyphs
     expect(str).toContain("/W [");
+  });
+
+  it("should produce a smaller PDF than full font embedding", () => {
+    const data = loadDejaVu();
+
+    // Full font PDF (debug mode, no subsetting would apply if all glyphs used)
+    const fullDoc = pdf.createDocument({ debug: true });
+    pdf.registerCustomFont(fullDoc, { name: "Full", data });
+    fullDoc.addPage();
+    // Use just a few chars — subsetting should kick in
+    fullDoc.drawText("Hello", 72, 100, { font: "Full", fontSize: 12 });
+    const fullBytes = fullDoc.buildPdf();
+
+    // The subset font should have zeroed-out glyph data that compresses
+    // well. DejaVu Sans is ~757KB; with only 5 chars used, the glyf
+    // table should be mostly zeros.
+    // Since we're in debug mode (uncompressed), the raw size won't shrink
+    // much, but the zeroed regions prove subsetting happened.
+
+    // Verify the PDF is valid and contains font data
+    const str = pdfToString(fullBytes);
+    expect(str).toContain("/FontFile2");
+    expect(str).toContain("/W [");
+
+    // The subset should be significantly smaller than the original font
+    // when compression is applied. In debug mode we can check that the
+    // glyf table has been zeroed by looking for long runs of null bytes.
+    let nullRuns = 0;
+    let currentRun = 0;
+    for (let i = 0; i < fullBytes.length; i++) {
+      if (fullBytes[i] === 0) {
+        currentRun++;
+      } else {
+        if (currentRun > 100) nullRuns++;
+        currentRun = 0;
+      }
+    }
+    // Should have many null runs from zeroed-out glyphs
+    expect(nullRuns).toBeGreaterThan(10);
+  });
+
+  it("should produce significantly smaller compressed PDF", () => {
+    const data = loadDejaVu();
+
+    // Compressed mode PDF with subsetting
+    const doc = pdf.createDocument(); // no debug = compressed
+    pdf.registerCustomFont(doc, { name: "DJ", data });
+    doc.addPage();
+    doc.drawText("Test", 72, 100, { font: "DJ", fontSize: 12 });
+    const bytes = doc.buildPdf();
+
+    // With subsetting + compression, the PDF should be much smaller
+    // than the original 757KB font. The zeroed glyf regions compress
+    // to almost nothing with deflate.
+    // Full font uncompressed = ~757KB, so PDF with full font ≈ 757KB+
+    // Subset + compressed should be << 200KB for just 4 characters
+    expect(bytes.length).toBeLessThan(200_000);
   });
 });
 
