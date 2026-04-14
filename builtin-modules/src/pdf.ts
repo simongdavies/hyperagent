@@ -878,6 +878,10 @@ interface PageData {
   cursorY: number;
   /** Recorded text bounding boxes for overlap/bounds validation. */
   textBoxes: TextBox[];
+  /** ExtGState entries for transparency (e.g. watermarks). */
+  extGStates: Map<string, number>; // name → opacity (ca value)
+  /** Link annotations (hyperlinks) on this page. */
+  links: { x: number; y: number; w: number; h: number; url: string }[];
 }
 
 // ── PdfDocument ──────────────────────────────────────────────────────
@@ -1016,6 +1020,7 @@ export function createDocument(opts?: DocumentOptions): PdfDocument {
         imageRefs: new Set(),
         cursorY: 0,
         textBoxes: [],
+        extGStates: new Map(), links: [],
       });
     },
 
@@ -1421,6 +1426,34 @@ function buildPdfBytes(
     const xobjResDict =
       xobjParts.length > 0 ? ` /XObject << ${xobjParts.join(" ")} >>` : "";
 
+    // ExtGState resources (for watermark transparency)
+    let gsResDict = "";
+    if (page.extGStates.size > 0) {
+      const gsParts: string[] = [];
+      for (const [name, opacity] of page.extGStates) {
+        gsParts.push(`/${name} << /Type /ExtGState /ca ${opacity.toFixed(2)} >>`);
+      }
+      gsResDict = ` /ExtGState << ${gsParts.join(" ")} >>`;
+    }
+
+    // Link annotations (hyperlinks)
+    let annotsDict = "";
+    if (page.links.length > 0) {
+      const annots = page.links.map((lnk) => {
+        // Convert top-left coords to PDF bottom-left for annotation rect
+        const y1 = page.size.height - lnk.y - lnk.h;
+        const y2 = page.size.height - lnk.y;
+        const escapedUrl = lnk.url.replace(/[()\\]/g, "\\$&");
+        return (
+          `<< /Type /Annot /Subtype /Link` +
+          ` /Rect [${lnk.x.toFixed(2)} ${y1.toFixed(2)} ${(lnk.x + lnk.w).toFixed(2)} ${y2.toFixed(2)}]` +
+          ` /Border [0 0 0]` +
+          ` /A << /Type /Action /S /URI /URI (${escapedUrl}) >> >>`
+        );
+      });
+      annotsDict = ` /Annots [${annots.join(" ")}]`;
+    }
+
     // Page object
     addObject(
       pageObjNum,
@@ -1428,7 +1461,7 @@ function buildPdfBytes(
         ` /Parent 2 0 R` +
         ` /MediaBox [0 0 ${page.size.width.toFixed(2)} ${page.size.height.toFixed(2)}]` +
         ` /Contents ${contentObjNum} 0 R` +
-        ` /Resources << ${fontResDict}${xobjResDict} >>` +
+        ` /Resources << ${fontResDict}${xobjResDict}${gsResDict} >>${annotsDict}` +
         ` >>`,
     );
   }
@@ -1879,6 +1912,103 @@ export function sectionHeading(opts: SectionHeadingOptions): PdfElement {
     ruleThickness: 0.75,
   };
   return _createPdfElement("sectionHeading", data);
+}
+
+// ── Convenience Composers ────────────────────────────────────────────
+// These return PdfElement arrays. addContent() auto-flattens arrays,
+// so they can be used directly in content arrays without spreading.
+
+/** Options for jobEntry(). */
+export interface JobEntryOptions {
+  /** Job title (e.g. "Senior Software Engineer"). */
+  title: string;
+  /** Company or organization name. */
+  company: string;
+  /** Date range (e.g. "2022 – Present"). */
+  dates: string;
+  /** Bullet point descriptions. */
+  bullets: string[];
+  /** Font size for bullets. Default: 10. */
+  fontSize?: number;
+}
+
+/**
+ * Create a resume/CV job entry: title+company on left, dates on right,
+ * bullet points below. Common pattern for experience sections.
+ *
+ * @param opts - JobEntryOptions
+ * @returns Array of PdfElements (auto-flattened by addContent)
+ */
+export function jobEntry(opts: JobEntryOptions): PdfElement[] {
+  return [
+    twoColumn({
+      left: [
+        paragraph({
+          text: `**${opts.title} — ${opts.company}**`,
+          fontSize: (opts.fontSize ?? 10) + 1,
+          bold: true,
+        }),
+      ],
+      right: [
+        paragraph({
+          text: opts.dates,
+          fontSize: opts.fontSize ?? 10,
+          align: "right",
+        }),
+      ],
+      ratio: 0.7,
+      spaceAfter: 4,
+    }),
+    bulletList({
+      items: opts.bullets,
+      fontSize: opts.fontSize ?? 10,
+      spaceBefore: 0,
+      spaceAfter: 8,
+    }),
+  ];
+}
+
+/** Options for letterhead(). */
+export interface LetterheadOptions {
+  /** Company name (rendered large and bold). */
+  companyName: string;
+  /** Address lines. */
+  address?: string[];
+  /** Phone number. */
+  phone?: string;
+  /** Email address. */
+  email?: string;
+  /** Accent colour as 6-char hex. Uses theme accent1 if omitted. */
+  color?: string;
+}
+
+/**
+ * Create a letterhead block: company name, address, contact info, and separator.
+ * Common pattern for business letters, invoices, and proposals.
+ *
+ * @param opts - LetterheadOptions
+ * @returns Array of PdfElements (auto-flattened by addContent)
+ */
+export function letterhead(opts: LetterheadOptions): PdfElement[] {
+  const elements: PdfElement[] = [
+    heading({ text: opts.companyName, level: 1, color: opts.color }),
+  ];
+  const contactParts: string[] = [];
+  if (opts.address) contactParts.push(...opts.address);
+  if (opts.phone) contactParts.push(`Phone: ${opts.phone}`);
+  if (opts.email) contactParts.push(`Email: ${opts.email}`);
+  if (contactParts.length > 0) {
+    elements.push(
+      textBlock({
+        lines: contactParts,
+        fontSize: 9,
+        color: "666666",
+        lineHeight: 1.3,
+      }),
+    );
+  }
+  elements.push(rule({ thickness: 1.5, color: opts.color, marginTop: 4, marginBottom: 16 }));
+  return elements;
 }
 
 /** Options for bulletList(). */
@@ -2860,6 +2990,12 @@ export interface AddContentOptions {
    * Example: `addContent(doc, elements, { maxPages: 1 })`
    */
   maxPages?: number;
+  /**
+   * Vertically center content on the page. Calculates total content
+   * height and offsets the starting Y position so content is centered.
+   * Useful for title pages and cover pages. Default: false.
+   */
+  verticalCenter?: boolean;
 }
 
 /**
@@ -3070,6 +3206,12 @@ export function estimateHeight(
         break;
       }
 
+      case "link": {
+        const ld = el._data as LinkData;
+        totalH += ld.spaceBefore + ld.fontSize * 1.4 + ld.spaceAfter;
+        break;
+      }
+
       case "twoColumn": {
         // Rough estimate: height of the taller column
         const d = el._data as TwoColumnData;
@@ -3183,6 +3325,15 @@ export function addContent(
       if (rawScale < 0.5) {
         fontScale = Math.max(0.8, 0.5 + rawScale);
       }
+    }
+  }
+
+  // ── verticalCenter: offset start position to center content ──
+  if (opts?.verticalCenter) {
+    const estimated = estimateHeight(elements, { contentWidth });
+    const usableH = pageBottom - cursorY;
+    if (estimated < usableH) {
+      cursorY += (usableH - estimated) / 2;
     }
   }
 
@@ -4412,6 +4563,37 @@ export function addContent(
         break;
       }
 
+      case "link": {
+        const d = el._data as LinkData;
+        cursorY += scaleSpacing(d.spaceBefore);
+        const fs = scaleFontSize(d.fontSize);
+
+        ensureSpace(fs * 1.4);
+
+        // Draw the link text in the link colour
+        const textW = measureText(d.text, "Helvetica", fs);
+        doc.drawText(d.text, margins.left, cursorY + fs, {
+          font: "Helvetica",
+          fontSize: fs,
+          color: d.color,
+        });
+
+        // Record the link annotation on the current page
+        const pages = internals._getPages();
+        const currentPage = pages[pages.length - 1];
+        currentPage.links.push({
+          x: margins.left,
+          y: cursorY,
+          w: textW,
+          h: fs * 1.2,
+          url: d.url,
+        });
+
+        cursorY += fs * 1.4;
+        cursorY += scaleSpacing(d.spaceAfter);
+        break;
+      }
+
       case "chart": {
         // Chart elements contain pre-computed drawing operations from
         // ha:pdf-charts. We translate them relative to current cursor position.
@@ -5001,6 +5183,125 @@ export function signatureLine(opts: SignatureLineOptions): PdfElement {
   return _createPdfElement("signatureLine", data);
 }
 
+// ── Link Element ─────────────────────────────────────────────────────
+
+/** Internal data for link element. */
+interface LinkData {
+  text: string;
+  url: string;
+  fontSize: number;
+  color: string;
+  spaceBefore: number;
+  spaceAfter: number;
+}
+
+/** Options for link(). */
+export interface LinkOptions {
+  /** Display text for the link. */
+  text: string;
+  /** URL to link to. */
+  url: string;
+  /** Font size in points. Default: 11. */
+  fontSize?: number;
+  /** Link text colour as 6-char hex. Default: "2563EB" (blue). */
+  color?: string;
+  /** Space before in points. Default: 0. */
+  spaceBefore?: number;
+  /** Space after in points. Default: 6. */
+  spaceAfter?: number;
+}
+
+/**
+ * Create a clickable hyperlink element. Renders as coloured text with
+ * a PDF Link annotation that opens the URL when clicked.
+ *
+ * @param opts - LinkOptions
+ * @returns PdfElement for use with addContent()
+ */
+export function link(opts: LinkOptions): PdfElement {
+  const data: LinkData = {
+    text: requireString(opts.text, "link.text"),
+    url: requireString(opts.url, "link.url"),
+    fontSize: opts.fontSize ?? 11,
+    color: opts.color ?? "2563EB",
+    spaceBefore: opts.spaceBefore ?? 0,
+    spaceAfter: opts.spaceAfter ?? 6,
+  };
+  return _createPdfElement("link", data);
+}
+
+// ── Table of Contents Element ────────────────────────────────────────
+
+/** A single TOC entry. */
+export interface TocEntry {
+  /** Section title. */
+  title: string;
+  /** Page number (as text). */
+  page: string;
+  /** Indent level (0 = top, 1 = sub-section). Default: 0. */
+  level?: number;
+}
+
+/** Options for tableOfContents(). */
+export interface TableOfContentsOptions {
+  /** TOC entries with title, page number, and optional level. */
+  entries: TocEntry[];
+  /** TOC heading text. Default: "Table of Contents". */
+  heading?: string;
+  /** Font size for entries. Default: 11. */
+  fontSize?: number;
+}
+
+/**
+ * Create a table of contents element. Renders a heading followed by
+ * lines with title on the left, dots in the middle, and page number
+ * on the right. The LLM provides the entries explicitly.
+ *
+ * @param opts - TableOfContentsOptions
+ * @returns Array of PdfElements (auto-flattened by addContent)
+ */
+export function tableOfContents(opts: TableOfContentsOptions): PdfElement[] {
+  const fontSize = opts.fontSize ?? 11;
+  const elements: PdfElement[] = [
+    heading({ text: opts.heading ?? "Table of Contents", level: 1, spaceAfter: 16 }),
+  ];
+
+  for (const entry of opts.entries) {
+    const indent = (entry.level ?? 0) * 20;
+    const isBold = (entry.level ?? 0) === 0;
+    // Use twoColumn for title-dots-page alignment
+    elements.push(
+      twoColumn({
+        left: [
+          paragraph({
+            text: entry.title,
+            fontSize,
+            bold: isBold,
+            spaceBefore: indent > 0 ? 0 : 4,
+            spaceAfter: 2,
+          }),
+        ],
+        right: [
+          paragraph({
+            text: entry.page,
+            fontSize,
+            align: "right",
+            spaceBefore: indent > 0 ? 0 : 4,
+            spaceAfter: 2,
+          }),
+        ],
+        ratio: 0.85,
+        gap: 8,
+        spaceBefore: 0,
+        spaceAfter: 0,
+      }),
+    );
+  }
+
+  elements.push(rule({ marginTop: 16, marginBottom: 8 }));
+  return elements;
+}
+
 // ── Page Templates ───────────────────────────────────────────────────
 // High-level functions that create complete themed pages.
 // All accept doc as the first parameter (like PPTX slide functions).
@@ -5441,6 +5742,97 @@ export function addFooter(doc: PdfDocument, opts: FooterOptions): void {
   }
 }
 
+// ── Watermark ────────────────────────────────────────────────────────
+
+/** Options for addWatermark(). */
+export interface WatermarkOptions {
+  /** Watermark text (e.g. "DRAFT", "CONFIDENTIAL", "SAMPLE"). */
+  text: string;
+  /** Font size in points. Default: 72. */
+  fontSize?: number;
+  /** Text colour as 6-char hex. Default: "CCCCCC" (light grey). */
+  color?: string;
+  /** Opacity from 0.0 (invisible) to 1.0 (opaque). Default: 0.15. */
+  opacity?: number;
+  /** Rotation angle in degrees. Default: -45 (diagonal bottom-left to top-right). */
+  angle?: number;
+  /** Skip the first N pages (e.g. skip title page). Default: 0. */
+  skipPages?: number;
+}
+
+/**
+ * Add a diagonal watermark to all pages (or a subset).
+ * Renders semi-transparent rotated text centered on each page.
+ * Call this AFTER all content, page numbers, and footers are added.
+ *
+ * @param doc - PdfDocument
+ * @param opts - WatermarkOptions
+ */
+export function addWatermark(doc: PdfDocument, opts: WatermarkOptions): void {
+  const text = requireString(opts.text, "watermark.text");
+  const fontSize = opts.fontSize ?? 72;
+  const colorHex = opts.color ?? "CCCCCC";
+  const opacity = Math.max(0, Math.min(1, opts.opacity ?? 0.15));
+  const angleDeg = opts.angle ?? -45;
+  const skipPages = opts.skipPages ?? 0;
+
+  const docAny = doc as unknown as {
+    _getPages: () => PageData[];
+    _getFontRegistry: () => FontRegistry;
+  };
+
+  const pages = docAny._getPages();
+  const fontRegistry = docAny._getFontRegistry();
+  const fontRef = registerFont(fontRegistry, "Helvetica-Bold");
+
+  // Convert angle to radians
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+
+  // Color components
+  const r = (parseInt(colorHex.slice(0, 2), 16) / 255).toFixed(3);
+  const g = (parseInt(colorHex.slice(2, 4), 16) / 255).toFixed(3);
+  const b = (parseInt(colorHex.slice(4, 6), 16) / 255).toFixed(3);
+
+  const gsName = "GS_WM";
+
+  for (let i = skipPages; i < pages.length; i++) {
+    const page = pages[i];
+    const cx = page.size.width / 2;
+    const cy = page.size.height / 2;
+
+    // Register ExtGState for transparency on this page
+    page.extGStates.set(gsName, opacity);
+
+    // Calculate text offset to center it (approximate)
+    const textW = measureText(text, "Helvetica-Bold", fontSize);
+    const offsetX = -textW / 2;
+    const offsetY = -fontSize / 2;
+
+    // Transform: translate to center, then apply rotation
+    const tx = cx + offsetX * cos - offsetY * sin;
+    const ty = cy + offsetX * sin + offsetY * cos;
+
+    // PDF content stream: save state, set transparency, draw rotated text, restore
+    const wmOps = [
+      "q", // save graphics state
+      `/${gsName} gs`, // apply transparency
+      "BT",
+      `${r} ${g} ${b} rg`,
+      `/${fontRef} ${fontSize} Tf`,
+      // Tm sets text matrix: [cos sin -sin cos tx ty]
+      // In PDF coordinate system (bottom-left origin), ty needs conversion
+      `${cos.toFixed(4)} ${sin.toFixed(4)} ${(-sin).toFixed(4)} ${cos.toFixed(4)} ${tx.toFixed(2)} ${(page.size.height - ty).toFixed(2)} Tm`,
+      `(${escapeTextString(text)}) Tj`,
+      "ET",
+      "Q", // restore graphics state
+    ].join("\n");
+
+    page.contentOps.push(wmOps);
+  }
+}
+
 // ── Serialization ────────────────────────────────────────────────────
 // Enable serialize/restore for multi-handler workflows, matching the
 // PPTX pattern of pres.serialize() / restorePresentation().
@@ -5645,6 +6037,7 @@ export function restoreDocument(serialized: SerializedDocument): PdfDocument {
       imageRefs: new Set(p.imageRefs),
       cursorY: p.size.height, // Assume restored pages are full
       textBoxes: [],
+      extGStates: new Map(), links: [],
     });
   }
 

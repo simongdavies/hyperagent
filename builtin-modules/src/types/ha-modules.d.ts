@@ -908,6 +908,48 @@ declare module "ha:pdf" {
    * @returns PdfElement for use with addContent()
    */
   export declare function sectionHeading(opts: SectionHeadingOptions): PdfElement;
+  /** Options for jobEntry(). */
+  export interface JobEntryOptions {
+      /** Job title (e.g. "Senior Software Engineer"). */
+      title: string;
+      /** Company or organization name. */
+      company: string;
+      /** Date range (e.g. "2022 – Present"). */
+      dates: string;
+      /** Bullet point descriptions. */
+      bullets: string[];
+      /** Font size for bullets. Default: 10. */
+      fontSize?: number;
+  }
+  /**
+   * Create a resume/CV job entry: title+company on left, dates on right,
+   * bullet points below. Common pattern for experience sections.
+   *
+   * @param opts - JobEntryOptions
+   * @returns Array of PdfElements (auto-flattened by addContent)
+   */
+  export declare function jobEntry(opts: JobEntryOptions): PdfElement[];
+  /** Options for letterhead(). */
+  export interface LetterheadOptions {
+      /** Company name (rendered large and bold). */
+      companyName: string;
+      /** Address lines. */
+      address?: string[];
+      /** Phone number. */
+      phone?: string;
+      /** Email address. */
+      email?: string;
+      /** Accent colour as 6-char hex. Uses theme accent1 if omitted. */
+      color?: string;
+  }
+  /**
+   * Create a letterhead block: company name, address, contact info, and separator.
+   * Common pattern for business letters, invoices, and proposals.
+   *
+   * @param opts - LetterheadOptions
+   * @returns Array of PdfElements (auto-flattened by addContent)
+   */
+  export declare function letterhead(opts: LetterheadOptions): PdfElement[];
   /** Options for bulletList(). */
   export interface BulletListOptions {
       /** List items (strings). */
@@ -1223,6 +1265,12 @@ declare module "ha:pdf" {
        * Example: `addContent(doc, elements, { maxPages: 1 })`
        */
       maxPages?: number;
+      /**
+       * Vertically center content on the page. Calculates total content
+       * height and offsets the starting Y position so content is centered.
+       * Useful for title pages and cover pages. Default: false.
+       */
+      verticalCenter?: boolean;
   }
   /**
    * Estimate the total vertical height (in points) that an array of PdfElements
@@ -1482,6 +1530,56 @@ declare module "ha:pdf" {
    * @returns PdfElement for use with addContent()
    */
   export declare function signatureLine(opts: SignatureLineOptions): PdfElement;
+  /** Options for link(). */
+  export interface LinkOptions {
+      /** Display text for the link. */
+      text: string;
+      /** URL to link to. */
+      url: string;
+      /** Font size in points. Default: 11. */
+      fontSize?: number;
+      /** Link text colour as 6-char hex. Default: "2563EB" (blue). */
+      color?: string;
+      /** Space before in points. Default: 0. */
+      spaceBefore?: number;
+      /** Space after in points. Default: 6. */
+      spaceAfter?: number;
+  }
+  /**
+   * Create a clickable hyperlink element. Renders as coloured text with
+   * a PDF Link annotation that opens the URL when clicked.
+   *
+   * @param opts - LinkOptions
+   * @returns PdfElement for use with addContent()
+   */
+  export declare function link(opts: LinkOptions): PdfElement;
+  /** A single TOC entry. */
+  export interface TocEntry {
+      /** Section title. */
+      title: string;
+      /** Page number (as text). */
+      page: string;
+      /** Indent level (0 = top, 1 = sub-section). Default: 0. */
+      level?: number;
+  }
+  /** Options for tableOfContents(). */
+  export interface TableOfContentsOptions {
+      /** TOC entries with title, page number, and optional level. */
+      entries: TocEntry[];
+      /** TOC heading text. Default: "Table of Contents". */
+      heading?: string;
+      /** Font size for entries. Default: 11. */
+      fontSize?: number;
+  }
+  /**
+   * Create a table of contents element. Renders a heading followed by
+   * lines with title on the left, dots in the middle, and page number
+   * on the right. The LLM provides the entries explicitly.
+   *
+   * @param opts - TableOfContentsOptions
+   * @returns Array of PdfElements (auto-flattened by addContent)
+   */
+  export declare function tableOfContents(opts: TableOfContentsOptions): PdfElement[];
   /** Options for titlePage(). */
   export interface TitlePageOptions {
       /** Document title. */
@@ -1602,6 +1700,30 @@ declare module "ha:pdf" {
    * @param opts - FooterOptions
    */
   export declare function addFooter(doc: PdfDocument, opts: FooterOptions): void;
+  /** Options for addWatermark(). */
+  export interface WatermarkOptions {
+      /** Watermark text (e.g. "DRAFT", "CONFIDENTIAL", "SAMPLE"). */
+      text: string;
+      /** Font size in points. Default: 72. */
+      fontSize?: number;
+      /** Text colour as 6-char hex. Default: "CCCCCC" (light grey). */
+      color?: string;
+      /** Opacity from 0.0 (invisible) to 1.0 (opaque). Default: 0.15. */
+      opacity?: number;
+      /** Rotation angle in degrees. Default: -45 (diagonal bottom-left to top-right). */
+      angle?: number;
+      /** Skip the first N pages (e.g. skip title page). Default: 0. */
+      skipPages?: number;
+  }
+  /**
+   * Add a diagonal watermark to all pages (or a subset).
+   * Renders semi-transparent rotated text centered on each page.
+   * Call this AFTER all content, page numbers, and footers are added.
+   *
+   * @param doc - PdfDocument
+   * @param opts - WatermarkOptions
+   */
+  export declare function addWatermark(doc: PdfDocument, opts: WatermarkOptions): void;
   /** Serialized document state for cross-handler persistence. */
   export interface SerializedDocument {
       /** Serialization format version. */

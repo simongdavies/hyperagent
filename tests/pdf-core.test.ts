@@ -2741,3 +2741,131 @@ describe("columns(n) layout", () => {
     expect(() => pdf.columns({ cols })).toThrow(/2-6 columns/);
   });
 });
+
+// ── Watermark ────────────────────────────────────────────────────────
+
+describe("addWatermark", () => {
+  it("should add watermark text to pages", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [pdf.paragraph({ text: "Hello" })]);
+    pdf.addWatermark(doc, { text: "DRAFT" });
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(DRAFT)");
+    expect(str).toContain("/GS_WM gs"); // transparency graphics state
+  });
+
+  it("should skip pages when skipPages is set", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    doc.addPage();
+    pdf.addWatermark(doc, { text: "DRAFT", skipPages: 1 });
+    // First page should NOT have watermark, second should
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(DRAFT)");
+  });
+
+  it("should include ExtGState in page resources", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addWatermark(doc, { text: "CONFIDENTIAL", opacity: 0.2 });
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("/ExtGState");
+    expect(str).toContain("/ca 0.20");
+  });
+});
+
+// ── Link (hyperlink) ─────────────────────────────────────────────────
+
+describe("link element", () => {
+  it("should render link text and create annotation", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.link({ text: "Visit GitHub", url: "https://github.com" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Visit GitHub)");
+    expect(str).toContain("/Annots");
+    expect(str).toContain("https://github.com");
+    expect(str).toContain("/S /URI");
+  });
+});
+
+// ── jobEntry ─────────────────────────────────────────────────────────
+
+describe("jobEntry", () => {
+  it("should return an array and render in addContent", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    const elements = pdf.jobEntry({
+      title: "Senior Engineer",
+      company: "Acme Corp",
+      dates: "2022 - Present",
+      bullets: ["Led team of 5", "Built new platform"],
+    });
+    expect(Array.isArray(elements)).toBe(true);
+    // Should work with auto-flatten
+    pdf.addContent(doc, elements);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("Senior Engineer");
+    expect(str).toContain("Led team");
+  });
+});
+
+// ── letterhead ───────────────────────────────────────────────────────
+
+describe("letterhead", () => {
+  it("should return array with heading, textBlock, and rule", () => {
+    const elements = pdf.letterhead({
+      companyName: "Acme Corp",
+      address: ["123 Main St", "City, ST 12345"],
+      phone: "(555) 123-4567",
+      email: "info@acme.com",
+    });
+    expect(Array.isArray(elements)).toBe(true);
+    expect(elements.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── verticalCenter ───────────────────────────────────────────────────
+
+describe("addContent verticalCenter", () => {
+  it("should center content vertically on the page", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    const result = pdf.addContent(doc, [pdf.paragraph({ text: "Centered" })], {
+      verticalCenter: true,
+    });
+    // lastY should be past the center of the page, not at the top
+    expect(result.lastY).toBeGreaterThan(300);
+  });
+});
+
+// ── tableOfContents ──────────────────────────────────────────────────
+
+describe("tableOfContents", () => {
+  it("should render TOC entries", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      ...pdf.tableOfContents({
+        entries: [
+          { title: "Introduction", page: "1" },
+          { title: "Background", page: "2", level: 1 },
+          { title: "Conclusion", page: "5" },
+        ],
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("Table of Contents");
+    expect(str).toContain("Introduction");
+    expect(str).toContain("Conclusion");
+  });
+});
