@@ -1150,6 +1150,12 @@ declare module "ha:pdf" {
        * Must have the same number of cells as headers.
        */
       footerRow?: string[];
+      /**
+       * Font name for table body text. Default: 'Helvetica'.
+       * Use a custom font name registered via registerCustomFont() for
+       * Unicode characters outside WinAnsiEncoding.
+       */
+      font?: string;
   }
   /**
    * Create a data table element for flow layout.
@@ -1191,6 +1197,8 @@ declare module "ha:pdf" {
        * Default: 'left'.
        */
       align?: "left" | "center" | "right";
+      /** Font name for text. Use custom font for Unicode support. */
+      font?: string;
   }
   /**
    * Create a key-value table element for flow layout.
@@ -1458,6 +1466,8 @@ declare module "ha:pdf" {
       spaceBefore?: number;
       /** Space after in points. Default: 12. */
       spaceAfter?: number;
+      /** Font name for text. Use custom font for Unicode support. */
+      font?: string;
   }
   /**
    * Create a callout/highlight box element for flow content.

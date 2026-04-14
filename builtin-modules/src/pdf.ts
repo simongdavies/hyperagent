@@ -523,25 +523,18 @@ function subsetTTF(
     }
   }
 
-  // Update loca table: set unused glyphs to same offset as previous
-  // (making them zero-length, which is how empty glyphs are encoded)
-  const rdv = new DataView(result.buffer, result.byteOffset, result.byteLength);
-  for (let gid = 0; gid < parsed.numGlyphs; gid++) {
-    if (usedGlyphIds.has(gid)) continue;
-    // Set this glyph's end offset = start offset (zero length)
-    const nextGlyphOff = glyphOffsets[gid]; // same as start = empty
-    if (locFormat === 0) {
-      rdv.setUint16(locaTable.offset + (gid + 1) * 2, nextGlyphOff / 2, false);
-    } else {
-      rdv.setUint32(locaTable.offset + (gid + 1) * 4, nextGlyphOff, false);
-    }
-  }
+  // NOTE: We do NOT update the loca table. The glyf data is zeroed
+  // for unused glyphs (numberOfContours = 0 → empty outline), which
+  // is sufficient. Updating loca[gid+1] would corrupt the start offset
+  // of the NEXT glyph if it's used (loca serves dual purpose as both
+  // end-of-gid and start-of-gid+1).
 
   // Now compact: the zeroed glyf regions waste space even though they
   // compress well. Since ha:ziplib deflate may not handle large inputs
   // well, we physically remove the trailing empty glyf data and update
   // the glyf table length in the table directory.
   // Find the last byte of used glyph data in the glyf table.
+  const rdv = new DataView(result.buffer, result.byteOffset, result.byteLength);
   let lastUsedByte = 0;
   for (const gid of usedGlyphIds) {
     if (gid + 1 <= parsed.numGlyphs) {
@@ -1634,6 +1627,20 @@ export function createDocument(opts?: DocumentOptions): PdfDocument {
           const cp = text.codePointAt(ci)!;
           if (cp > 0xffff) ci++;
           usedCPs.add(cp);
+        }
+      } else {
+        // Standard font — validate that text doesn't contain characters
+        // outside WinAnsiEncoding (they'd be silently stripped/garbled)
+        for (let ci = 0; ci < text.length; ci++) {
+          const cp = text.codePointAt(ci)!;
+          if (cp > 0xff && !UNICODE_TO_WINANSI[cp]) {
+            throw new Error(
+              `Character '${text[ci]}' (U+${cp.toString(16).toUpperCase().padStart(4, "0")}) ` +
+                `cannot be rendered with standard font '${fontName}'. ` +
+                `Use registerCustomFont() to load a TrueType font (e.g. DejaVu Sans) ` +
+                `that supports this character, then set font: "YourFontName" on the element.`,
+            );
+          }
         }
       }
 
@@ -3127,6 +3134,12 @@ export interface TableOptions {
    * Must have the same number of cells as headers.
    */
   footerRow?: string[];
+  /**
+   * Font name for table body text. Default: 'Helvetica'.
+   * Use a custom font name registered via registerCustomFont() for
+   * Unicode characters outside WinAnsiEncoding.
+   */
+  font?: string;
 }
 
 /**
@@ -3178,7 +3191,12 @@ export function table(opts: TableOptions): PdfElement {
     }
   }
 
-  const style = resolveTableStyle(opts.style);
+  let style = resolveTableStyle(opts.style);
+
+  // Apply custom font override if specified
+  if (opts.font) {
+    style = { ...style, bodyFont: opts.font, headerFont: opts.font };
+  }
 
   // Extract columnAlign from options or from columns syntax
   let columnAlign = opts.columnAlign;
@@ -3232,6 +3250,8 @@ export interface KvTableOptions {
    * Default: 'left'.
    */
   align?: "left" | "center" | "right";
+  /** Font name for text. Use custom font for Unicode support. */
+  font?: string;
 }
 
 /**
@@ -3249,7 +3269,10 @@ export function kvTable(opts: KvTableOptions): PdfElement {
     "kvTable.items (or entries)",
     { nonEmpty: true },
   );
-  const style = resolveTableStyle(opts.style);
+  let style = resolveTableStyle(opts.style);
+  if (opts.font) {
+    style = { ...style, bodyFont: opts.font, headerFont: opts.font };
+  }
 
   // keyWidth: if > 1, it's absolute points; if <= 1, it's a ratio
   const keyWidth = opts.keyWidth ?? 0.35;
@@ -5187,7 +5210,7 @@ export function addContent(
 
         // Calculate box height
         const titleH = d.title ? fs * 1.5 + 4 : 0;
-        const bodyLines = wrapText(d.text, "Helvetica", fs, textW);
+        const bodyLines = wrapText(d.text, d.font, fs, textW);
         const bodyH = bodyLines.length * fs * 1.4;
         const boxH = pad + titleH + bodyH + pad;
 
@@ -5211,7 +5234,7 @@ export function addContent(
         if (d.title) {
           const titleColor = d.titleColor ?? resolveColor(undefined);
           doc.drawText(d.title, textX, textY + fs, {
-            font: "Helvetica-Bold",
+            font: d.font === "Helvetica" ? "Helvetica-Bold" : d.font,
             fontSize: fs,
             color: titleColor,
           });
@@ -5222,7 +5245,7 @@ export function addContent(
         const bodyColor = d.textColor ?? resolveColor(undefined);
         for (const line of bodyLines) {
           doc.drawText(line, textX, textY + fs, {
-            font: "Helvetica",
+            font: d.font,
             fontSize: fs,
             color: bodyColor,
           });
@@ -5703,11 +5726,12 @@ export function metricCard(opts: MetricCardOptions): PdfElement {
 interface CalloutBoxData {
   title?: string;
   text: string;
-  bgColor: string; // 6-char hex background
-  borderColor?: string; // left accent border colour
+  bgColor: string;
+  borderColor?: string;
   textColor?: string;
   titleColor?: string;
   fontSize: number;
+  font: string;
   spaceBefore: number;
   spaceAfter: number;
 }
@@ -5732,6 +5756,8 @@ export interface CalloutBoxOptions {
   spaceBefore?: number;
   /** Space after in points. Default: 12. */
   spaceAfter?: number;
+  /** Font name for text. Use custom font for Unicode support. */
+  font?: string;
 }
 
 /**
@@ -5752,6 +5778,7 @@ export function calloutBox(opts: CalloutBoxOptions): PdfElement {
     textColor: opts.textColor,
     titleColor: opts.titleColor,
     fontSize: opts.fontSize ?? 10,
+    font: opts.font ?? "Helvetica",
     spaceBefore: opts.spaceBefore ?? 8,
     spaceAfter: opts.spaceAfter ?? 12,
   };
