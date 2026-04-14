@@ -891,19 +891,23 @@ declare module "ha:pdf" {
    * @returns PdfElement for use with addContent()
    */
   export declare function heading(opts: HeadingOptions): PdfElement;
-  /**
-   * Create a section heading with a rule underneath — convenience wrapper.
-   * Returns an array of PdfElements. Spread into your elements array:
-   *   `[...sectionHeading({ text: "Summary" }), paragraph({...})]`
-   *
-   * @param opts - Section heading options (text, optional level and color)
-   * @returns Array of PdfElements (heading + rule)
-   */
-  export declare function sectionHeading(opts: {
+  /** Options for sectionHeading(). */
+  export interface SectionHeadingOptions {
+      /** Heading text. */
       text: string;
+      /** Heading level (1-6). Default: 2. */
       level?: number;
+      /** Heading colour as 6-char hex. Uses theme foreground if omitted. */
       color?: string;
-  }): PdfElement[];
+  }
+  /**
+   * Create a section heading with a rule underneath.
+   * Returns a single PdfElement (heading + rule combined).
+   *
+   * @param opts - SectionHeadingOptions
+   * @returns PdfElement for use with addContent()
+   */
+  export declare function sectionHeading(opts: SectionHeadingOptions): PdfElement;
   /** Options for bulletList(). */
   export interface BulletListOptions {
       /** List items (strings). */
@@ -1153,19 +1157,22 @@ declare module "ha:pdf" {
    * @returns PdfElement for use with addContent()
    */
   export declare function kvTable(opts: KvTableOptions): PdfElement;
+  /** Column option for comparisonTable. */
+  export interface ComparisonOption {
+      /** Column header name (e.g. "Basic", "Pro", "Enterprise"). */
+      name: string;
+      /** Values for each feature row. Booleans render as ✓/✗, strings render as-is. */
+      values: (boolean | string)[];
+  }
   /** Options for comparisonTable(). */
   export interface ComparisonTableOptions {
       /** Feature names (row labels). */
       features: string[];
       /**
        * Options to compare. Each has a name and values matching features.
-       * Values can be booleans (rendered as Y/N) or strings (rendered as-is).
-       * This supports both feature matrices (boolean) and metric comparisons (string).
+       * Values can be booleans (rendered as ✓/✗) or strings (rendered as-is).
        */
-      options: {
-          name: string;
-          values: (boolean | string)[];
-      }[];
+      options: ComparisonOption[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
       /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */

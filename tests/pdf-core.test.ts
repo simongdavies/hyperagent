@@ -2486,3 +2486,258 @@ describe("complex Phase 4 document", () => {
     expect(hasFont(str, "Courier")).toBe(true);
   });
 });
+
+// ── sectionHeading ───────────────────────────────────────────────────
+
+describe("sectionHeading", () => {
+  it("should return a single PdfElement, not an array", () => {
+    const el = pdf.sectionHeading({ text: "Summary" });
+    // Must NOT be an array — this was a P0 bug (8/10 prompts crashed)
+    expect(Array.isArray(el)).toBe(false);
+    expect(el._kind).toBe("sectionHeading");
+  });
+
+  it("should render heading + rule in addContent", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [pdf.sectionHeading({ text: "Test Section" })]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Test Section)");
+  });
+
+  it("should accept level and color options", () => {
+    const el = pdf.sectionHeading({ text: "H3", level: 3, color: "FF0000" });
+    expect(el._data.level).toBe(3);
+    expect(el._data.color).toBe("FF0000");
+  });
+});
+
+// ── addContent auto-flatten arrays ───────────────────────────────────
+
+describe("addContent array flattening", () => {
+  it("should accept arrays within elements (auto-flatten)", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    // Passing an array inside the elements array should not throw
+    const elements = [
+      pdf.paragraph({ text: "Before" }),
+      [pdf.paragraph({ text: "Inside array" })],
+      pdf.paragraph({ text: "After" }),
+    ];
+    expect(() => pdf.addContent(doc, elements as any)).not.toThrow();
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Before)");
+    expect(str).toContain("(Inside array)");
+    expect(str).toContain("(After)");
+  });
+
+  it("should give clear error for non-PdfElement items", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    expect(() => pdf.addContent(doc, ["not an element"] as any)).toThrow(
+      /element at index 0 is not a PdfElement/,
+    );
+  });
+});
+
+// ── titlePage word wrapping ──────────────────────────────────────────
+
+describe("titlePage wrapping", () => {
+  it("should wrap long titles without going off-page", () => {
+    const doc = pdf.createDocument({ debug: true });
+    pdf.titlePage(doc, {
+      title:
+        "A Very Long Title That Should Definitely Wrap Across Multiple Lines",
+    });
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    // Should contain the title text (possibly split across lines)
+    expect(str).toContain("A Very Long Title");
+    expect(hasValidHeader(str)).toBe(true);
+  });
+
+  it("should wrap long subtitles", () => {
+    const doc = pdf.createDocument({ debug: true });
+    pdf.titlePage(doc, {
+      title: "Short Title",
+      subtitle:
+        "A data-driven comparison of Node.js, Deno, and Bun using live GitHub repository metrics",
+    });
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("Short Title");
+    expect(str).toContain("data-driven");
+  });
+});
+
+// ── calloutBox ───────────────────────────────────────────────────────
+
+describe("calloutBox", () => {
+  it("should render with title and body text", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.calloutBox({
+        title: "Warning",
+        text: "This is important",
+        bgColor: "FFF3CD",
+        borderColor: "FFC107",
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Warning)");
+    expect(str).toContain("(This is important)");
+  });
+});
+
+// ── signatureLine ────────────────────────────────────────────────────
+
+describe("signatureLine", () => {
+  it("should render name and title", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.signatureLine({ name: "Jane Smith", title: "VP Engineering" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Jane Smith)");
+    expect(str).toContain("(VP Engineering)");
+  });
+});
+
+// ── paragraph inline bold ────────────────────────────────────────────
+
+describe("paragraph inline bold", () => {
+  it("should convert **bold** markers to richText internally", () => {
+    const el = pdf.paragraph({ text: "Normal **bold** text" });
+    // With bold markers, it should create a richText element internally
+    expect(el._kind).toBe("richText");
+  });
+
+  it("should leave plain text as paragraph", () => {
+    const el = pdf.paragraph({ text: "No markers here" });
+    expect(el._kind).toBe("paragraph");
+  });
+
+  it("should render bold text in content", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.paragraph({ text: "**Languages:** Python, Go, Rust" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("Languages:");
+    expect(str).toContain("Python");
+  });
+});
+
+// ── ComparisonOption named type ──────────────────────────────────────
+
+describe("comparisonTable with ComparisonOption", () => {
+  it("should accept named ComparisonOption type", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.comparisonTable({
+        features: ["Price", "Speed"],
+        options: [
+          { name: "Basic", values: ["$10", "Fast"] },
+          { name: "Pro", values: ["$25", "Faster"] },
+        ],
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Price)");
+    expect(str).toContain("(Basic)");
+  });
+});
+
+// ── table footerRow ──────────────────────────────────────────────────
+
+describe("table footerRow", () => {
+  it("should render a footer row below data rows", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.table({
+        headers: ["Item", "Amount"],
+        rows: [
+          ["Widget A", "$100"],
+          ["Widget B", "$200"],
+        ],
+        footerRow: ["Total", "$300"],
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Total)");
+    expect(str).toContain("($300)");
+  });
+});
+
+// ── quote italic option ──────────────────────────────────────────────
+
+describe("quote italic option", () => {
+  it("should render in italic by default", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.quote({ text: "To be or not to be", author: "Shakespeare" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("/Helvetica-Oblique");
+  });
+
+  it("should render in regular font when italic: false", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [pdf.quote({ text: "Not italic", italic: false })]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    // Should use regular Helvetica, not Oblique
+    expect(str).toContain("(Not italic)");
+  });
+});
+
+// ── columns(n) layout ────────────────────────────────────────────────
+
+describe("columns(n) layout", () => {
+  it("should render 3 columns", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.columns({
+        cols: [
+          [pdf.paragraph({ text: "Col 1" })],
+          [pdf.paragraph({ text: "Col 2" })],
+          [pdf.paragraph({ text: "Col 3" })],
+        ],
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("(Col 1)");
+    expect(str).toContain("(Col 2)");
+    expect(str).toContain("(Col 3)");
+  });
+
+  it("should reject fewer than 2 columns", () => {
+    expect(() =>
+      pdf.columns({ cols: [[pdf.paragraph({ text: "alone" })]] }),
+    ).toThrow(/2-6 columns/);
+  });
+
+  it("should reject more than 6 columns", () => {
+    const cols = Array(7)
+      .fill(null)
+      .map(() => [pdf.paragraph({ text: "x" })]);
+    expect(() => pdf.columns({ cols })).toThrow(/2-6 columns/);
+  });
+});

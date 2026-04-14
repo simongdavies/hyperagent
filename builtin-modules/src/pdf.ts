@@ -1762,8 +1762,38 @@ export interface ParagraphOptions {
  * @returns PdfElement for use with addContent()
  */
 export function paragraph(opts: ParagraphOptions): PdfElement {
+  const text = opts.text ?? "";
+
+  // If text contains **bold** markers, convert to richText internally
+  if (text.includes("**")) {
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    const runs: { text: string; bold?: boolean; color?: string }[] = [];
+    for (const part of parts) {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        runs.push({ text: part.slice(2, -2), bold: true, color: opts.color });
+      } else if (part.length > 0) {
+        runs.push({
+          text: part,
+          bold: opts.bold ?? false,
+          color: opts.color,
+        });
+      }
+    }
+    if (runs.length > 0) {
+      const rtData: RichTextData = {
+        paragraphs: [{ runs }],
+        font: opts.font ?? "Helvetica",
+        fontSize: opts.fontSize ?? 11,
+        lineHeight: opts.lineHeight ?? 1.4,
+        spaceBefore: opts.spaceBefore ?? 0,
+        spaceAfter: opts.spaceAfter ?? 6,
+      };
+      return _createPdfElement("richText", rtData);
+    }
+  }
+
   const data: ParagraphData = {
-    text: opts.text ?? "",
+    text,
     fontSize: opts.fontSize ?? 11,
     font: opts.font ?? "Helvetica",
     color: opts.color,
@@ -1816,28 +1846,39 @@ export function heading(opts: HeadingOptions): PdfElement {
   return _createPdfElement("heading", data);
 }
 
-/**
- * Create a section heading with a rule underneath — convenience wrapper.
- * Returns an array of PdfElements. Spread into your elements array:
- *   `[...sectionHeading({ text: "Summary" }), paragraph({...})]`
- *
- * @param opts - Section heading options (text, optional level and color)
- * @returns Array of PdfElements (heading + rule)
- */
-export function sectionHeading(opts: {
+/** Internal data for sectionHeading element. */
+interface SectionHeadingData {
   text: string;
-  level?: number;
+  level: number;
   color?: string;
-}): PdfElement[] {
-  return [
-    heading({
-      text: opts.text,
-      level: opts.level ?? 2,
-      color: opts.color,
-      spaceAfter: 4,
-    }),
-    rule({ marginTop: 0, marginBottom: 8, thickness: 0.75 }),
-  ];
+  ruleThickness: number;
+}
+
+/** Options for sectionHeading(). */
+export interface SectionHeadingOptions {
+  /** Heading text. */
+  text: string;
+  /** Heading level (1-6). Default: 2. */
+  level?: number;
+  /** Heading colour as 6-char hex. Uses theme foreground if omitted. */
+  color?: string;
+}
+
+/**
+ * Create a section heading with a rule underneath.
+ * Returns a single PdfElement (heading + rule combined).
+ *
+ * @param opts - SectionHeadingOptions
+ * @returns PdfElement for use with addContent()
+ */
+export function sectionHeading(opts: SectionHeadingOptions): PdfElement {
+  const data: SectionHeadingData = {
+    text: opts.text ?? "",
+    level: opts.level ?? 2,
+    color: opts.color,
+    ruleThickness: 0.75,
+  };
+  return _createPdfElement("sectionHeading", data);
 }
 
 /** Options for bulletList(). */
@@ -2386,16 +2427,23 @@ export function kvTable(opts: KvTableOptions): PdfElement {
   return _createPdfElement("kvTable", data);
 }
 
+/** Column option for comparisonTable. */
+export interface ComparisonOption {
+  /** Column header name (e.g. "Basic", "Pro", "Enterprise"). */
+  name: string;
+  /** Values for each feature row. Booleans render as ✓/✗, strings render as-is. */
+  values: (boolean | string)[];
+}
+
 /** Options for comparisonTable(). */
 export interface ComparisonTableOptions {
   /** Feature names (row labels). */
   features: string[];
   /**
    * Options to compare. Each has a name and values matching features.
-   * Values can be booleans (rendered as Y/N) or strings (rendered as-is).
-   * This supports both feature matrices (boolean) and metric comparisons (string).
+   * Values can be booleans (rendered as ✓/✗) or strings (rendered as-is).
    */
-  options: { name: string; values: (boolean | string)[] }[];
+  options: ComparisonOption[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
   /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
@@ -2870,6 +2918,17 @@ export function estimateHeight(
           contentWidth,
         );
         totalH += spaceBefore + lines.length * fontSize * 1.3 + spaceAfter;
+        break;
+      }
+
+      case "sectionHeading": {
+        // heading + rule combined
+        const d = el._data as SectionHeadingData;
+        const fs = HEADING_SIZES[d.level] ?? 11;
+        const sb = d.level <= 2 ? 16 : 10;
+        const lines = wrapText(d.text, "Helvetica-Bold", fs, contentWidth);
+        // heading height + 4pt gap + rule (0.75 + 8 margin)
+        totalH += sb + lines.length * fs * 1.3 + 4 + d.ruleThickness + 8;
         break;
       }
 
@@ -3500,13 +3559,27 @@ export function addContent(
     return cy;
   }
 
+  // ── Auto-flatten nested arrays ──
+  // Some builder functions (like legacy sectionHeading) may return arrays.
+  // Flatten them so [...sectionHeading()] spread isn't required.
+  const flatElements: PdfElement[] = [];
+  for (const item of elements) {
+    if (Array.isArray(item)) {
+      for (const sub of item) {
+        flatElements.push(sub as PdfElement);
+      }
+    } else {
+      flatElements.push(item);
+    }
+  }
+
   // ── Process each element ──
-  for (let elIdx = 0; elIdx < elements.length; elIdx++) {
-    const el = elements[elIdx];
+  for (let elIdx = 0; elIdx < flatElements.length; elIdx++) {
+    const el = flatElements[elIdx];
     if (!isPdfElement(el)) {
       throw new Error(
-        `addContent: expected a PdfElement from paragraph/heading/bulletList/etc, ` +
-          `but got ${typeof el}. Use the element builder functions.`,
+        `addContent: element at index ${elIdx} is not a PdfElement ` +
+          `(got ${typeof el}). Use builder functions like paragraph(), heading(), etc.`,
       );
     }
 
@@ -3562,7 +3635,7 @@ export function addContent(
         const lookahead = d.level === 1 ? 2 : 1;
         for (let peek = 1; peek <= lookahead; peek++) {
           const peekEl =
-            elIdx + peek < elements.length ? elements[elIdx + peek] : null;
+            elIdx + peek < flatElements.length ? flatElements[elIdx + peek] : null;
           if (peekEl) {
             followingHeight += estimateNextElementHeight(peekEl as PdfElement);
           }
@@ -3575,6 +3648,46 @@ export function addContent(
 
         renderLines(lines, font, fontSize, lineHeight, color, "left");
         cursorY += spaceAfter;
+        break;
+      }
+
+      case "sectionHeading": {
+        // Combined heading + rule as a single element
+        const d = el._data as SectionHeadingData;
+        const fontSize = scaleFontSize(HEADING_SIZES[d.level] ?? 11);
+        const font = "Helvetica-Bold";
+        const color = resolveColor(d.color);
+        const lines = wrapText(d.text, font, fontSize, contentWidth);
+        const spaceBefore = scaleSpacing(d.level <= 2 ? 16 : 10);
+        const lineHeight = spacingScale < 1.0 ? 1.3 * spacingScale : 1.3;
+        const headingH = lines.length * fontSize * lineHeight;
+
+        // Orphan prevention: heading + rule + following content
+        let followingHeight = 0;
+        if (elIdx + 1 < flatElements.length) {
+          followingHeight = estimateNextElementHeight(
+            flatElements[elIdx + 1] as PdfElement,
+          );
+        }
+        if (followingHeight === 0) followingHeight = 20;
+
+        cursorY += spaceBefore;
+        ensureSpace(headingH + 4 + d.ruleThickness + 8 + followingHeight);
+
+        // Render heading text
+        renderLines(lines, font, fontSize, lineHeight, color, "left");
+        cursorY += 4; // gap between heading and rule
+
+        // Render rule underneath
+        const ruleColor = doc.theme.subtle;
+        doc.drawLine(
+          margins.left,
+          cursorY,
+          margins.left + contentWidth,
+          cursorY,
+          { color: ruleColor, lineWidth: d.ruleThickness },
+        );
+        cursorY += d.ruleThickness + 8;
         break;
       }
 
@@ -4925,23 +5038,28 @@ export function titlePage(doc: PdfDocument, opts: TitlePageOptions): void {
   // Background fill
   doc.drawRect(0, 0, ps.width, ps.height, { fill: theme.bg });
 
-  // Title — centered vertically at ~35% from top
-  const titleY = ps.height * 0.35;
+  // Title — centered, auto-wrapped if too wide for the page
+  let titleY = ps.height * 0.35;
   const titleSize = 36;
-  const titleW = measureText(opts.title, "Helvetica-Bold", titleSize);
-  const titleX = (ps.width - titleW) / 2;
-  doc.drawText(opts.title, titleX, titleY, {
-    font: "Helvetica-Bold",
-    fontSize: titleSize,
-    color: theme.fg,
-  });
+  const maxTitleW = ps.width * 0.85; // max 85% of page width
+  const titleLines = wrapText(opts.title, "Helvetica-Bold", titleSize, maxTitleW);
+  for (const line of titleLines) {
+    const lineW = measureText(line, "Helvetica-Bold", titleSize);
+    const lineX = (ps.width - lineW) / 2;
+    doc.drawText(line, lineX, titleY, {
+      font: "Helvetica-Bold",
+      fontSize: titleSize,
+      color: theme.fg,
+    });
+    titleY += titleSize * 1.3;
+  }
 
   // Subtitle — auto-wrapped if too wide for the page
   if (opts.subtitle) {
     const subSize = 18;
     const maxSubW = ps.width * 0.75; // max 75% of page width
     const subLines = wrapText(opts.subtitle, "Helvetica", subSize, maxSubW);
-    let subY = titleY + titleSize * 1.6;
+    let subY = titleY + titleSize * 0.3;
     for (const line of subLines) {
       const lineW2 = measureText(line, "Helvetica", subSize);
       const lineX2 = (ps.width - lineW2) / 2;
@@ -4954,11 +5072,11 @@ export function titlePage(doc: PdfDocument, opts: TitlePageOptions): void {
     }
   }
 
-  // Accent line
-  const lineY = titleY + titleSize * 2.5;
+  // Accent line — below subtitle or title if no subtitle
+  const accentLineY = titleY + (opts.subtitle ? titleSize * 1.5 : titleSize * 0.5);
   const lineW = ps.width * 0.3;
   const lineX = (ps.width - lineW) / 2;
-  doc.drawLine(lineX, lineY, lineX + lineW, lineY, {
+  doc.drawLine(lineX, accentLineY, lineX + lineW, accentLineY, {
     color: theme.accent1,
     lineWidth: 2,
   });
