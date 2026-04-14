@@ -2174,7 +2174,7 @@ interface TableData {
 }
 
 interface KvTableData {
-  items: { key: string; value: string; bold?: boolean }[];
+  items: { key: string; value: string; bold?: boolean; separator?: boolean }[];
   fontSize: number;
   style: TableStyle;
   keyWidth?: number; // portion of width for key column (0-1) or absolute points
@@ -2225,7 +2225,7 @@ export interface TableOptions {
   columns?: ColumnDef[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
-  /** Table style preset name or custom TableStyle. Default: 'default'. */
+  /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
   style?: string | TableStyle;
   /** Fixed column widths in points or ratios. Auto-calculated if omitted. */
   colWidths?: number[];
@@ -2330,11 +2330,11 @@ export function table(opts: TableOptions): PdfElement {
 
 /** Options for kvTable(). */
 export interface KvTableOptions {
-  /** Key-value pairs. Each item has a key, value, and optional bold flag. */
-  items?: { key: string; value: string; bold?: boolean }[];
+  /** Key-value pairs. Each item has a key, value, optional bold, and optional separator above. */
+  items?: { key: string; value: string; bold?: boolean; separator?: boolean }[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
-  /** Table style preset name or custom TableStyle. Default: 'default'. */
+  /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
   style?: string | TableStyle;
   /**
    * Width for the key column. If <= 1, treated as proportion of total width.
@@ -2398,7 +2398,7 @@ export interface ComparisonTableOptions {
   options: { name: string; values: (boolean | string)[] }[];
   /** Font size in points. Default: 10. */
   fontSize?: number;
-  /** Table style preset name or custom TableStyle. Default: 'default'. */
+  /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
   style?: string | TableStyle;
 }
 
@@ -2546,6 +2546,7 @@ function renderTable(
   skipHeader?: boolean,
   rowBold?: boolean[],
   footerRow?: string[],
+  rowSeparators?: boolean[],
 ): void {
   const rowH = tableRowHeight(fontSize, compact);
   const headerH = rowH;
@@ -2654,6 +2655,14 @@ function renderTable(
   for (let r = 0; r < rows.length; r++) {
     ensureSpace(rowH);
     curY = getCursorY();
+
+    // Separator line above this row (thicker border for visual emphasis)
+    if (rowSeparators?.[r]) {
+      doc.drawLine(x, curY, x + totalWidth, curY, {
+        color: style.borderColor,
+        lineWidth: style.borderWidth * 3,
+      });
+    }
 
     // Alternating row background FIRST
     if (style.altRowBg && r % 2 === 1) {
@@ -2992,6 +3001,13 @@ export function estimateHeight(
         const titleH = cb.title ? cb.fontSize * 1.5 + 4 : 0;
         const bodyLines = wrapText(cb.text, "Helvetica", cb.fontSize, contentWidth - pad * 2 - 4);
         totalH += cb.spaceBefore + pad + titleH + bodyLines.length * cb.fontSize * 1.4 + pad + cb.spaceAfter;
+        break;
+      }
+
+      case "signatureLine": {
+        const sl = el._data as SignatureLineData;
+        const titleH = sl.title ? sl.fontSize * 1.4 : 0;
+        totalH += sl.spaceBefore + sl.spaceAbove + 1 + 4 + sl.fontSize * 1.4 + titleH + sl.spaceAfter;
         break;
       }
 
@@ -3774,6 +3790,8 @@ export function addContent(
           "right",
         ];
 
+        const rowSeps = d.items.map((it) => it.separator === true);
+
         renderTable(
           doc,
           kvHeaders,
@@ -3793,6 +3811,8 @@ export function addContent(
           false, // compact
           true, // skipHeader — kvTable never shows headers
           rowBold,
+          undefined, // footerRow
+          rowSeps,
         );
         cursorY += 8;
         break;
@@ -4054,7 +4074,7 @@ export function addContent(
           d.accentColor && d.accentColor.length === 6
             ? d.accentColor
             : doc.theme.accent1;
-        const quoteFont = "Helvetica-Oblique";
+        const quoteFont = d.italic ? "Helvetica-Oblique" : "Helvetica";
         const indent = 16; // Left border width + gap
         const availWidth = contentWidth - indent;
         const lines = wrapText(d.text, quoteFont, d.fontSize, availWidth);
@@ -4229,6 +4249,45 @@ export function addContent(
         }
 
         cursorY += boxH + scaleSpacing(d.spaceAfter);
+        break;
+      }
+
+      case "signatureLine": {
+        const d = el._data as SignatureLineData;
+        cursorY += scaleSpacing(d.spaceBefore);
+
+        const totalH = d.spaceAbove + 1 + 4 + d.fontSize * 1.4 + (d.title ? d.fontSize * 1.4 : 0);
+        ensureSpace(totalH);
+
+        // Blank space for physical signature
+        cursorY += d.spaceAbove;
+
+        // Horizontal line
+        doc.drawLine(margins.left, cursorY, margins.left + d.lineWidth, cursorY, {
+          color: doc.theme.fg,
+          lineWidth: 0.5,
+        });
+        cursorY += 4;
+
+        // Name (bold)
+        doc.drawText(d.name, margins.left, cursorY + d.fontSize, {
+          font: "Helvetica-Bold",
+          fontSize: d.fontSize,
+          color: resolveColor(undefined),
+        });
+        cursorY += d.fontSize * 1.4;
+
+        // Title (lighter)
+        if (d.title) {
+          doc.drawText(d.title, margins.left, cursorY + d.fontSize * 0.9, {
+            font: "Helvetica",
+            fontSize: d.fontSize * 0.9,
+            color: doc.theme.subtle,
+          });
+          cursorY += d.fontSize * 1.4;
+        }
+
+        cursorY += scaleSpacing(d.spaceAfter);
         break;
       }
 
@@ -4422,6 +4481,7 @@ interface QuoteData {
   author?: string;
   fontSize: number;
   accentColor: string;
+  italic: boolean;
   lineHeight: number;
   spaceBefore: number;
   spaceAfter: number;
@@ -4542,6 +4602,8 @@ export interface QuoteOptions {
   fontSize?: number;
   /** Accent colour for left border. Uses theme accent1 if omitted. */
   accentColor?: string;
+  /** Render quote text in italic. Default: true. */
+  italic?: boolean;
   /** Line height multiplier. Default: 1.5. */
   lineHeight?: number;
   /** Space before in points. Default: 12. */
@@ -4562,6 +4624,7 @@ export function quote(opts: QuoteOptions): PdfElement {
     author: opts.author,
     fontSize: opts.fontSize ?? 12,
     accentColor: opts.accentColor ?? "",
+    italic: opts.italic !== false, // default true
     lineHeight: opts.lineHeight ?? 1.5,
     spaceBefore: opts.spaceBefore ?? 12,
     spaceAfter: opts.spaceAfter ?? 12,
@@ -4763,6 +4826,58 @@ export function textBlock(opts: TextBlockOptions): PdfElement {
     spaceAfter: opts.spaceAfter ?? 8,
   };
   return _createPdfElement("paragraph", data);
+}
+
+// ── Signature Line Element ───────────────────────────────────────────
+
+/** Internal data for signatureLine element. */
+interface SignatureLineData {
+  name: string;
+  title?: string;
+  lineWidth: number;
+  spaceAbove: number; // blank space for physical signature
+  fontSize: number;
+  spaceBefore: number;
+  spaceAfter: number;
+}
+
+/** Options for signatureLine(). */
+export interface SignatureLineOptions {
+  /** Person's name displayed below the line. */
+  name: string;
+  /** Job title or role, displayed below the name. */
+  title?: string;
+  /** Width of the signature line in points. Default: 200. */
+  lineWidth?: number;
+  /** Blank space above the line for a physical signature. Default: 40. */
+  spaceAbove?: number;
+  /** Font size for name and title. Default: 10. */
+  fontSize?: number;
+  /** Space before in points. Default: 8. */
+  spaceBefore?: number;
+  /** Space after in points. Default: 12. */
+  spaceAfter?: number;
+}
+
+/**
+ * Create a signature line element for formal documents.
+ * Renders blank space (for physical signature), a horizontal line,
+ * the person's name, and optional title below.
+ *
+ * @param opts - SignatureLineOptions
+ * @returns PdfElement for use with addContent()
+ */
+export function signatureLine(opts: SignatureLineOptions): PdfElement {
+  const data: SignatureLineData = {
+    name: requireString(opts.name, "signatureLine.name"),
+    title: opts.title,
+    lineWidth: opts.lineWidth ?? 200,
+    spaceAbove: opts.spaceAbove ?? 40,
+    fontSize: opts.fontSize ?? 10,
+    spaceBefore: opts.spaceBefore ?? 8,
+    spaceAfter: opts.spaceAfter ?? 12,
+  };
+  return _createPdfElement("signatureLine", data);
 }
 
 // ── Page Templates ───────────────────────────────────────────────────
@@ -5479,7 +5594,7 @@ export function validateDocument(doc: PdfDocument): string[] {
           warnings.push(
             `Page ${pageNum}: TEXT OVERLAP — "${a.text}" overlaps with "${b.text}" ` +
               `at y=${a.y.toFixed(0)}..${(a.y + a.h).toFixed(0)} and y=${b.y.toFixed(0)}..${(b.y + b.h).toFixed(0)}. ` +
-              `Move elements apart or reduce font sizes to prevent overlapping text.`,
+              `Fix: increase spaceAfter on the preceding element or spaceBefore on the following element to prevent overlap.`,
           );
         }
       }

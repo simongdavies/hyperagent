@@ -1081,7 +1081,7 @@ declare module "ha:pdf" {
       columns?: ColumnDef[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
-      /** Table style preset name or custom TableStyle. Default: 'default'. */
+      /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
       style?: string | TableStyle;
       /** Fixed column widths in points or ratios. Auto-calculated if omitted. */
       colWidths?: number[];
@@ -1117,15 +1117,16 @@ declare module "ha:pdf" {
   export declare function table(opts: TableOptions): PdfElement;
   /** Options for kvTable(). */
   export interface KvTableOptions {
-      /** Key-value pairs. Each item has a key, value, and optional bold flag. */
+      /** Key-value pairs. Each item has a key, value, optional bold, and optional separator above. */
       items?: {
           key: string;
           value: string;
           bold?: boolean;
+          separator?: boolean;
       }[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
-      /** Table style preset name or custom TableStyle. Default: 'default'. */
+      /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
       style?: string | TableStyle;
       /**
        * Width for the key column. If <= 1, treated as proportion of total width.
@@ -1167,7 +1168,7 @@ declare module "ha:pdf" {
       }[];
       /** Font size in points. Default: 10. */
       fontSize?: number;
-      /** Table style preset name or custom TableStyle. Default: 'default'. */
+      /** Table style preset: 'default', 'dark', 'minimal', 'corporate', 'emerald', or custom TableStyle. */
       style?: string | TableStyle;
   }
   /**
@@ -1339,6 +1340,8 @@ declare module "ha:pdf" {
       fontSize?: number;
       /** Accent colour for left border. Uses theme accent1 if omitted. */
       accentColor?: string;
+      /** Render quote text in italic. Default: true. */
+      italic?: boolean;
       /** Line height multiplier. Default: 1.5. */
       lineHeight?: number;
       /** Space before in points. Default: 12. */
@@ -1446,6 +1449,32 @@ declare module "ha:pdf" {
    * textBlock({ lines: ["Jane Smith", "VP Engineering", "Acme Corp", "123 Main St", "City, ST 12345"] })
    */
   export declare function textBlock(opts: TextBlockOptions): PdfElement;
+  /** Options for signatureLine(). */
+  export interface SignatureLineOptions {
+      /** Person's name displayed below the line. */
+      name: string;
+      /** Job title or role, displayed below the name. */
+      title?: string;
+      /** Width of the signature line in points. Default: 200. */
+      lineWidth?: number;
+      /** Blank space above the line for a physical signature. Default: 40. */
+      spaceAbove?: number;
+      /** Font size for name and title. Default: 10. */
+      fontSize?: number;
+      /** Space before in points. Default: 8. */
+      spaceBefore?: number;
+      /** Space after in points. Default: 12. */
+      spaceAfter?: number;
+  }
+  /**
+   * Create a signature line element for formal documents.
+   * Renders blank space (for physical signature), a horizontal line,
+   * the person's name, and optional title below.
+   *
+   * @param opts - SignatureLineOptions
+   * @returns PdfElement for use with addContent()
+   */
+  export declare function signatureLine(opts: SignatureLineOptions): PdfElement;
   /** Options for titlePage(). */
   export interface TitlePageOptions {
       /** Document title. */
