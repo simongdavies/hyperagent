@@ -393,6 +393,15 @@ function escapeTextString(text: string): string {
       mapped += "\\)"; // close paren
     } else if (cp === 0x0d) {
       mapped += "\\r"; // carriage return
+    } else if (cp > 0xff) {
+      // Character outside WinAnsiEncoding range (e.g. emoji, CJK).
+      // Standard 14 fonts can't render these. The low byte would produce
+      // garbage (e.g. U+2728 ✨ → 0x28 which is '(' — breaks PDF strings).
+      // Replace with empty string (strip silently) to prevent corruption.
+      // Surrogate pairs (emoji above U+FFFF) also handled: skip the low surrogate.
+      if (cp >= 0xd800 && cp <= 0xdbff) {
+        i++; // skip low surrogate of a surrogate pair
+      }
     } else {
       mapped += text[i];
     }

@@ -2869,3 +2869,69 @@ describe("tableOfContents", () => {
     expect(str).toContain("Conclusion");
   });
 });
+
+// ── Emoji in text (qpdf EOF bug) ─────────────────────────────────────
+// U+2728 (✨) has low byte 0x28 which is '(' — this was causing unescaped
+// parentheses in PDF strings, corrupting the content stream.
+
+describe("emoji handling in PDF text", () => {
+  it("should not produce unescaped parens from emoji low bytes", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    // This is the exact text from the GitHub API that caused the bug:
+    // "Node.js JavaScript runtime ✨🐢🚀✨"
+    // ✨ = U+2728, low byte 0x28 = '('
+    // 🚀 = U+1F680, low byte 0x80 (WinAnsi €)
+    pdf.addContent(doc, [
+      pdf.paragraph({
+        text: "Node.js JavaScript runtime \u2728\uD83D\uDC22\uD83D\uDE80\u2728",
+      }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    // The text should contain "runtime" but NOT have unescaped ( from emoji
+    expect(str).toContain("runtime");
+    // Check no unescaped parens inside Tj strings by looking for the pattern
+    // The content stream should NOT have raw 0x28 bytes from emoji truncation
+    // If the bug is present, we'd see "(runtime (..." with unescaped inner parens
+    // Count opening parens in Tj operations — should be balanced
+    const tjMatches = str.match(/\([^)]*\) Tj/g) || [];
+    for (const tj of tjMatches) {
+      // Each Tj string should have balanced parens (escaped ones don't count)
+      let depth = 0;
+      for (let i = 0; i < tj.length; i++) {
+        if (tj[i] === "(" && (i === 0 || tj[i - 1] !== "\\")) depth++;
+        if (tj[i] === ")" && (i === 0 || tj[i - 1] !== "\\")) depth--;
+      }
+      expect(depth).toBe(0);
+    }
+  });
+
+  it("should strip emoji from text without corrupting PDF", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.paragraph({ text: "Hello \u2728 world \uD83D\uDE00 end" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("Hello");
+    expect(str).toContain("world");
+    expect(str).toContain("end");
+    expect(hasValidHeader(str)).toBe(true);
+    expect(hasEof(str)).toBe(true);
+  });
+
+  it("should handle text with parentheses AND emoji", () => {
+    const doc = pdf.createDocument({ debug: true });
+    doc.addPage();
+    pdf.addContent(doc, [
+      pdf.paragraph({ text: "ecosystem (npm) and \u2728 performance" }),
+    ]);
+    const bytes = doc.buildPdf();
+    const str = pdfToString(bytes);
+    expect(str).toContain("ecosystem");
+    expect(str).toContain("npm");
+    expect(str).toContain("performance");
+  });
+});
