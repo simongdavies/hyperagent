@@ -4892,20 +4892,12 @@ async function main(): Promise<void> {
     // ── Non-interactive prompt mode ──────────────────────────────
     // When --prompt "..." is provided, send the prompt once and exit.
     if (cli.prompt) {
-      // Invoke skills before sending the prompt (--skill flag)
+      // Skills are handled via preLoadedSkills (set earlier from --skill flag).
+      // runSuggestApproach will inject skill content into the system message
+      // when the actual prompt is processed below — no need to send a
+      // separate "/skill-name" user message.
       if (cli.skill) {
-        const skillNames = cli.skill.split(/\s+/).filter(Boolean);
-        for (const skillName of skillNames) {
-          console.log(
-            `${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}${C.dim(`(invoking skill: ${skillName})`)}`,
-          );
-          const handled = await handleSlashCommand(`/${skillName}`, rl);
-          if (!handled) {
-            // Skill detected but not a slash command — send to SDK
-            // so the session can load the skill instructions.
-            await processMessage(session, `/${skillName}`);
-          }
-        }
+        console.log(`  ${C.info("📚")} Skills preloaded: ${C.tool(cli.skill)}`);
       }
       console.log(`${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}${cli.prompt}`);
       const response = await processMessage(session, cli.prompt);
