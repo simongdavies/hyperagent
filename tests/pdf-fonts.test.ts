@@ -15,8 +15,9 @@ const pdf: any = await import("../builtin-modules/pdf.js");
 
 // ── Tool / Font Availability ─────────────────────────────────────────
 
-/** Check if a command-line tool is available on this system. */
+/** Check if a command-line tool is available (cross-platform). */
 function hasCommand(cmd: string): boolean {
+  if (process.platform === "win32") return false;
   try {
     execSync(`which ${cmd}`, { stdio: "ignore" });
     return true;

@@ -26,16 +26,31 @@ function extractText(doc: any): string {
   }
 }
 
-function hasPdftotext(): boolean {
+/** Check if a command-line tool is available (cross-platform). */
+function hasCommand(cmd: string): boolean {
+  if (process.platform === "win32") return false;
   try {
-    execSync("which pdftotext", { stdio: "ignore" });
+    execSync(`which ${cmd}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 }
 
-const skip = !hasPdftotext();
+const skip = !hasCommand("pdftotext") || !hasCommand("pdfinfo");
+
+if (!skip) {
+  // Tools available
+} else if (process.platform !== "win32") {
+  const missing = ["pdftotext", "pdfinfo"]
+    .filter((cmd) => !hasCommand(cmd))
+    .join(", ");
+  console.warn(
+    `\n⚠️  WARNING: missing PDF tools (${missing}) — skipping content extraction tests.` +
+      "\n   Install with: sudo apt-get install poppler-utils\n",
+  );
+}
+
 const itP = skip ? it.skip : it;
 
 describe("PDF content extraction (pdftotext)", () => {
