@@ -509,16 +509,22 @@ pub fn extract_all_imports(source: &str) -> Vec<String> {
             imports.push(String::from(stmt.specifier));
         }
         // Also check for `from "..."` pattern on continuation lines.
-        // Only match when `from` is at the start of the line or after `}`
-        // (e.g. `  } from "ha:pptx"` or `  from "ha:pptx"`).
-        // This avoids false positives from prose inside string literals
-        // like: `"an AI that builds documents from 'impressive demo'"`
-        if (trimmed.starts_with("from ")
-            || trimmed.contains("} from ")
-            || trimmed.contains("}from "))
-            && let Some(from_pos) = trimmed.find("from ")
+        // Only match when `from` is at the START of the trimmed line or
+        // immediately after `}` at the start. Using `starts_with` prevents
+        // false positives from `from` appearing mid-line inside strings.
+        if trimmed.starts_with("from ")
+            || trimmed.starts_with("} from ")
+            || trimmed.starts_with("}from ")
         {
-            let rest = &trimmed[from_pos + 5..];
+            let rest = if trimmed.starts_with("from ") {
+                &trimmed[5..]
+            } else if trimmed.starts_with("} from ") {
+                &trimmed[7..]
+            } else {
+                // "}from "
+                &trimmed[6..]
+            };
+
             if let Ok((_, specifier)) = string_literal(rest.trim())
                 && !imports.iter().any(|s: &String| s == specifier)
             {

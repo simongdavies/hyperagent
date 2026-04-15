@@ -367,7 +367,7 @@ k8s-local-up: _k8s-check-local
     ./deploy/k8s/local/setup.sh
 
 # Tear down local KIND cluster and registry
-k8s-local-down: _k8s-check-local
+k8s-local-down: _k8s-check-common
     ./deploy/k8s/local/teardown.sh
 
 # Build and load image into local KIND cluster
@@ -406,8 +406,11 @@ k8s-local-run +ARGS:
 k8s-infra-up: _k8s-check-azure
     ./deploy/k8s/azure/setup.sh
 
-# Tear down all Azure resources
-k8s-infra-down: _k8s-check-azure
+# Tear down all Azure resources (only requires az CLI)
+k8s-infra-down:
+    #!/usr/bin/env bash
+    command -v az >/dev/null 2>&1 || { echo "Azure CLI (az) is required"; exit 1; }
+    az account show >/dev/null 2>&1 || { echo "Please log in: az login"; exit 1; }
     ./deploy/k8s/azure/teardown.sh
 
 # Stop AKS cluster (save costs when not in use)

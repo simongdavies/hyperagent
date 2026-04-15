@@ -76,12 +76,27 @@ if [ -z "$TOKEN" ]; then
     echo ""
     echo "Set GITHUB_TOKEN and re-run:"
     echo ""
-    echo "  1. Create a PAT at https://github.com/settings/tokens"
-    echo "     → Click 'Generate new token (classic)'"
-    echo "     → No extra scopes needed"
+    echo "  1. Create a fine-grained PAT at https://github.com/settings/personal-access-tokens/new"
+    echo "     → Do not use 'Generate new token (classic)'"
+    echo "     → No special permissions needed"
+    echo "     → Classic PATs (ghp_) do NOT work — must be fine-grained (github_pat_)"
     echo ""
     echo "  2. Run:"
-    echo "     GITHUB_TOKEN=ghp_your_token_here just k8s-setup-auth-keyvault"
+    echo "     GITHUB_TOKEN=github_pat_your_token_here just k8s-setup-auth-keyvault"
+    echo ""
+    exit 1
+fi
+
+# ── Reject classic PATs early ────────────────────────────────────────
+
+if [[ "$TOKEN" == ghp_* ]]; then
+    log_error "Classic GitHub personal access tokens (ghp_) are not supported by the Copilot SDK."
+    echo ""
+    echo "Create a fine-grained personal access token instead:"
+    echo "  https://github.com/settings/personal-access-tokens/new"
+    echo ""
+    echo "Then re-run with:"
+    echo "  GITHUB_TOKEN=github_pat_your_token_here just k8s-setup-auth-keyvault"
     echo ""
     exit 1
 fi
@@ -93,10 +108,17 @@ log_step "Storing token in Key Vault..."
 # Grant current user permission to set secrets.
 # Extract user OID from the ARM access token JWT — avoids Graph API dependency
 # (az ad signed-in-user / az role assignment --assignee both need Graph scope).
+# JWT payloads use base64url encoding (- instead of +, _ instead of /, no padding)
+# so we use python to handle the decoding correctly.
 CURRENT_USER_OID=$(az account get-access-token --query "accessToken" -o tsv 2>/dev/null \
-    | cut -d. -f2 \
-    | base64 -d 2>/dev/null \
-    | python3 -c "import sys,json; t=json.load(sys.stdin); print(t.get('oid',''))" 2>/dev/null \
+    | python3 -c "
+import sys, json, base64
+token = sys.stdin.read().strip().split('.')[1]
+# Add padding for base64url
+padded = token + '=' * (4 - len(token) % 4)
+payload = json.loads(base64.urlsafe_b64decode(padded))
+print(payload.get('oid', ''))
+" 2>/dev/null \
     || true)
 
 KEYVAULT_ID=$(az keyvault show --name "${KEYVAULT_NAME}" --query id -o tsv)

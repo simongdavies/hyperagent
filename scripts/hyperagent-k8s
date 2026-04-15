@@ -109,7 +109,7 @@ log_info "  Timeout: ${TIMEOUT}s"
 [ -n "$INPUT_DIR" ] && log_info "  Input: ${INPUT_DIR}"
 
 # Export vars for envsubst
-export JOB_NAME IMAGE PROMPT EXTRA_ARGS
+export JOB_NAME IMAGE PROMPT EXTRA_ARGS NAMESPACE
 
 # Select manifest based on auth method (Key Vault vs K8s Secret)
 if kubectl get secretproviderclass hyperagent-keyvault -n "${NAMESPACE}" &>/dev/null; then
@@ -129,8 +129,12 @@ if [ -n "$INPUT_DIR" ]; then
     PROMPT="${PROMPT} Input files are available at /input/ — enable fs-read with baseDir=/input to access them."
 fi
 
+# Escape prompt for safe YAML embedding (double-quoted string).
+# Replace backslashes first, then double quotes, then newlines.
+PROMPT=$(printf '%s' "$PROMPT" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+
 # Render the job manifest (only substitute our specific variables)
-MANIFEST=$(envsubst '${JOB_NAME} ${IMAGE} ${PROMPT} ${EXTRA_ARGS}' < "${JOB_TEMPLATE}")
+MANIFEST=$(envsubst '${JOB_NAME} ${IMAGE} ${PROMPT} ${EXTRA_ARGS} ${NAMESPACE}' < "${JOB_TEMPLATE}")
 
 # If --input-dir is set, inject an init container and input volume into the manifest.
 # The init container waits for a .ready marker file, which we create after kubectl cp.

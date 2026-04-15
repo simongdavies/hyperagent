@@ -36,20 +36,30 @@ if [ -z "$TOKEN" ]; then
     echo ""
     echo "Set GITHUB_TOKEN and re-run:"
     echo ""
-    echo "  1. Create a PAT at https://github.com/settings/tokens"
-    echo "     → Click 'Generate new token (classic)'"
-    echo "     → No extra scopes needed"
+    echo "  1. Create a fine-grained PAT at https://github.com/settings/personal-access-tokens/new"
+    echo "     → Do not use 'Generate new token (classic)'"
+    echo "     → No special permissions needed"
     echo ""
     echo "  2. Run:"
-    echo "     GITHUB_TOKEN=ghp_your_token_here just k8s-setup-auth"
+    echo "     GITHUB_TOKEN=github_pat_your_token_here just k8s-setup-auth"
     echo ""
     exit 1
 fi
 
 # ── Validate token format ────────────────────────────────────────────
 
-if [[ ! "$TOKEN" =~ ^(ghp_|gho_|github_pat_|ghu_) ]]; then
-    log_warning "Token doesn't match known GitHub token formats (ghp_, gho_, github_pat_, ghu_)"
+if [[ "$TOKEN" =~ ^ghp_ ]]; then
+    log_error "Classic GitHub personal access tokens (ghp_) are not supported by the Copilot SDK."
+    log_error "Please create a fine-grained personal access token and re-run this script."
+    echo ""
+    echo "Create one at: https://github.com/settings/personal-access-tokens/new"
+    echo "Then: GITHUB_TOKEN=github_pat_... just k8s-setup-auth"
+    echo ""
+    exit 1
+fi
+
+if [[ ! "$TOKEN" =~ ^(gho_|github_pat_|ghu_) ]]; then
+    log_warning "Token doesn't match known GitHub token formats (gho_, github_pat_, ghu_)"
     log_warning "Proceeding anyway — the Copilot SDK will validate it at runtime"
 fi
 

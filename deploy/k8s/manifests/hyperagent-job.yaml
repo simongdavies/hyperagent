@@ -8,7 +8,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: ${JOB_NAME}
-  namespace: hyperagent
+  namespace: ${NAMESPACE}
   labels:
     app.kubernetes.io/name: hyperagent
     app.kubernetes.io/part-of: hyperagent

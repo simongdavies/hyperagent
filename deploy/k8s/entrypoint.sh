@@ -5,9 +5,12 @@
 # from the random temp dir to /output/ for kubectl cp retrieval.
 set -e
 
-# Run HyperAgent with all provided arguments
+# Run HyperAgent with all provided arguments.
+# Disable -e so output collection still runs on agent failure.
+set +e
 /app/dist/bin/hyperagent "$@"
 EXIT_CODE=$?
+set -e
 
 # Copy output files from the fs-write temp dir to /output/
 # The fs-write plugin creates /tmp/hyperlight-fs-<random>/
