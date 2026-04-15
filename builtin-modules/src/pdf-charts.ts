@@ -1,3 +1,7 @@
+// @module pdf-charts
+// @description Chart rendering for PDF documents (bar, line, pie, combo)
+// @created 2026-04-14T00:00:00.000Z
+//
 // ── ha:pdf-charts — Chart Rendering for PDF Documents ────────────────
 //
 // Renders bar, line, pie, and combo charts as PDF drawing operations.

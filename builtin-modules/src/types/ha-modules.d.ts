@@ -275,6 +275,7 @@ declare module "ha:markdown" {
 }
 
 declare module "ha:ooxml-core" {
+  export { type Theme, hexColor, THEMES, getTheme, getThemeNames, describeThemes, luminance, contrastRatio, autoTextColor, isDark, requireHex, requireThemeColor, requireNumber, requireString, requireArray, requireEnum, } from "ha:doc-core";
   /** EMUs per inch. */
   export declare const EMU_PER_INCH: number;
   /** EMUs per typographic point. */
@@ -418,7 +419,6 @@ declare module "ha:ooxml-core" {
    * Used by shape functions to skip contrast validation.
    */
   export declare function isForceAllColors(): boolean;
-  export {};
 }
 
 declare module "ha:pdf-charts" {

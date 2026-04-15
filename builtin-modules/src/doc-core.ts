@@ -1,3 +1,7 @@
+// @module doc-core
+// @description Format-agnostic document infrastructure (themes, validation, contrast)
+// @created 2026-04-14T00:00:00.000Z
+//
 // ── doc-core: Format-agnostic document infrastructure ─────────────────
 //
 // Shared utilities for ALL document formats (PDF, PPTX, DOCX, etc.).
@@ -201,9 +205,11 @@ interface ThemeDescription {
 
 /** Human-readable descriptions of what each theme is best for. */
 const THEME_DESCRIPTIONS: Record<string, string> = {
-  "corporate-blue": "Professional dark blue — title pages, executive presentations",
+  "corporate-blue":
+    "Professional dark blue — title pages, executive presentations",
   "dark-gradient": "GitHub-style dark mode — developer docs, technical reports",
-  "light-clean": "Clean white background — documents, reports, invoices, letters, resumes (RECOMMENDED for most PDFs)",
+  "light-clean":
+    "Clean white background — documents, reports, invoices, letters, resumes (RECOMMENDED for most PDFs)",
   emerald: "Rich teal/green — branded reports, sustainability content",
   sunset: "Warm dark red/gold — creative, marketing materials",
   black: "Pure black — minimal, high-contrast presentations",
@@ -233,8 +239,12 @@ export function describeThemes(): string {
     );
   }
   lines.push("");
-  lines.push("**For PDF documents, use `light-clean`** unless the user specifically requests a dark/branded theme.");
-  lines.push("Dark themes render white text — content pages will have dark backgrounds automatically.");
+  lines.push(
+    "**For PDF documents, use `light-clean`** unless the user specifically requests a dark/branded theme.",
+  );
+  lines.push(
+    "Dark themes render white text — content pages will have dark backgrounds automatically.",
+  );
   return lines.join("\n");
 }
 

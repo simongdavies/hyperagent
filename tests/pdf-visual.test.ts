@@ -40,6 +40,18 @@ function hasCommand(cmd: string): boolean {
 
 const HAS_PDFTOPPM = process.platform !== "win32" && hasCommand("pdftoppm");
 
+// Lazy-load comparison deps (only imported when pdftoppm is available)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let PNG: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pixelmatch: any;
+if (HAS_PDFTOPPM) {
+  const pngjs = await import("pngjs");
+  PNG = pngjs.PNG;
+  const pm = await import("pixelmatch");
+  pixelmatch = pm.default ?? pm;
+}
+
 // ── Warn loudly on Linux if pdftoppm is missing ──────────────────────
 
 if (process.platform !== "win32" && !HAS_PDFTOPPM) {
@@ -82,10 +94,6 @@ function compareWithGolden(pngBuffer: Buffer, name: string): void {
   }
 
   // Compare with existing golden
-  const { PNG } = require("pngjs");
-  const pixelmatchModule = require("pixelmatch");
-  const pixelmatch = pixelmatchModule.default ?? pixelmatchModule;
-
   const actual = PNG.sync.read(pngBuffer);
   const expected = PNG.sync.read(readFileSync(goldenPath));
 

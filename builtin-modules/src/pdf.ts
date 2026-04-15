@@ -1,3 +1,7 @@
+// @module pdf
+// @description PDF 1.7 document generation (text, tables, charts, images, themes)
+// @created 2026-04-14T00:00:00.000Z
+//
 // ── ha:pdf — PDF 1.7 Document Generation ─────────────────────────────
 //
 // Core PDF generation module for HyperAgent. Produces valid PDF 1.7
@@ -305,10 +309,7 @@ function parseTTF(data: Uint8Array): ParsedTTF {
           glyphId = (cp + idDelta) & 0xffff;
         } else {
           const glyphIdOffset =
-            idRangeOffsetOff +
-            seg * 2 +
-            idRangeOffset +
-            (cp - startCode) * 2;
+            idRangeOffsetOff + seg * 2 + idRangeOffset + (cp - startCode) * 2;
           glyphId = readU16(dv, glyphIdOffset);
           if (glyphId !== 0) {
             glyphId = (glyphId + idDelta) & 0xffff;
@@ -409,10 +410,7 @@ function ttfCharWidth(parsed: ParsedTTF, codePoint: number): number {
  * @param usedCodePoints - Set of Unicode codepoints that appear in the document
  * @returns Subset TTF binary data
  */
-function subsetTTF(
-  parsed: ParsedTTF,
-  usedCodePoints: Set<number>,
-): Uint8Array {
+function subsetTTF(parsed: ParsedTTF, usedCodePoints: Set<number>): Uint8Array {
   // Build the glyph ID set (always include glyph 0 = .notdef)
   const usedGlyphIds = new Set<number>([0]);
   for (const cp of usedCodePoints) {
@@ -489,10 +487,13 @@ function subsetTTF(
       usedGlyphIds.add(refGid);
       ptr += 4;
       // Skip args based on flags
-      if (flags & 0x0001) ptr += 4; // ARG_1_AND_2_ARE_WORDS
+      if (flags & 0x0001)
+        ptr += 4; // ARG_1_AND_2_ARE_WORDS
       else ptr += 2;
-      if (flags & 0x0008) ptr += 2; // WE_HAVE_A_SCALE
-      else if (flags & 0x0040) ptr += 4; // WE_HAVE_AN_X_AND_Y_SCALE
+      if (flags & 0x0008)
+        ptr += 2; // WE_HAVE_A_SCALE
+      else if (flags & 0x0040)
+        ptr += 4; // WE_HAVE_AN_X_AND_Y_SCALE
       else if (flags & 0x0080) ptr += 8; // WE_HAVE_A_TWO_BY_TWO
       moreComponents = (flags & 0x0020) !== 0; // MORE_COMPONENTS
     }
@@ -579,12 +580,18 @@ function subsetTTF(
     // Copy everything before glyf end + everything after glyf
     const glyfEnd = glyfTable.offset + originalGlyfLen;
     const afterGlyf = result.slice(glyfEnd);
-    const newResult = new Uint8Array(glyfTable.offset + trimmedGlyfLen + afterGlyf.length);
+    const newResult = new Uint8Array(
+      glyfTable.offset + trimmedGlyfLen + afterGlyf.length,
+    );
     newResult.set(result.slice(0, glyfTable.offset + trimmedGlyfLen));
     newResult.set(afterGlyf, glyfTable.offset + trimmedGlyfLen);
 
     // Update table offsets for tables that come after glyf
-    const ndv = new DataView(newResult.buffer, newResult.byteOffset, newResult.byteLength);
+    const ndv = new DataView(
+      newResult.buffer,
+      newResult.byteOffset,
+      newResult.byteLength,
+    );
     for (let i = 0; i < numTables; i++) {
       const base = 12 + i * 16;
       const tableOff = readU32(ndv, base + 8);
@@ -606,10 +613,7 @@ function subsetTTF(
  * Maps glyph IDs back to Unicode codepoints so PDF viewers can
  * extract text (copy/paste, search).
  */
-function buildToUnicodeCMap(
-  parsed: ParsedTTF,
-  usedCPs?: Set<number>,
-): string {
+function buildToUnicodeCMap(parsed: ParsedTTF, usedCPs?: Set<number>): string {
   const mappings: { gid: number; cp: number }[] = [];
   const cps = usedCPs ?? parsed.cmapUnicodeToGlyph.keys();
   for (const cp of cps) {
@@ -1582,7 +1586,8 @@ export function createDocument(opts?: DocumentOptions): PdfDocument {
         imageRefs: new Set(),
         cursorY: 0,
         textBoxes: [],
-        extGStates: new Map(), links: [],
+        extGStates: new Map(),
+        links: [],
       });
     },
 
@@ -2161,7 +2166,9 @@ function buildPdfBytes(
     if (page.extGStates.size > 0) {
       const gsParts: string[] = [];
       for (const [name, opacity] of page.extGStates) {
-        gsParts.push(`/${name} << /Type /ExtGState /ca ${opacity.toFixed(2)} >>`);
+        gsParts.push(
+          `/${name} << /Type /ExtGState /ca ${opacity.toFixed(2)} >>`,
+        );
       }
       gsResDict = ` /ExtGState << ${gsParts.join(" ")} >>`;
     }
@@ -2737,7 +2744,9 @@ export function letterhead(opts: LetterheadOptions): PdfElement[] {
       }),
     );
   }
-  elements.push(rule({ thickness: 1.5, color: opts.color, marginTop: 4, marginBottom: 16 }));
+  elements.push(
+    rule({ thickness: 1.5, color: opts.color, marginTop: 4, marginBottom: 16 }),
+  );
   return elements;
 }
 
@@ -3550,7 +3559,11 @@ function renderTable(
     cellX = x;
     for (let c = 0; c < headers.length; c++) {
       const align = columnAlign?.[c] ?? "left";
-      const headerText = fitCellText(headers[c], style.headerFont, colWidths[c]);
+      const headerText = fitCellText(
+        headers[c],
+        style.headerFont,
+        colWidths[c],
+      );
       const textX = cellTextX(
         cellX,
         colWidths[c],
@@ -3602,13 +3615,7 @@ function renderTable(
     for (let c = 0; c < rows[r].length; c++) {
       const align = columnAlign?.[c] ?? "left";
       const cellText = fitCellText(rows[r][c], cellFont, colWidths[c]);
-      const textX = cellTextX(
-        cellX,
-        colWidths[c],
-        cellText,
-        cellFont,
-        align,
-      );
+      const textX = cellTextX(cellX, colWidths[c], cellText, cellFont, align);
       doc.drawText(cellText, textX, curY + textYOffset, {
         font: cellFont,
         fontSize,
@@ -3646,7 +3653,11 @@ function renderTable(
     cellX = x;
     for (let c = 0; c < footerRow.length && c < colWidths.length; c++) {
       const align = columnAlign?.[c] ?? "left";
-      const cellText = fitCellText(footerRow[c], style.headerFont, colWidths[c]);
+      const cellText = fitCellText(
+        footerRow[c],
+        style.headerFont,
+        colWidths[c],
+      );
       const textX = cellTextX(
         cellX,
         colWidths[c],
@@ -3940,15 +3951,33 @@ export function estimateHeight(
         const cb = el._data as CalloutBoxData;
         const pad = 12;
         const titleH = cb.title ? cb.fontSize * 1.5 + 4 : 0;
-        const bodyLines = wrapText(cb.text, "Helvetica", cb.fontSize, contentWidth - pad * 2 - 4);
-        totalH += cb.spaceBefore + pad + titleH + bodyLines.length * cb.fontSize * 1.4 + pad + cb.spaceAfter;
+        const bodyLines = wrapText(
+          cb.text,
+          "Helvetica",
+          cb.fontSize,
+          contentWidth - pad * 2 - 4,
+        );
+        totalH +=
+          cb.spaceBefore +
+          pad +
+          titleH +
+          bodyLines.length * cb.fontSize * 1.4 +
+          pad +
+          cb.spaceAfter;
         break;
       }
 
       case "signatureLine": {
         const sl = el._data as SignatureLineData;
         const titleH = sl.title ? sl.fontSize * 1.4 : 0;
-        totalH += sl.spaceBefore + sl.spaceAbove + 1 + 4 + sl.fontSize * 1.4 + titleH + sl.spaceAfter;
+        totalH +=
+          sl.spaceBefore +
+          sl.spaceAbove +
+          1 +
+          4 +
+          sl.fontSize * 1.4 +
+          titleH +
+          sl.spaceAfter;
         break;
       }
 
@@ -4060,7 +4089,8 @@ export function addContent(
   let fontScale = 1.0;
   if (opts?.maxPages && opts.maxPages > 0) {
     const usableH = pageBottom - cursorY; // remaining on current page
-    const totalAvailable = usableH + (opts.maxPages - 1) * (pageBottom - margins.top);
+    const totalAvailable =
+      usableH + (opts.maxPages - 1) * (pageBottom - margins.top);
     const estimated = estimateHeight(elements, { contentWidth });
     if (estimated > totalAvailable && totalAvailable > 0) {
       const rawScale = totalAvailable / estimated;
@@ -4489,7 +4519,8 @@ export function addContent(
         const lines = wrapText(d.text, font, fs, contentWidth);
         const sb = scaleSpacing(d.spaceBefore);
         const sa = scaleSpacing(d.spaceAfter);
-        const lh = spacingScale < 1.0 ? d.lineHeight * spacingScale : d.lineHeight;
+        const lh =
+          spacingScale < 1.0 ? d.lineHeight * spacingScale : d.lineHeight;
         const totalHeight = sb + lines.length * fs * lh + sa;
 
         // Add space before
@@ -4513,7 +4544,9 @@ export function addContent(
         // spaceBefore provides visual gap above the heading. Since renderLines
         // now offsets text by fontSize (so cursorY = visual top, not baseline),
         // we don't need extra ascent compensation here.
-        const spaceBefore = scaleSpacing(d.spaceBefore ?? (d.level <= 2 ? 16 : 10));
+        const spaceBefore = scaleSpacing(
+          d.spaceBefore ?? (d.level <= 2 ? 16 : 10),
+        );
         const spaceAfter = scaleSpacing(d.spaceAfter ?? (d.level <= 2 ? 8 : 6));
         const lineHeight = spacingScale < 1.0 ? 1.3 * spacingScale : 1.3;
 
@@ -4532,7 +4565,9 @@ export function addContent(
         const lookahead = d.level === 1 ? 2 : 1;
         for (let peek = 1; peek <= lookahead; peek++) {
           const peekEl =
-            elIdx + peek < flatElements.length ? flatElements[elIdx + peek] : null;
+            elIdx + peek < flatElements.length
+              ? flatElements[elIdx + peek]
+              : null;
           if (peekEl) {
             followingHeight += estimateNextElementHeight(peekEl as PdfElement);
           }
@@ -4591,7 +4626,8 @@ export function addContent(
       case "bulletList": {
         const d = el._data as BulletListData;
         const color = resolveColor(d.color);
-        const blLh = spacingScale < 1.0 ? d.lineHeight * spacingScale : d.lineHeight;
+        const blLh =
+          spacingScale < 1.0 ? d.lineHeight * spacingScale : d.lineHeight;
         const lineSpacing = d.fontSize * blLh;
         const availWidth = contentWidth - d.indent;
 
@@ -5033,10 +5069,16 @@ export function addContent(
             for (const line of lines) {
               const lineW = measureText(line, font, fs);
               const ulBottom = ulY + fs + 1; // 1pt below baseline
-              doc.drawLine(margins.left, ulBottom, margins.left + lineW, ulBottom, {
-                color: firstRun.color ?? doc.theme.fg,
-                lineWidth: 0.5,
-              });
+              doc.drawLine(
+                margins.left,
+                ulBottom,
+                margins.left + lineW,
+                ulBottom,
+                {
+                  color: firstRun.color ?? doc.theme.fg,
+                  lineWidth: 0.5,
+                },
+              );
               ulY += lineSpacing;
             }
           }
@@ -5144,7 +5186,12 @@ export function addContent(
         const padding = 8;
         const hasChange = d.change && d.change.length > 0;
         const cardH =
-          padding + valueFontSize + (hasChange ? changeFontSize + 2 : 0) + 4 + labelFontSize + padding;
+          padding +
+          valueFontSize +
+          (hasChange ? changeFontSize + 2 : 0) +
+          4 +
+          labelFontSize +
+          padding;
         const cardW = d.width ?? Math.min(contentWidth, 200);
 
         ensureSpace(cardH + 8);
@@ -5190,11 +5237,16 @@ export function addContent(
             fill: changeColor,
           });
           const textOffset = dotSize + 4;
-          doc.drawText(changeText, margins.left + padding + textOffset, yAfterValue, {
-            font: "Helvetica-Bold",
-            fontSize: changeFontSize,
-            color: changeColor,
-          });
+          doc.drawText(
+            changeText,
+            margins.left + padding + textOffset,
+            yAfterValue,
+            {
+              font: "Helvetica-Bold",
+              fontSize: changeFontSize,
+              color: changeColor,
+            },
+          );
         }
 
         // Label text below value (and change if present)
@@ -5284,17 +5336,28 @@ export function addContent(
         const d = el._data as SignatureLineData;
         cursorY += scaleSpacing(d.spaceBefore);
 
-        const totalH = d.spaceAbove + 1 + 4 + d.fontSize * 1.4 + (d.title ? d.fontSize * 1.4 : 0);
+        const totalH =
+          d.spaceAbove +
+          1 +
+          4 +
+          d.fontSize * 1.4 +
+          (d.title ? d.fontSize * 1.4 : 0);
         ensureSpace(totalH);
 
         // Blank space for physical signature
         cursorY += d.spaceAbove;
 
         // Horizontal line
-        doc.drawLine(margins.left, cursorY, margins.left + d.lineWidth, cursorY, {
-          color: doc.theme.fg,
-          lineWidth: 0.5,
-        });
+        doc.drawLine(
+          margins.left,
+          cursorY,
+          margins.left + d.lineWidth,
+          cursorY,
+          {
+            color: doc.theme.fg,
+            lineWidth: 0.5,
+          },
+        );
         cursorY += 4;
 
         // Name (bold)
@@ -6023,7 +6086,11 @@ export interface TableOfContentsOptions {
 export function tableOfContents(opts: TableOfContentsOptions): PdfElement[] {
   const fontSize = opts.fontSize ?? 11;
   const elements: PdfElement[] = [
-    heading({ text: opts.heading ?? "Table of Contents", level: 1, spaceAfter: 16 }),
+    heading({
+      text: opts.heading ?? "Table of Contents",
+      level: 1,
+      spaceAfter: 16,
+    }),
   ];
 
   for (const entry of opts.entries) {
@@ -6103,7 +6170,12 @@ export function titlePage(doc: PdfDocument, opts: TitlePageOptions): void {
   let titleY = ps.height * 0.35;
   const titleSize = 36;
   const maxTitleW = ps.width * 0.85; // max 85% of page width
-  const titleLines = wrapText(opts.title, "Helvetica-Bold", titleSize, maxTitleW);
+  const titleLines = wrapText(
+    opts.title,
+    "Helvetica-Bold",
+    titleSize,
+    maxTitleW,
+  );
   for (const line of titleLines) {
     const lineW = measureText(line, "Helvetica-Bold", titleSize);
     const lineX = (ps.width - lineW) / 2;
@@ -6134,7 +6206,8 @@ export function titlePage(doc: PdfDocument, opts: TitlePageOptions): void {
   }
 
   // Accent line — below subtitle or title if no subtitle
-  const accentLineY = titleY + (opts.subtitle ? titleSize * 1.5 : titleSize * 0.5);
+  const accentLineY =
+    titleY + (opts.subtitle ? titleSize * 1.5 : titleSize * 0.5);
   const lineW = ps.width * 0.3;
   const lineX = (ps.width - lineW) / 2;
   doc.drawLine(lineX, accentLineY, lineX + lineW, accentLineY, {
@@ -6797,7 +6870,8 @@ export function restoreDocument(serialized: SerializedDocument): PdfDocument {
       imageRefs: new Set(p.imageRefs),
       cursorY: p.size.height, // Assume restored pages are full
       textBoxes: [],
-      extGStates: new Map(), links: [],
+      extGStates: new Map(),
+      links: [],
     });
   }
 
@@ -6974,7 +7048,11 @@ export function registerCustomFont(
   opts: RegisterFontOptions,
 ): void {
   const name = requireString(opts.name, "registerCustomFont.name");
-  if (!opts.data || !(opts.data instanceof Uint8Array) || opts.data.length < 12) {
+  if (
+    !opts.data ||
+    !(opts.data instanceof Uint8Array) ||
+    opts.data.length < 12
+  ) {
     throw new Error(
       "registerCustomFont.data: must be a Uint8Array containing TrueType (.ttf) font data",
     );

@@ -7,6 +7,28 @@
 //
 // Hints are now in ooxml-core.json (structured metadata).
 
+// Backward-compatibility re-export: guest code that previously imported
+// theme/colour/validation helpers from ha:ooxml-core still works.
+// Prefer importing directly from ha:doc-core in new code.
+export {
+  type Theme,
+  hexColor,
+  THEMES,
+  getTheme,
+  getThemeNames,
+  describeThemes,
+  luminance,
+  contrastRatio,
+  autoTextColor,
+  isDark,
+  requireHex,
+  requireThemeColor,
+  requireNumber,
+  requireString,
+  requireArray,
+  requireEnum,
+} from "ha:doc-core";
+
 // Import for local use within this module (themeXml needs Theme)
 import { type Theme } from "ha:doc-core";
 

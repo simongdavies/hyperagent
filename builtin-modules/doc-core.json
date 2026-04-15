@@ -3,7 +3,7 @@
   "description": "Format-agnostic document infrastructure — themes, colour validation, contrast utilities, input guards. Used by ha:pptx, ha:pdf, and other format modules.",
   "author": "system",
   "mutable": false,
-  "sourceHash": "sha256:47d0ab47d3e1b4ae",
+  "sourceHash": "sha256:b9119a600839812d",
   "dtsHash": "sha256:1f311b99f56fdcbb",
   "importStyle": "named",
   "hints": {

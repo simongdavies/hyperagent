@@ -1,5 +1,7 @@
 import { it, expect } from "vitest";
-import { writeFileSync, readFileSync } from "fs";
+import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const pdf: any = await import("../builtin-modules/pdf.js");
 
@@ -8,7 +10,8 @@ it("xref byte offsets are correct", () => {
   doc.addPage();
   doc.drawText("Hello", 72, 100);
   const bytes = doc.buildPdf();
-  writeFileSync("/tmp/xref-verify.pdf", bytes);
+  const tmpPath = join(tmpdir(), `xref-verify-${process.pid}.pdf`);
+  writeFileSync(tmpPath, bytes);
 
   // Read the PDF as text
   let text = "";
@@ -44,4 +47,11 @@ it("xref byte offsets are correct", () => {
       `Object ${i} at offset ${offset} should start with "${expected}" but found "${atOffset}"`,
     ).toBe(true);
   });
+
+  // Clean up temp file
+  try {
+    unlinkSync(tmpPath);
+  } catch {
+    /* ignore */
+  }
 });
