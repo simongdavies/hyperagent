@@ -3,6 +3,8 @@
  *
  * Tests for TrueType font parsing, embedding, and rendering.
  * Requires DejaVu Sans font (apt: fonts-dejavu-core).
+ * Some tests also require poppler-utils (pdftotext, pdftoppm) and qpdf.
+ * Skipped on Windows or when dependencies are not installed.
  */
 
 import { describe, it, expect } from "vitest";
@@ -10,6 +12,52 @@ import { readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 
 const pdf: any = await import("../builtin-modules/pdf.js");
+
+// ── Tool / Font Availability ─────────────────────────────────────────
+
+/** Check if a command-line tool is available on this system. */
+function hasCommand(cmd: string): boolean {
+  try {
+    execSync(`which ${cmd}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const IS_WINDOWS = process.platform === "win32";
+const HAS_PDF_TOOLS =
+  !IS_WINDOWS &&
+  hasCommand("pdftotext") &&
+  hasCommand("qpdf") &&
+  hasCommand("pdftoppm");
+
+/** DejaVu Sans font paths (Linux only). */
+const DEJAVU_PATHS = [
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+];
+const HAS_DEJAVU = !IS_WINDOWS && DEJAVU_PATHS.some((p) => existsSync(p));
+
+// ── Warn loudly on Linux if dependencies are missing ─────────────────
+
+if (!IS_WINDOWS) {
+  if (!HAS_DEJAVU) {
+    console.warn(
+      "\n⚠️  WARNING: fonts-dejavu-core not installed — skipping font tests." +
+        "\n   Install with: sudo apt-get install fonts-dejavu-core\n",
+    );
+  }
+  if (!HAS_PDF_TOOLS) {
+    const missing = ["pdftotext", "qpdf", "pdftoppm"]
+      .filter((cmd) => !hasCommand(cmd))
+      .join(", ");
+    console.warn(
+      `\n⚠️  WARNING: missing PDF tools (${missing}) — skipping extraction tests.` +
+        "\n   Install with: sudo apt-get install poppler-utils qpdf\n",
+    );
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -22,13 +70,9 @@ function pdfToString(bytes: Uint8Array): string {
   return s;
 }
 
-/** Load DejaVu Sans font if available, skip test if not. */
+/** Load DejaVu Sans font — callers are inside skipIf blocks so this is safe. */
 function loadDejaVu(): Uint8Array {
-  const paths = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-  ];
-  for (const p of paths) {
+  for (const p of DEJAVU_PATHS) {
     if (existsSync(p)) {
       return new Uint8Array(readFileSync(p));
     }
@@ -38,7 +82,7 @@ function loadDejaVu(): Uint8Array {
 
 // ── TTF Parser Tests ─────────────────────────────────────────────────
 
-describe("TTF parser (parseTTF)", () => {
+describe.skipIf(!HAS_DEJAVU)("TTF parser — font loading", () => {
   it("should parse DejaVu Sans font tables", () => {
     const data = loadDejaVu();
     // parseTTF is internal — we test it via registerCustomFont
@@ -46,7 +90,9 @@ describe("TTF parser (parseTTF)", () => {
     // Should not throw
     pdf.registerCustomFont(doc, { name: "DejaVu", data });
   });
+});
 
+describe("TTF parser — rejection", () => {
   it("should reject non-TTF data", () => {
     const doc = pdf.createDocument({ debug: true });
     expect(() =>
@@ -67,7 +113,7 @@ describe("TTF parser (parseTTF)", () => {
 
 // ── Font Registration Tests ──────────────────────────────────────────
 
-describe("registerCustomFont", () => {
+describe.skipIf(!HAS_DEJAVU)("registerCustomFont", () => {
   it("should register a custom font and make it usable", () => {
     const data = loadDejaVu();
     const doc = pdf.createDocument({ debug: true });
@@ -118,7 +164,7 @@ describe("registerCustomFont", () => {
 
 // ── Flow Layout with Custom Fonts ────────────────────────────────────
 
-describe("custom fonts in flow layout", () => {
+describe.skipIf(!HAS_DEJAVU)("custom fonts in flow layout", () => {
   it("should work with paragraph()", () => {
     const data = loadDejaVu();
     const doc = pdf.createDocument({ debug: true });
@@ -155,7 +201,7 @@ describe("custom fonts in flow layout", () => {
 
 // ── Unicode Support ──────────────────────────────────────────────────
 
-describe("Unicode with custom fonts", () => {
+describe.skipIf(!HAS_DEJAVU)("Unicode with custom fonts", () => {
   it("should handle characters outside WinAnsi encoding", () => {
     const data = loadDejaVu();
     const doc = pdf.createDocument({ debug: true });
@@ -208,7 +254,7 @@ describe("Unicode with custom fonts", () => {
 
 // ── PDF Structure Validity ───────────────────────────────────────────
 
-describe("embedded font PDF structure", () => {
+describe.skipIf(!HAS_DEJAVU)("embedded font PDF structure", () => {
   it("should produce a valid PDF with embedded font", () => {
     const data = loadDejaVu();
     const doc = pdf.createDocument({ debug: true });
@@ -277,7 +323,7 @@ describe("embedded font PDF structure", () => {
 
 // ── Subsetting (Phase 11b) ───────────────────────────────────────────
 
-describe("font subsetting", () => {
+describe.skipIf(!HAS_DEJAVU)("font subsetting", () => {
   it("should track used codepoints", () => {
     const data = loadDejaVu();
     const doc = pdf.createDocument({ debug: true });
@@ -352,69 +398,72 @@ describe("font subsetting", () => {
 
 // ── pdftotext Verification ───────────────────────────────────────────
 
-describe("custom font text extraction", () => {
-  it("should render custom font text that pdftotext can extract", () => {
-    const data = loadDejaVu();
-    // Use debug: true for uncompressed streams (easier to verify)
-    const doc = pdf.createDocument({ debug: true });
-    pdf.registerCustomFont(doc, { name: "DJ", data });
+describe.skipIf(!HAS_DEJAVU || !HAS_PDF_TOOLS)(
+  "custom font text extraction",
+  () => {
+    it("should render custom font text that pdftotext can extract", () => {
+      const data = loadDejaVu();
+      // Use debug: true for uncompressed streams (easier to verify)
+      const doc = pdf.createDocument({ debug: true });
+      pdf.registerCustomFont(doc, { name: "DJ", data });
 
-    doc.addPage();
-    doc.drawText("Hello World", 72, 100, { font: "DJ", fontSize: 14 });
+      doc.addPage();
+      doc.drawText("Hello World", 72, 100, { font: "DJ", fontSize: 14 });
 
-    const bytes = doc.buildPdf();
-    const tmpPath = "/tmp/test-custom-font.pdf";
-    writeFileSync(tmpPath, bytes);
+      const bytes = doc.buildPdf();
+      const tmpPath = "/tmp/test-custom-font.pdf";
+      writeFileSync(tmpPath, bytes);
 
-    try {
-      const extracted = execSync(`pdftotext ${tmpPath} -`).toString().trim();
-      // pdftotext uses the ToUnicode CMap to extract text
-      // If CMap is correct, we get the original text back
-      expect(extracted).toContain("Hello");
-    } finally {
       try {
-        unlinkSync(tmpPath);
-      } catch {
-        /* ignore */
+        const extracted = execSync(`pdftotext ${tmpPath} -`).toString().trim();
+        // pdftotext uses the ToUnicode CMap to extract text
+        // If CMap is correct, we get the original text back
+        expect(extracted).toContain("Hello");
+      } finally {
+        try {
+          unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
       }
-    }
-  });
+    });
 
-  it("should work with compressed streams (non-debug mode)", () => {
-    const data = loadDejaVu();
-    // Non-debug = compressed streams
-    const doc = pdf.createDocument();
-    pdf.registerCustomFont(doc, { name: "DJ", data });
+    it("should work with compressed streams (non-debug mode)", () => {
+      const data = loadDejaVu();
+      // Non-debug = compressed streams
+      const doc = pdf.createDocument();
+      pdf.registerCustomFont(doc, { name: "DJ", data });
 
-    doc.addPage();
-    doc.drawText("Test compressed", 72, 100, { font: "DJ", fontSize: 14 });
+      doc.addPage();
+      doc.drawText("Test compressed", 72, 100, { font: "DJ", fontSize: 14 });
 
-    const bytes = doc.buildPdf();
-    const tmpPath = "/tmp/test-custom-font-compressed.pdf";
-    writeFileSync(tmpPath, bytes);
+      const bytes = doc.buildPdf();
+      const tmpPath = "/tmp/test-custom-font-compressed.pdf";
+      writeFileSync(tmpPath, bytes);
 
-    try {
-      // qpdf should pass (no stream errors)
-      const qpdfResult = execSync(`qpdf --check ${tmpPath} 2>&1`).toString();
-      expect(qpdfResult).toContain("No syntax or stream encoding errors");
-
-      // pdftoppm should render (check file exists and has size)
-      execSync(
-        `pdftoppm -png -r 100 -singlefile ${tmpPath} /tmp/test-font-page`,
-      );
-      const pngStat = readFileSync("/tmp/test-font-page.png");
-      expect(pngStat.length).toBeGreaterThan(1000); // should be a real image
-    } finally {
       try {
-        unlinkSync(tmpPath);
-      } catch {
-        /* ignore */
+        // qpdf should pass (no stream errors)
+        const qpdfResult = execSync(`qpdf --check ${tmpPath} 2>&1`).toString();
+        expect(qpdfResult).toContain("No syntax or stream encoding errors");
+
+        // pdftoppm should render (check file exists and has size)
+        execSync(
+          `pdftoppm -png -r 100 -singlefile ${tmpPath} /tmp/test-font-page`,
+        );
+        const pngStat = readFileSync("/tmp/test-font-page.png");
+        expect(pngStat.length).toBeGreaterThan(1000); // should be a real image
+      } finally {
+        try {
+          unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
+        try {
+          unlinkSync("/tmp/test-font-page.png");
+        } catch {
+          /* ignore */
+        }
       }
-      try {
-        unlinkSync("/tmp/test-font-page.png");
-      } catch {
-        /* ignore */
-      }
-    }
-  });
-});
+    });
+  },
+);

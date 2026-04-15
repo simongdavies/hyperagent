@@ -8,6 +8,7 @@
  * To regenerate: UPDATE_GOLDEN=1 npx vitest run tests/pdf-visual.test.ts
  *
  * Requires: poppler-utils (pdftoppm), fonts-dejavu-core
+ * Skipped on Windows or when poppler-utils is not installed.
  */
 
 import { describe, it, expect } from "vitest";
@@ -24,6 +25,29 @@ const TEMP_DIR = "/tmp/pdf-visual-test";
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 const PIXEL_THRESHOLD = 0.1; // per-pixel colour distance threshold
 const MAX_DIFF_PIXELS = 50; // fail if more than this many pixels differ
+
+// ── Tool Availability ────────────────────────────────────────────────
+
+/** Check if a command-line tool is available on this system. */
+function hasCommand(cmd: string): boolean {
+  try {
+    execSync(`which ${cmd}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const HAS_PDFTOPPM = process.platform !== "win32" && hasCommand("pdftoppm");
+
+// ── Warn loudly on Linux if pdftoppm is missing ──────────────────────
+
+if (process.platform !== "win32" && !HAS_PDFTOPPM) {
+  console.warn(
+    "\n⚠️  WARNING: pdftoppm not installed — skipping visual regression tests." +
+      "\n   Install with: sudo apt-get install poppler-utils\n",
+  );
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -211,7 +235,7 @@ const fixtures: [string, () => Uint8Array][] = [
   ["signature-line", fixtureSignature],
 ];
 
-describe("PDF visual regression", () => {
+describe.skipIf(!HAS_PDFTOPPM)("PDF visual regression", () => {
   for (const [name, generator] of fixtures) {
     it(`should match golden baseline: ${name}`, () => {
       const pdfBytes = generator();
