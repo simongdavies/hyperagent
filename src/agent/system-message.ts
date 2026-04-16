@@ -114,6 +114,12 @@ DISCOVERY (never guess — always check):
   Do NOT guess parameter names — they are ALL listed in typeDefinitions.
   For specific function details, call module_info(name, "functionName").
 
+BUILDING REUSABLE MODULES:
+  When you identify a missing capability (like a format library), don't just
+  describe the gap — use register_module to build a reusable module that fills
+  it. Modules persist across sessions and compound in value over time.
+  Import your module with: import { fn } from "ha:<name>"
+
 PLUGINS: Require explicit enable via manage_plugin.
   Host plugin functions return values directly (not Promises).
   You CAN use async/await — it works — but await on a plugin call
