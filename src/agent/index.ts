@@ -151,7 +151,7 @@ function formatSessionDuration(): string {
  * Called at all exit points (interactive, --prompt, SIGINT).
  */
 function printExitTokenSummary(): void {
-  if (state.totalRequests === 0) return; // No LLM calls made
+  if (state.totalInputTokens === 0 && state.totalOutputTokens === 0) return;
   const lines = formatTokenSummary(state);
   console.log(); // blank line before summary
   for (const line of lines) {

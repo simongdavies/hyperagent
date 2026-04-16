@@ -252,7 +252,7 @@ export interface AgentState {
   /** Cumulative cache-read tokens across all LLM requests this session. */
   totalCacheReadTokens: number;
 
-  /** Total number of LLM API requests this session. */
+  /** Total number of LLM API requests (one per assistant.usage event). */
   totalRequests: number;
 
   /** Number of user turns (messages sent) this session. */

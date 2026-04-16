@@ -73,21 +73,17 @@ export function formatTokenSummary(state: {
 }): string[] {
   const total = state.totalInputTokens + state.totalOutputTokens;
   const lines: string[] = [];
-  lines.push(`${C.label("Token Usage")}  ${C.dim("(session total)")}`);
-  lines.push(
-    `  Input:       ${state.totalInputTokens.toLocaleString()} tokens`,
-  );
-  lines.push(
-    `  Output:      ${state.totalOutputTokens.toLocaleString()} tokens`,
-  );
+  lines.push(`${C.label("Token Usage")}  ${C.dim("(process total)")}`);
+  lines.push(`Input:       ${state.totalInputTokens.toLocaleString()} tokens`);
+  lines.push(`Output:      ${state.totalOutputTokens.toLocaleString()} tokens`);
   if (state.totalCacheReadTokens > 0) {
     lines.push(
-      `  Cache read:  ${state.totalCacheReadTokens.toLocaleString()} tokens`,
+      `Cache read:  ${state.totalCacheReadTokens.toLocaleString()} tokens`,
     );
   }
-  lines.push(`  Total:       ${total.toLocaleString()} tokens`);
-  lines.push(`  Requests:    ${state.totalRequests}`);
-  lines.push(`  Turns:       ${state.totalTurns}`);
+  lines.push(`Total:       ${total.toLocaleString()} tokens`);
+  lines.push(`Requests:    ${state.totalRequests}`);
+  lines.push(`Turns:       ${state.totalTurns}`);
   return lines;
 }
 

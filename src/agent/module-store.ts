@@ -366,7 +366,7 @@ export async function saveModule(
     author,
     mutable,
     // Keep sourceHash in sync so the validator doesn't flag a mismatch
-    sourceHash: currentHash.slice(0, 23), // "sha256:" + 16 hex chars
+    sourceHash: computeTruncatedHash(source),
     metadataCache: {
       extractedFromHash: currentHash,
       exports,
