@@ -510,26 +510,18 @@ pub fn extract_all_imports(source: &str) -> Vec<String> {
         }
         // Also check for `from "..."` pattern on continuation lines.
         // Only match when `from` is at the START of the trimmed line or
-        // immediately after `}` at the start. Using `starts_with` prevents
+        // immediately after `}` at the start. Using `strip_prefix` prevents
         // false positives from `from` appearing mid-line inside strings.
-        if trimmed.starts_with("from ")
-            || trimmed.starts_with("} from ")
-            || trimmed.starts_with("}from ")
-        {
-            let rest = if trimmed.starts_with("from ") {
-                &trimmed[5..]
-            } else if trimmed.starts_with("} from ") {
-                &trimmed[7..]
-            } else {
-                // "}from "
-                &trimmed[6..]
-            };
+        let from_rest = trimmed
+            .strip_prefix("from ")
+            .or_else(|| trimmed.strip_prefix("} from "))
+            .or_else(|| trimmed.strip_prefix("}from "));
 
-            if let Ok((_, specifier)) = string_literal(rest.trim())
-                && !imports.iter().any(|s: &String| s == specifier)
-            {
-                imports.push(String::from(specifier));
-            }
+        if let Some(rest) = from_rest
+            && let Ok((_, specifier)) = string_literal(rest.trim())
+            && !imports.iter().any(|s: &String| s == specifier)
+        {
+            imports.push(String::from(specifier));
         }
     }
 
