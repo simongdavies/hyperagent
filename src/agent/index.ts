@@ -964,6 +964,119 @@ function loadModuleFilesForValidator(
   return { sources, dtsSources, moduleJsons };
 }
 
+// ── Shared handler validation ──────────────────────────────────────
+//
+// Validates handler code using the Hyperlight analysis guest.
+// Used by both register_handler and edit_handler to ensure all
+// code changes go through the same validation pipeline.
+
+interface ValidationResult {
+  valid: boolean;
+  isModule: boolean;
+  error?: string;
+  validationErrors?: Array<{ type: string; message: string; line?: number }>;
+}
+
+async function validateHandlerCode(
+  name: string,
+  code: string,
+): Promise<ValidationResult> {
+  const registeredHandlers = sandbox.getHandlers().filter((h) => h !== name);
+  const availableModules = sandbox.getAvailableModules();
+
+  let validationContext: ValidationContext = {
+    handlerName: name,
+    registeredHandlers,
+    availableModules,
+    expectHandler: true,
+  };
+
+  let isModule = false;
+
+  let validation = await validateJavaScriptGuest(code, validationContext);
+  isModule = validation.isModule;
+
+  // Multi-pass module resolution loop
+  const maxIterations = 20;
+  let iterations = 0;
+  while (
+    !validation.deepValidationDone &&
+    validation.missingSources.length > 0 &&
+    validation.errors.length === 0 &&
+    iterations < maxIterations
+  ) {
+    iterations++;
+    const {
+      sources: newSources,
+      dtsSources: newDtsSources,
+      moduleJsons: newModuleJsons,
+    } = loadModuleFilesForValidator(validation.missingSources, pluginManager);
+
+    if (Object.keys(newSources).length === 0) {
+      const unresolvable = validation.missingSources.filter(
+        (s) => !s.startsWith("ha:") && !s.startsWith("host:"),
+      );
+      if (unresolvable.length > 0) {
+        const suggestions = unresolvable
+          .map((s) => {
+            const asHa = `ha:${s}`;
+            const asHost = `host:${s}`;
+            if (availableModules.includes(asHa)) return `"${s}" → "${asHa}"`;
+            if (availableModules.includes(asHost))
+              return `"${s}" → "${asHost}"`;
+            return `"${s}"`;
+          })
+          .join(", ");
+        return {
+          valid: false,
+          isModule,
+          error: `Invalid import specifiers: ${suggestions}. Modules require "ha:" prefix (e.g., import { x } from "ha:pptx"), plugins require "host:" prefix.`,
+        };
+      }
+      break;
+    }
+
+    validationContext = {
+      ...validationContext,
+      moduleSources: { ...validationContext.moduleSources, ...newSources },
+      dtsSources: { ...validationContext.dtsSources, ...newDtsSources },
+      moduleJsons: { ...validationContext.moduleJsons, ...newModuleJsons },
+    };
+    validation = await validateJavaScriptGuest(code, validationContext);
+  }
+
+  if (iterations >= maxIterations) {
+    const stillMissing = validation.missingSources.join(", ");
+    return {
+      valid: false,
+      isModule,
+      error: `Could not resolve all module dependencies after ${maxIterations} iterations. Still missing: ${stillMissing}.`,
+    };
+  }
+
+  // Report warnings to console
+  for (const warning of validation.warnings) {
+    console.error(`  ${C.warn("⚠️")} ${warning.message}`);
+  }
+
+  if (!validation.valid) {
+    const errorMessages = validation.errors
+      .map((e) => {
+        const loc = e.line ? ` (line ${e.line})` : "";
+        return `${e.type}: ${e.message}${loc}`;
+      })
+      .join("\n  • ");
+    return {
+      valid: false,
+      isModule,
+      error: `Validation failed:\n  • ${errorMessages}`,
+      validationErrors: validation.errors,
+    };
+  }
+
+  return { valid: true, isModule };
+}
+
 // ── Tool: register_handler ────────────────────────────────────────────
 
 const registerHandlerTool = defineTool("register_handler", {
@@ -1386,6 +1499,70 @@ const editHandlerTool = defineTool("edit_handler", {
     oldString: string;
     newString: string;
   }) => {
+    // ── Preview the edit and validate before applying ─────────────
+    // Get current source to build the edited version
+    const sourceResult = sandbox.getHandlerSource(name, {
+      lineNumbers: false,
+    }) as { success: true; source: string } | { success: false; error: string };
+
+    if (!sourceResult.success) {
+      console.error(`  ${C.err("❌ " + sourceResult.error)}`);
+      return { success: false, error: sourceResult.error };
+    }
+
+    const currentSource = sourceResult.source;
+
+    // Check exact-once match
+    const firstIdx = currentSource.indexOf(oldString);
+    if (firstIdx === -1) {
+      const error =
+        "oldString not found in handler. Use get_handler_source to see current code, then copy the EXACT text to replace.";
+      console.error(`  ${C.err("❌ " + error)}`);
+      return { success: false, error };
+    }
+    const secondIdx = currentSource.indexOf(
+      oldString,
+      firstIdx + oldString.length,
+    );
+    if (secondIdx !== -1) {
+      const error =
+        "oldString matches multiple times. Add more surrounding context to make it unique.";
+      console.error(`  ${C.err("❌ " + error)}`);
+      return { success: false, error };
+    }
+
+    // Build the edited code
+    const editedCode =
+      currentSource.slice(0, firstIdx) +
+      newString +
+      currentSource.slice(firstIdx + oldString.length);
+
+    // Validate the edited code through the same pipeline as register_handler
+    try {
+      const validation = await validateHandlerCode(name, editedCode);
+      if (!validation.valid) {
+        console.error(
+          `  ${C.err("❌ Edit rejected by validation (handler unchanged):")}`,
+        );
+        console.error(`  ${C.err(validation.error ?? "Unknown error")}`);
+        return {
+          success: false,
+          error: `Edit rejected — ${validation.error}`,
+          hint: "The edit was NOT applied. The handler is unchanged. Fix the error in your newString and try again.",
+          validationErrors: validation.validationErrors,
+        };
+      }
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error(`  ${C.err("❌ Validation error: " + errMsg)}`);
+      return {
+        success: false,
+        error: `Edit rejected — validation failed: ${errMsg}`,
+        hint: "The edit was NOT applied. The handler is unchanged.",
+      };
+    }
+
+    // Validation passed — apply the edit
     const result = await sandbox.editHandler(name, oldString, newString);
     if (result.success) {
       console.error(

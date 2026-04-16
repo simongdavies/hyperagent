@@ -1092,7 +1092,7 @@ declare module "ha:pdf" {
       headerFg: string;
       /** Header font. */
       headerFont: string;
-      /** Body text colour (6-char hex). */
+      /** Body text colour (6-char hex). Auto-contrasted if omitted or poor contrast. */
       bodyFg: string;
       /** Body font. */
       bodyFont: string;
@@ -1102,6 +1102,8 @@ declare module "ha:pdf" {
       borderColor: string;
       /** Border line width in points. */
       borderWidth: number;
+      /** Page background colour (set internally for contrast checking). */
+      _pageBg?: string;
   }
   /** Built-in table styles matching PPTX table styles. */
   export declare const TABLE_STYLES: Record<string, TableStyle>;

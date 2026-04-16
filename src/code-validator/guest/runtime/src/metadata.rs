@@ -390,17 +390,21 @@ pub fn extract_dts_metadata(source: &str, _config: &MetadataConfig) -> ModuleMet
     }
 
     // Handle re-exports: export { a, b, c } from "module";
+    // AND bare re-exports: export { a, b, c };
     // These are valid exports that should be included
     for line in &lines {
         let trimmed = line.trim();
-        // Pattern: export { ... } from "...";
-        if trimmed.starts_with("export {") && trimmed.contains(" from ") {
+        if trimmed.starts_with("export {") || trimmed.starts_with("export{") {
             let list_exports = parse_export_list(trimmed);
             for name in list_exports {
                 if !exports.iter().any(|e| e.name == name) {
                     exports.push(ExportInfo {
                         name,
-                        kind: "reexport".to_string(),
+                        kind: if trimmed.contains(" from ") {
+                            "reexport".to_string()
+                        } else {
+                            "export".to_string()
+                        },
                         signature: None,
                         description: None,
                         params: None,
