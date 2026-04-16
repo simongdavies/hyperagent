@@ -429,6 +429,14 @@ export function registerEventHandler(
           cost?: number;
           duration?: number;
         };
+
+        // Accumulate session totals. Count one request per usage event;
+        // usageData.cost is premium request count, not a reliable API-call counter.
+        state.totalInputTokens += usageData.inputTokens ?? 0;
+        state.totalOutputTokens += usageData.outputTokens ?? 0;
+        state.totalCacheReadTokens += usageData.cacheReadTokens ?? 0;
+        state.totalRequests += 1;
+
         // Ensure stats appear on a new line — streamed
         // message_delta writes don't end with \n.
         if (state.streamedContent) {

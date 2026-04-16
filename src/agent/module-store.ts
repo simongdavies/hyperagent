@@ -365,6 +365,8 @@ export async function saveModule(
     description,
     author,
     mutable,
+    // Keep sourceHash in sync so the validator doesn't flag a mismatch
+    sourceHash: computeTruncatedHash(source),
     metadataCache: {
       extractedFromHash: currentHash,
       exports,
