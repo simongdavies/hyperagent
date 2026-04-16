@@ -604,7 +604,7 @@ mcp-setup-everything:
     echo "✅ MCP 'everything' server configured in $CONFIG_FILE"
     echo "   Start the agent and run: /plugin enable mcp && /mcp enable everything"
 
-# Set up the MCP GitHub server (requires GITHUB_TOKEN env var)
+# Set up the MCP GitHub server (uses GITHUB_TOKEN — get one via: gh auth token)
 [unix]
 mcp-setup-github:
     #!/usr/bin/env bash
@@ -614,9 +614,16 @@ mcp-setup-github:
     mkdir -p "$CONFIG_DIR"
 
     if [ -z "${GITHUB_TOKEN:-}" ]; then
-      echo "⚠️  GITHUB_TOKEN not set. The GitHub MCP server needs it at runtime."
-      echo "   export GITHUB_TOKEN=ghp_your_token_here"
-      echo "   Continuing with config anyway..."
+      echo "⚠️  GITHUB_TOKEN not set. Trying 'gh auth token'..."
+      if command -v gh &>/dev/null; then
+        export GITHUB_TOKEN=$(gh auth token 2>/dev/null || true)
+      fi
+      if [ -z "${GITHUB_TOKEN:-}" ]; then
+        echo "   Could not get token. Run: export GITHUB_TOKEN=\$(gh auth token)"
+        echo "   Continuing with config anyway..."
+      else
+        echo "   ✅ Got token from gh CLI"
+      fi
     fi
 
     node -e "
@@ -638,7 +645,7 @@ mcp-setup-github:
       fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
     "
     echo "✅ MCP 'github' server configured in $CONFIG_FILE"
-    echo "   Requires: export GITHUB_TOKEN=ghp_..."
+    echo "   Tip: export GITHUB_TOKEN=\$(gh auth token)"
     echo "   Start the agent and run: /plugin enable mcp && /mcp enable github"
 
 # Set up the MCP filesystem server (read-only access to a directory)
