@@ -3498,6 +3498,15 @@ function renderTable(
   const MIN_CONTRAST = 3.0;
   const pageBg = style._pageBg || "FFFFFF";
 
+  // If headerBg is too similar to pageBg, the header row won't stand out.
+  // Swap to theme accent1 so the header is visually distinct.
+  if (style.headerBg) {
+    const headerVsPage = contrastRatio(style.headerBg, pageBg);
+    if (headerVsPage < 1.5 && doc.theme.accent1) {
+      style.headerBg = doc.theme.accent1;
+    }
+  }
+
   if (style.bodyFg) {
     const bodyRatio = contrastRatio(style.bodyFg, pageBg);
     if (bodyRatio < MIN_CONTRAST) {
@@ -3641,16 +3650,12 @@ function renderTable(
       });
     }
 
-    // Alternating row background FIRST
-    if (style.altRowBg && r % 2 === 1) {
-      doc.drawRect(x, curY, totalWidth, rowH, { fill: style.altRowBg });
-    }
-
-    // Auto-contrast body text against effective row background
+    // EVERY row gets an explicit fill — no transparent rows, no guessing
     const isAlt = !!(style.altRowBg && r % 2 === 1);
-    const rowBg = isAlt
-      ? style.altRowBg
-      : (style._pageBg || "FFFFFF");
+    const rowBg = isAlt ? style.altRowBg : (style._pageBg || "FFFFFF");
+    doc.drawRect(x, curY, totalWidth, rowH, { fill: rowBg });
+
+    // Text color computed against the ACTUAL fill we just drew
     const rowFg = autoTextColor(rowBg);
 
     // Cell text AFTER background

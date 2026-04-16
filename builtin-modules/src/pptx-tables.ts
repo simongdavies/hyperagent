@@ -276,7 +276,7 @@ export function table(opts: TableOptions): ShapeFragment {
   // ── Theme-aware defaults ────────────────────────────────────────────
   // If opts.theme is passed, auto-compute colors for dark/light backgrounds.
   // Style overrides always take precedence over theme-computed values.
-  const theme = opts.theme || {};
+  const theme = (opts.theme || {}) as Partial<Theme>;
   const darkMode = theme.bg ? isDark(theme.bg) : false;
 
   // Dark mode defaults: light text on dark alt-rows
@@ -285,7 +285,14 @@ export function table(opts: TableOptions): ShapeFragment {
   const defaultAltRowColor = darkMode ? "2D333B" : "F5F5F5";
   const defaultBorderColor = darkMode ? "444C56" : "CCCCCC";
 
-  const headerBg = style.headerBg || "2196F3";
+  let headerBg = style.headerBg || "2196F3";
+
+  // If headerBg matches the slide bg, the header won't stand out — use accent
+  const slideBgForCheck = theme.bg || (darkMode ? "1A1A1A" : "FFFFFF");
+  if (theme.accent1 && contrastRatio(headerBg, slideBgForCheck) < 1.5) {
+    headerBg = theme.accent1;
+  }
+
   const headerColor = style.headerColor || autoTextColor(headerBg);
   const headerFontSize = style.headerFontSize || 13;
   const styleFontSize = style.fontSize || 12;
@@ -324,10 +331,10 @@ export function table(opts: TableOptions): ShapeFragment {
   // Build data rows
   // ALWAYS auto-contrast text against each row's effective background
   // to prevent unreadable text on dark themes or image backgrounds.
-  // If no theme.bg is provided, give non-alt rows an explicit fill
-  // matching the alt-row scheme so text is always readable.
+  // ALWAYS give every row an explicit fill — never rely on slide background
+  // inheritance, because we can't guarantee we know the actual slide bg.
+  // This ensures autoTextColor always computes against the real fill.
   const slideBg = theme.bg || (darkMode ? "1A1A1A" : "FFFFFF");
-  const nonAltFill = darkMode ? slideBg : undefined;
   const dataRows = rows
     .map((row, rowIdx) => {
       const isAlt = altRows && rowIdx % 2 === 1;
@@ -337,7 +344,7 @@ export function table(opts: TableOptions): ShapeFragment {
       const cells = row
         .map((cell) =>
           cellXml(cell, {
-            fillColor: isAlt ? altRowColor : nonAltFill,
+            fillColor: rowBg, // Always explicit fill — never undefined
             color: rowTextColor,
             fontSize: styleFontSize,
             borderColor,

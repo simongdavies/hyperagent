@@ -3,7 +3,7 @@
   "description": "Styled tables for PPTX presentations - headers, borders, alternating rows",
   "author": "system",
   "mutable": false,
-  "sourceHash": "sha256:e03a2365c45ab0e6",
+  "sourceHash": "sha256:4fd269d16f32d3ec",
   "dtsHash": "sha256:130d021921083af6",
   "importStyle": "named",
   "hints": {
