@@ -508,14 +508,20 @@ pub fn extract_all_imports(source: &str) -> Vec<String> {
         {
             imports.push(String::from(stmt.specifier));
         }
-        // Also check for `from "..."` pattern on continuation lines
-        if let Some(from_pos) = trimmed.find("from ") {
-            let rest = &trimmed[from_pos + 5..];
-            if let Ok((_, specifier)) = string_literal(rest.trim())
-                && !imports.iter().any(|s: &String| s == specifier)
-            {
-                imports.push(String::from(specifier));
-            }
+        // Also check for `from "..."` pattern on continuation lines.
+        // Only match when `from` is at the START of the trimmed line or
+        // immediately after `}` at the start. Using `strip_prefix` prevents
+        // false positives from `from` appearing mid-line inside strings.
+        let from_rest = trimmed
+            .strip_prefix("from ")
+            .or_else(|| trimmed.strip_prefix("} from "))
+            .or_else(|| trimmed.strip_prefix("}from "));
+
+        if let Some(rest) = from_rest
+            && let Ok((_, specifier)) = string_literal(rest.trim())
+            && !imports.iter().any(|s: &String| s == specifier)
+        {
+            imports.push(String::from(specifier));
         }
     }
 
@@ -1650,6 +1656,42 @@ mod tests {
         assert!(imports.contains(&"module-a".to_string()));
         assert!(imports.contains(&"module-b".to_string()));
         assert!(imports.contains(&"side-effect".to_string()));
+    }
+
+    #[test]
+    fn test_extract_imports_ignores_prose_from_in_strings() {
+        // Regression: the validator was parsing prose inside string literals as imports.
+        // e.g. `"an AI that builds documents"` was extracted as a module specifier
+        // because the line contained `from "an AI..."`.
+        let source = r#"
+            import { writeFile } from "host:fs-write";
+            export function handler(event) {
+                const content = "HyperAgent is an AI that builds documents from 'impressive demo' material";
+                const more = "Fetched data from \"ha:pdf\" and other sources";
+                writeFile("blog.md", content);
+                return { ok: true };
+            }
+        "#;
+        let imports = extract_all_imports(source);
+        assert!(imports.contains(&"host:fs-write".to_string()));
+        // These should NOT be extracted as imports
+        assert!(!imports.iter().any(|s| s.contains("impressive demo")));
+        assert!(!imports.iter().any(|s| s.contains("AI that builds")));
+        // ha:pdf inside a string literal should not be picked up
+        assert!(!imports.contains(&"ha:pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_imports_continuation_lines() {
+        // Continuation lines like `} from "module"` should still work
+        let source = r#"
+            import {
+                foo,
+                bar
+            } from "ha:pptx";
+        "#;
+        let imports = extract_all_imports(source);
+        assert!(imports.contains(&"ha:pptx".to_string()));
     }
 
     #[test]

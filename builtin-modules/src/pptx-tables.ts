@@ -17,6 +17,8 @@ import {
   requireArray,
   requireNumber,
   isDark,
+  autoTextColor,
+  contrastRatio,
   type Theme,
 } from "ha:doc-core";
 import {
@@ -279,18 +281,21 @@ export function table(opts: TableOptions): ShapeFragment {
 
   // Dark mode defaults: light text on dark alt-rows
   // Light mode defaults: dark text on light alt-rows
-  const defaultTextColor = darkMode ? theme.fg || "E6EDF3" : "333333";
+  // Auto-compute readable defaults based on backgrounds
   const defaultAltRowColor = darkMode ? "2D333B" : "F5F5F5";
   const defaultBorderColor = darkMode ? "444C56" : "CCCCCC";
 
   const headerBg = style.headerBg || "2196F3";
-  const headerColor = style.headerColor || "FFFFFF";
+  const headerColor = style.headerColor || autoTextColor(headerBg);
   const headerFontSize = style.headerFontSize || 13;
   const styleFontSize = style.fontSize || 12;
-  const textColor = style.textColor || style.themeTextColor || defaultTextColor;
   const altRows = style.altRows !== false;
   const altRowColor = style.altRowColor || defaultAltRowColor;
   const borderColor = style.borderColor || defaultBorderColor;
+
+  // ── Contrast enforcement ─────────────────────────────────────────
+  // ALWAYS auto-contrast. No exceptions. If the color is shit, fix it.
+  // The LLM's style.textColor is ignored — autoTextColor wins.
 
   // Build grid columns
   const gridCols = Array.from(
@@ -317,14 +322,23 @@ export function table(opts: TableOptions): ShapeFragment {
   }
 
   // Build data rows
+  // ALWAYS auto-contrast text against each row's effective background
+  // to prevent unreadable text on dark themes or image backgrounds.
+  // If no theme.bg is provided, give non-alt rows an explicit fill
+  // matching the alt-row scheme so text is always readable.
+  const slideBg = theme.bg || (darkMode ? "1A1A1A" : "FFFFFF");
+  const nonAltFill = darkMode ? slideBg : undefined;
   const dataRows = rows
     .map((row, rowIdx) => {
       const isAlt = altRows && rowIdx % 2 === 1;
+      const rowBg = isAlt ? altRowColor : slideBg;
+      // ALWAYS auto-contrast — no exceptions, no overrides
+      const rowTextColor = autoTextColor(rowBg);
       const cells = row
         .map((cell) =>
           cellXml(cell, {
-            fillColor: isAlt ? altRowColor : undefined,
-            color: textColor,
+            fillColor: isAlt ? altRowColor : nonAltFill,
+            color: rowTextColor,
             fontSize: styleFontSize,
             borderColor,
           }),

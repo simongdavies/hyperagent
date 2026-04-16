@@ -32,6 +32,7 @@
 
 import {
   autoTextColor,
+  contrastRatio,
   getTheme,
   hexColor,
   requireArray,
@@ -3004,7 +3005,7 @@ export interface TableStyle {
   headerFg: string;
   /** Header font. */
   headerFont: string;
-  /** Body text colour (6-char hex). */
+  /** Body text colour (6-char hex). Auto-contrasted if omitted or poor contrast. */
   bodyFg: string;
   /** Body font. */
   bodyFont: string;
@@ -3014,6 +3015,8 @@ export interface TableStyle {
   borderColor: string;
   /** Border line width in points. */
   borderWidth: number;
+  /** Page background colour (set internally for contrast checking). */
+  _pageBg?: string;
 }
 
 /** Built-in table styles matching PPTX table styles. */
@@ -3484,6 +3487,43 @@ function renderTable(
   const rowH = tableRowHeight(fontSize, compact);
   const headerH = rowH;
 
+  // Ensure page background is available for contrast checking
+  if (!style._pageBg) {
+    style._pageBg = doc.theme.bg;
+  }
+
+  // ── Contrast auto-correction ─────────────────────────────────────
+  // Automatically fix text colors that have poor contrast against the
+  // page background. No errors — just silently correct to readable.
+  const MIN_CONTRAST = 3.0;
+  const pageBg = style._pageBg || "FFFFFF";
+
+  if (style.bodyFg) {
+    const bodyRatio = contrastRatio(style.bodyFg, pageBg);
+    if (bodyRatio < MIN_CONTRAST) {
+      style.bodyFg = autoTextColor(pageBg);
+    }
+  }
+
+  if (style.headerFg && style.headerBg) {
+    const headerRatio = contrastRatio(style.headerFg, style.headerBg);
+    if (headerRatio < MIN_CONTRAST) {
+      style.headerFg = autoTextColor(style.headerBg);
+    }
+  }
+
+  if (style.headerBg && style.headerFg) {
+    const headerRatio = contrastRatio(style.headerFg, style.headerBg);
+    if (headerRatio < MIN_CONTRAST) {
+      const suggested = autoTextColor(style.headerBg);
+      throw new Error(
+        `table: headerFg "${style.headerFg}" has poor contrast (${headerRatio.toFixed(1)}:1) against ` +
+        `headerBg "${style.headerBg}". Minimum is ${MIN_CONTRAST}:1. ` +
+        `Use "${suggested}" instead.`
+      );
+    }
+  }
+
   // Text baseline offset within a row: top padding + font size
   // (drawText Y is the baseline position in top-left coords)
   const padV = compact ? 2 : CELL_PAD_V;
@@ -3574,7 +3614,7 @@ function renderTable(
       doc.drawText(headerText, textX, curY + textYOffset, {
         font: style.headerFont,
         fontSize,
-        color: style.headerFg,
+        color: style.headerBg ? autoTextColor(style.headerBg) : style.headerFg,
       });
       cellX += colWidths[c];
     }
@@ -3606,6 +3646,13 @@ function renderTable(
       doc.drawRect(x, curY, totalWidth, rowH, { fill: style.altRowBg });
     }
 
+    // Auto-contrast body text against effective row background
+    const isAlt = !!(style.altRowBg && r % 2 === 1);
+    const rowBg = isAlt
+      ? style.altRowBg
+      : (style._pageBg || "FFFFFF");
+    const rowFg = autoTextColor(rowBg);
+
     // Cell text AFTER background
     const isBoldRow = rowBold?.[r] ?? false;
     const cellFont = isBoldRow
@@ -3619,7 +3666,7 @@ function renderTable(
       doc.drawText(cellText, textX, curY + textYOffset, {
         font: cellFont,
         fontSize,
-        color: style.bodyFg,
+        color: rowFg,
       });
       cellX += colWidths[c];
     }

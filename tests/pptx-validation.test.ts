@@ -1900,9 +1900,9 @@ describe("pptx-tables validation", () => {
           theme: { bg: "1B2A4A", fg: "E6EDF3" },
         }),
       );
-      // On dark themes: alt-row should be dark (2D333B), text should be light (E6EDF3)
+      // On dark themes: alt-row should be dark (2D333B), text should be auto-contrasted (FFFFFF)
       expect(xml).toContain("2D333B"); // dark alt-row
-      expect(xml).toContain("E6EDF3"); // light text
+      expect(xml).toContain("FFFFFF"); // auto-contrasted white text
     });
 
     it("should use light theme colors when theme.bg is light", () => {
@@ -1921,20 +1921,22 @@ describe("pptx-tables validation", () => {
       expect(xml).toContain("333333"); // dark text
     });
 
-    it("should allow style overrides to take precedence over theme", () => {
+    it("should auto-contrast text even when style overrides are provided", () => {
       const xml = toXml(
         tables.table({
           x: 0,
           y: 0,
           w: 10,
           headers: ["Name"],
-          rows: [["Alpha"]],
+          rows: [["Alpha"], ["Beta"]],
           theme: { bg: "1B2A4A", fg: "E6EDF3" },
           style: { textColor: "FF0000", altRowColor: "00FF00" },
         }),
       );
-      expect(xml).toContain("FF0000"); // explicit text color
-      expect(xml).not.toContain("E6EDF3"); // theme should be overridden
+      // autoTextColor always wins — text should be readable
+      expect(xml).toContain("FFFFFF"); // white text on dark bg
+      // alt row color override should still apply
+      expect(xml).toContain("00FF00");
     });
   });
 
@@ -1977,8 +1979,8 @@ describe("pptx-tables validation", () => {
           theme: { bg: "1B2A4A", fg: "E6EDF3" },
         }),
       );
-      // On dark theme, should use light text
-      expect(xml).toContain("E6EDF3");
+      // On dark theme, should use auto-contrasted light text (FFFFFF)
+      expect(xml).toContain("FFFFFF");
     });
   });
 
@@ -2042,8 +2044,8 @@ describe("pptx-tables validation", () => {
           theme: { bg: "1B2A4A", fg: "E6EDF3" },
         }),
       );
-      // On dark theme, should use light text
-      expect(xml).toContain("E6EDF3");
+      // On dark theme, should use auto-contrasted light text (FFFFFF)
+      expect(xml).toContain("FFFFFF");
     });
   });
 
@@ -2092,8 +2094,8 @@ describe("pptx-tables validation", () => {
           theme: { bg: "1B2A4A", fg: "E6EDF3" },
         }),
       );
-      // On dark theme, should use light text
-      expect(xml).toContain("E6EDF3");
+      // On dark theme, should use auto-contrasted light text (FFFFFF)
+      expect(xml).toContain("FFFFFF");
     });
   });
 });
