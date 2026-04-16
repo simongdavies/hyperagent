@@ -304,13 +304,12 @@ fn sha256_short(content: &str) -> String {
 }
 
 /// Validate module.json hashes against actual source content.
-/// System module mismatches are errors (potential tampering/corruption).
-/// User module mismatches are warnings (they edit their own stuff).
+/// Only checks system modules — user modules are mutable by design.
 fn validate_module_hashes(
     context: &ValidationContext,
 ) -> (Vec<ValidationError>, Vec<ValidationWarning>) {
     let mut errors = Vec::new();
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     for (specifier, json_str) in &context.module_jsons {
         // Parse the module.json
@@ -319,7 +318,10 @@ fn validate_module_hashes(
             Err(_) => continue, // Skip malformed JSON
         };
 
-        let is_system = meta.author == "system";
+        // Skip user modules — they're mutable by design, hash drift is expected
+        if meta.author != "system" {
+            continue;
+        }
 
         // Check .js source hash
         if let Some(expected_hash) = &meta.source_hash
@@ -327,26 +329,17 @@ fn validate_module_hashes(
         {
             let actual_hash = sha256_short(js_source);
             if expected_hash != &actual_hash {
-                let message = alloc::format!(
-                    "{}: .js hash mismatch (expected {}, got {}). Run: npm run build:modules",
-                    specifier,
-                    expected_hash,
-                    actual_hash
-                );
-                if is_system {
-                    errors.push(ValidationError {
-                        error_type: "integrity".to_string(),
-                        message,
-                        line: None,
-                        column: None,
-                    });
-                } else {
-                    warnings.push(ValidationWarning {
-                        warning_type: "drift".to_string(),
-                        message,
-                        line: None,
-                    });
-                }
+                errors.push(ValidationError {
+                    error_type: "integrity".to_string(),
+                    message: alloc::format!(
+                        "{}: .js hash mismatch (expected {}, got {}). Run: npm run build:modules",
+                        specifier,
+                        expected_hash,
+                        actual_hash
+                    ),
+                    line: None,
+                    column: None,
+                });
             }
         }
 
@@ -356,26 +349,17 @@ fn validate_module_hashes(
         {
             let actual_hash = sha256_short(dts_source);
             if expected_hash != &actual_hash {
-                let message = alloc::format!(
-                    "{}: .d.ts hash mismatch (expected {}, got {}). Run: npm run build:modules",
-                    specifier,
-                    expected_hash,
-                    actual_hash
-                );
-                if is_system {
-                    errors.push(ValidationError {
-                        error_type: "integrity".to_string(),
-                        message,
-                        line: None,
-                        column: None,
-                    });
-                } else {
-                    warnings.push(ValidationWarning {
-                        warning_type: "drift".to_string(),
-                        message,
-                        line: None,
-                    });
-                }
+                errors.push(ValidationError {
+                    error_type: "integrity".to_string(),
+                    message: alloc::format!(
+                        "{}: .d.ts hash mismatch (expected {}, got {}). Run: npm run build:modules",
+                        specifier,
+                        expected_hash,
+                        actual_hash
+                    ),
+                    line: None,
+                    column: None,
+                });
             }
         }
     }
