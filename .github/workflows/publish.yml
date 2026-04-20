@@ -12,10 +12,11 @@ on:
         required: true
         type: string
 
+# Workflow-level permissions use least privilege (read-only).
+# Jobs that need elevated permissions (npm OIDC, GHCR push) declare them
+# individually on the job — see publish-npm and publish-docker.
 permissions:
   contents: read
-  packages: write
-  id-token: write    # Required for npm trusted publishing (OIDC)
 
 env:
   REGISTRY: ghcr.io
@@ -115,6 +116,11 @@ jobs:
   publish-npm:
     name: Publish to npmjs.org
     needs: [build-native]
+    # id-token: write is required for npm OIDC trusted publishing;
+    # contents: read for checkout. Scoped to this job only (least privilege).
+    permissions:
+      contents: read
+      id-token: write
     runs-on: [self-hosted, Linux, X64, "1ES.Pool=hld-kvm-amd","JobId=hyperagent-publish-npm-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"]
     steps:
       - uses: actions/checkout@v6
@@ -124,9 +130,10 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      # Trusted publishing requires npm >=11.5.1 for OIDC token exchange
+      # Trusted publishing requires npm >=11.5.1 for OIDC token exchange.
+      # Pin to ^11.5.1 so we don't silently get an older 11.x that lacks OIDC.
       - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@11 && npm --version
+        run: npm install -g npm@^11.5.1 && npm --version
 
       - uses: hyperlight-dev/ci-setup-workflow@v1.9.0
         with:
@@ -176,6 +183,11 @@ jobs:
   publish-docker:
     name: Publish to GitHub Container Registry
     needs: [build-native]
+    # packages: write for pushing the image to GHCR.
+    # Scoped to this job only (least privilege).
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
