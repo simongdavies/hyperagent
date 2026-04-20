@@ -1,0 +1,126 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+#
+# Regenerate PDF visual regression golden baselines on a CI runner
+# and open a PR with the updated PNGs.
+#
+# Workflow:
+#   1. Code change causes golden drift → pr-validate CI fails
+#   2. Developer triggers this workflow (optionally targeting a branch)
+#   3. Goldens are regenerated on the same runner/fonts as CI
+#   4. A PR is opened with the visual diff for review
+#
+# Usage:
+#   gh workflow run update-golden.yml -f branch=my-feature-branch
+
+name: Update Golden Baselines
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to regenerate goldens on (default: main)"
+        required: false
+        default: "main"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-golden-${{ inputs.branch }}
+  cancel-in-progress: true
+
+jobs:
+  update-goldens:
+    name: Regenerate PDF Goldens
+    runs-on:
+      [
+        self-hosted,
+        Linux,
+        X64,
+        "1ES.Pool=hld-kvm-amd",
+        "JobId=update-golden-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}",
+      ]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          # Full history not needed, but we need push access
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - uses: hyperlight-dev/ci-setup-workflow@v1.9.0
+        with:
+          rust-toolchain: "1.89"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install PDF test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils qpdf fonts-dejavu-core
+
+      - name: Setup
+        run: just setup
+
+      - name: Regenerate golden baselines
+        run: UPDATE_GOLDEN=1 npx vitest run tests/pdf-visual.test.ts
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet tests/golden/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "✅ No golden changes detected — baselines already match."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "📸 Golden baselines updated:"
+            git diff --stat tests/golden/
+          fi
+
+      - name: Create golden update PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="update-golden/${{ inputs.branch }}"
+
+          # Configure git for the commit
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Stage ONLY golden files — nothing else (e.g. package-lock.json from setup)
+          git add tests/golden/
+
+          # Create or update the golden update branch
+          git checkout -B "$BRANCH"
+          git commit -m "test: update PDF golden baselines from CI"
+          git push --force-with-lease origin "$BRANCH"
+
+          # Create PR if one doesn't already exist for this branch
+          if ! gh pr view "$BRANCH" --json state -q '.state' 2>/dev/null | grep -q OPEN; then
+            gh pr create \
+              --base "${{ inputs.branch }}" \
+              --head "$BRANCH" \
+              --title "test: update PDF golden baselines" \
+              --body "$(cat <<'EOF'
+          🖼️ **Automated golden baseline update**
+
+          Regenerated PDF visual regression baselines on the CI runner
+          (`hld-kvm-amd` pool with `fonts-dejavu-core`).
+
+          **Source branch**: `${{ inputs.branch }}`
+          **Triggered by**: @${{ github.actor }}
+
+          Review the PNG diffs below to verify the visual changes are expected.
+          EOF
+          )" \
+              --label "test" \
+              --label "automated"
+          else
+            echo "ℹ️ PR already exists for $BRANCH — pushed updated goldens."
+          fi
