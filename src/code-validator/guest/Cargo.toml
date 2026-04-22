@@ -17,7 +17,7 @@ license = "Apache-2.0"
 repository = "https://github.com/anthropics/hyperagent"
 
 [workspace.dependencies]
-# Hyperlight dependencies - aligned with deps/hyperlight-js
+# Hyperlight dependencies - aligned with the hyperlight-js runtime resolved via Cargo git checkout
 hyperlight-common = { git = "https://github.com/simongdavies/hyperlight", branch = "update-surrogate", default-features = false }
 hyperlight-guest-bin = { git = "https://github.com/simongdavies/hyperlight", branch = "update-surrogate" }
 hyperlight-guest = { git = "https://github.com/simongdavies/hyperlight", branch = "update-surrogate" }
