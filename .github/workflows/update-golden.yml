@@ -34,14 +34,7 @@ concurrency:
 jobs:
   update-goldens:
     name: Regenerate PDF Goldens
-    runs-on:
-      [
-        self-hosted,
-        Linux,
-        X64,
-        "1ES.Pool=hld-kvm-amd",
-        "JobId=update-golden-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}",
-      ]
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
         with:
