@@ -205,8 +205,8 @@ MCP tools with native PPTX generation in a single workflow.
 ### Setup
 
 ```bash
-# Set your GitHub token
-export GITHUB_TOKEN="ghp_your_token_here"
+# Use your existing GitHub CLI auth (no PAT needed)
+export GITHUB_TOKEN=$(gh auth token)
 
 # Configure the GitHub MCP server
 just mcp-setup-github
