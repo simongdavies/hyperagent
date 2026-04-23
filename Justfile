@@ -703,7 +703,7 @@ mcp-show-config:
 # which speak to the Microsoft 365 Copilot Chat API on your behalf.
 #
 # Prerequisites:
-#   • Node.js 18+ (for npx)
+#   • Node.js 22+ (required by HyperAgent; also satisfies workiq's 18+ minimum)
 #   • A Microsoft 365 Copilot licence on the signing-in user
 #   • Tenant admin consent for the "Work IQ CLI" enterprise app. Admins: see
 #     https://github.com/microsoft/work-iq/blob/main/ADMIN-INSTRUCTIONS.md

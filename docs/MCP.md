@@ -284,7 +284,8 @@ registration.
 
 ### Prerequisites
 
-- **Node.js 18+** (for `npx`).
+- **Node.js 22+** — required by HyperAgent (`just start`); also satisfies the
+  Work IQ CLI's own Node.js 18+ minimum.
 - **Microsoft 365 Copilot licence** on the signing-in user.
 - **Tenant admin consent** for the "Work IQ CLI" enterprise application.
   See the [Tenant Administrator Enablement Guide][wiq-admin] — admins can
@@ -371,52 +372,6 @@ no documented service-principal / client-credentials flow for Work IQ.
 | EULA prompt blocks MCP session startup       | Run `npx -y @microsoft/workiq@latest accept-eula` once in an interactive shell. |
 | `/mcp enable workiq` hangs                   | First run downloads ~188 MB of platform binaries via `npx`. Be patient.        |
 | "AADSTS650052" / "Access denied" on consent URL | Work IQ Tools service principal not provisioned. Run the admin PS script.   |
-
-### Legacy HTTP + OAuth path
-
-Earlier iterations of this integration connected to
-`agent365.svc.cloud.microsoft` directly over HTTP with an Entra app
-registration per tenant. That flow still works (HyperAgent's HTTP+OAuth
-transport is documented below and used by other remote MCP servers), but
-the Microsoft-published stdio CLI is simpler, officially supported, and
-avoids per-tenant app-registration plumbing. The old setup script is kept
-for reference under [`scripts/.attic/setup-workiq-app.sh`](../scripts/.attic/setup-workiq-app.sh).
-
----
-
-## HTTP Transport & OAuth (generic remote MCP servers)
-
-HyperAgent supports remote MCP servers over HTTP with OAuth 2.0 (PKCE) for
-cases where a hosted MCP endpoint requires bearer-token auth.
-
-Config shape:
-
-```json
-{
-  "mcpServers": {
-    "my-remote": {
-      "type": "http",
-      "url": "https://example.com/mcp",
-      "auth": {
-        "method": "oauth",
-        "clientId": "<client-id>",
-        "tenantId": "<tenant-id-or-common>",
-        "callbackPort": 8080
-      }
-    }
-  }
-}
-```
-
-On first connect HyperAgent starts a short-lived callback listener on
-`http://localhost:<callbackPort>/callback`, opens the system browser to the
-authorisation endpoint advertised by the server's OAuth metadata, performs
-PKCE, and persists the resulting tokens to
-`~/.hyperagent/mcp-tokens/<server>.json` (mode `0600` on Unix).
-
-Subsequent sessions reuse the cached token and refresh silently. Deleting
-the token file forces a fresh sign-in. Tokens are **never** written to the
-transcript log.
 
 ---
 
