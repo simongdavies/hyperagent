@@ -301,8 +301,36 @@ check: lint-all test-all
     @echo "✅ All checks passed — you may proceed to commit"
 
 # Clean build artifacts (keeps deps/)
+#
+# Removes:
+#   - node_modules and dist (npm/binary outputs)
+#   - generated builtin-modules/*.{js,d.ts,d.ts.map} (preserves
+#     _save.js / _restore.js which ARE committed)
+#   - generated plugin .d.ts files and plugins/shared/*.js
+#   - generated plugins/host-modules.d.ts
+#
+# Use this when a previous build failed mid-way and left stale
+# generated files that confuse `just setup` / `just build`.
+[unix]
 clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
     rm -rf dist node_modules
+    # Wipe gitignored builtin-modules build outputs (keep _save.js / _restore.js)
+    find builtin-modules -maxdepth 1 \
+      \( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \) \
+      ! -name '_save.js' ! -name '_restore.js' -delete 2>/dev/null || true
+    # Wipe gitignored plugin build outputs
+    find plugins -maxdepth 3 -name '*.d.ts' -delete 2>/dev/null || true
+    find plugins/shared -maxdepth 1 -name '*.js' -delete 2>/dev/null || true
+    rm -f plugins/host-modules.d.ts plugins/plugin-schema-types.d.ts
+    # Restore committed ha-modules.d.ts in case a failed build clobbered it
+    git checkout -- builtin-modules/src/types/ha-modules.d.ts 2>/dev/null || true
+    echo "🧹 Cleaned build artefacts"
+
+[windows]
+clean:
+    if (Test-Path dist) { Remove-Item -Recurse -Force dist }; if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }; Get-ChildItem builtin-modules -File | Where-Object { ($_.Extension -in '.js','.ts','.map') -and ($_.Name -notin '_save.js','_restore.js') } | Remove-Item -Force -ErrorAction SilentlyContinue; Get-ChildItem plugins -Recurse -Filter '*.d.ts' | Remove-Item -Force -ErrorAction SilentlyContinue; Get-ChildItem plugins/shared -Filter '*.js' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue; if (Test-Path plugins/host-modules.d.ts) { Remove-Item plugins/host-modules.d.ts }; if (Test-Path plugins/plugin-schema-types.d.ts) { Remove-Item plugins/plugin-schema-types.d.ts }; git checkout -- builtin-modules/src/types/ha-modules.d.ts 2>$null; Write-Output "🧹 Cleaned build artefacts"
 
 # Clean everything including deps/ symlinks
 clean-all: clean
