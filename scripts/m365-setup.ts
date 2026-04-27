@@ -20,6 +20,7 @@
 // State file at ~/.hyperagent/m365.json supplies clientId/tenantId
 // when not overridden.
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -69,6 +70,72 @@ interface HttpServerEntry {
 interface HyperAgentConfig {
   mcpServers?: Record<string, HttpServerEntry>;
   [key: string]: unknown;
+}
+
+// ── Approval store ───────────────────────────────────────────────────
+
+const APPROVAL_FILE = join(homedir(), ".hyperagent", "approved-mcp.json");
+
+interface ApprovalRecord {
+  configHash: string;
+  approvedAt: string;
+  approvedTools: string[];
+  auditWarnings: string[];
+}
+
+/**
+ * Compute the same config hash that `src/agent/mcp/config.ts` uses.
+ * Must stay in sync with `computeMCPConfigHash()` — if the hash
+ * algorithm changes there, it must change here too.
+ */
+function computeConfigHash(
+  name: string,
+  url: string,
+  clientId: string,
+): string {
+  return createHash("sha256")
+    .update(name, "utf8")
+    .update("http", "utf8")
+    .update(url, "utf8")
+    .update("oauth", "utf8") // auth method
+    .update(clientId, "utf8")
+    .update("[]", "utf8") // allowTools
+    .update("[]", "utf8") // denyTools
+    .digest("hex");
+}
+
+/**
+ * Pre-approve all configured servers so the LLM can connect them
+ * without prompting the user. Approval is keyed on config hash —
+ * if the config changes, re-approval is required.
+ */
+function preApproveServers(
+  servers: Array<{ name: string; url: string; clientId: string }>,
+): void {
+  let store: Record<string, ApprovalRecord> = {};
+  try {
+    if (existsSync(APPROVAL_FILE)) {
+      store = JSON.parse(
+        readFileSync(APPROVAL_FILE, "utf8"),
+      ) as Record<string, ApprovalRecord>;
+    }
+  } catch {
+    store = {};
+  }
+
+  for (const srv of servers) {
+    store[srv.name] = {
+      configHash: computeConfigHash(srv.name, srv.url, srv.clientId),
+      approvedAt: new Date().toISOString(),
+      approvedTools: [], // Tools not known until connect — empty is fine
+      auditWarnings: [],
+    };
+  }
+
+  mkdirSync(dirname(APPROVAL_FILE), { recursive: true, mode: 0o700 });
+  writeFileSync(APPROVAL_FILE, JSON.stringify(store, null, 2), {
+    mode: 0o600,
+  });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -268,6 +335,7 @@ function main(): void {
     : undefined;
 
   let count = 0;
+  const configured: Array<{ name: string; url: string; clientId: string }> = [];
   for (const s of selected) {
     const srv = catalog.servers[s];
     const scope = scopeOverride || defaultScope || srv.scope;
@@ -292,21 +360,29 @@ function main(): void {
       scope,
       flow,
     );
+    configured.push({
+      name: ALIAS_PREFIX + s,
+      url: tenantedUrl,
+      clientId,
+    });
     count += 1;
   }
 
+  // Pre-approve all configured servers so the LLM can connect them
+  // without interactive approval prompts.
+  preApproveServers(configured);
+
   console.log("");
-  console.log(`✅ Configured ${count} M365 MCP server(s)`);
+  console.log(`✅ Configured ${count} M365 MCP server(s) (pre-approved)`);
   console.log("");
   console.log("   Next:");
   console.log("     just start");
-  console.log("     /plugin enable mcp");
-  console.log("     /mcp enable work-iq-<service>");
+  console.log('     Ask: "What\'s happening in Teams?"');
   console.log("");
   console.log(
     flow === "device-code"
-      ? "   First enable shows a device code + URL to enter on any browser."
-      : "   First enable opens a browser for Microsoft sign-in.",
+      ? "   First connect shows a device code + URL to enter on any browser."
+      : "   First connect opens a browser for Microsoft sign-in.",
   );
   console.log("   Tokens cached in ~/.hyperagent/mcp-tokens/");
 }

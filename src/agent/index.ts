@@ -708,7 +708,11 @@ if (discoveredCount > 0) {
 
 // ── MCP Integration ──────────────────────────────────────────────────
 import { parseMCPConfig } from "./mcp/config.js";
-import { isMCPHttpConfig, mcpConfigDisplayString } from "./mcp/types.js";
+import {
+  isMCPHttpConfig,
+  isMCPStdioConfig,
+  mcpConfigDisplayString,
+} from "./mcp/types.js";
 import {
   createMCPClientManager,
   type MCPClientManager,
@@ -717,6 +721,12 @@ import {
   createMCPPluginAdapter,
   generateMCPDeclarations,
 } from "./mcp/plugin-adapter.js";
+import {
+  loadMCPApprovalStore,
+  isMCPApproved,
+  approveMCPServer,
+  auditMCPTools,
+} from "./mcp/approval.js";
 
 // Load MCP config from ~/.hyperagent/config.json
 let mcpManager: MCPClientManager | null = null;
@@ -3360,17 +3370,22 @@ const listMCPServersTool = defineTool("list_mcp_servers", {
   description: [
     "List all configured MCP servers with their connection state and available tools.",
     "Use this to discover which external tool servers are available.",
-    "Requires the 'mcp' plugin to be enabled first.",
+    "Works even before the MCP gateway plugin is enabled.",
   ].join("\n"),
   parameters: {
     type: "object",
     properties: {},
   },
   handler: async () => {
-    const err = requireMCPEnabled();
-    if (err) return { error: err };
+    if (!mcpManager) {
+      return {
+        servers: [],
+        total: 0,
+        hint: "No MCP servers configured. Add servers to ~/.hyperagent/config.json under mcpServers.",
+      };
+    }
 
-    const servers = mcpManager!.listServers().map((conn) => ({
+    const servers = mcpManager.listServers().map((conn) => ({
       name: conn.name,
       state: conn.state,
       transport: isMCPHttpConfig(conn.config) ? "http" : "stdio",
@@ -3473,6 +3488,7 @@ const manageMCPTool = defineTool("manage_mcp", {
     action: "connect" | "disconnect";
     name: string;
   }) => {
+    const rl = state.readlineInstance;
     const err = requireMCPEnabled();
     if (err) return { error: err };
 
@@ -3496,12 +3512,99 @@ const manageMCPTool = defineTool("manage_mcp", {
         };
       }
 
-      // Suggest the user use /mcp enable which handles approval
-      return {
-        success: false,
-        message: `Use /mcp enable ${params.name} to connect — it handles approval and security review.`,
-        hint: "Tell the user to run the /mcp enable command.",
-      };
+      try {
+        // Connect and discover tools
+        console.error(`[mcp] Connecting to ${params.name}...`);
+        const connected = await mcpManager!.connect(params.name);
+
+        // Audit tool descriptions for prompt injection risks
+        const warnings = auditMCPTools(connected.tools);
+
+        // Check if already approved (pre-approved via /mcp approve,
+        // profile, or a previous session)
+        const approvalStore = loadMCPApprovalStore();
+        const approved = isMCPApproved(params.name, conn.config, approvalStore);
+
+        if (!approved) {
+          // Show server details + tool list to the user
+          console.log();
+          console.log(`  ${C.label("MCP Server Approval Required")}`);
+          console.log();
+          console.log(`  Server:  ${C.label(params.name)}`);
+          console.log(
+            `  ${isMCPStdioConfig(conn.config) ? "Command" : "URL"}:    ${C.dim(mcpConfigDisplayString(conn.config))}`,
+          );
+          console.log();
+          console.log(`  Tools (${connected.tools.length}):`);
+          for (const tool of connected.tools) {
+            console.log(
+              `    ${C.label(tool.name)} — ${tool.description.slice(0, 80)}`,
+            );
+          }
+          if (warnings.length > 0) {
+            console.log();
+            console.log(`  ${C.err("⚠️  Audit Warnings:")}`);
+            for (const w of warnings) {
+              console.log(`    ${C.err("•")} ${w}`);
+            }
+          }
+          console.log();
+
+          // Auto-approve or prompt
+          if (state.autoApprove) {
+            console.log(`  ${C.ok("Auto-approved")} (--auto-approve mode)`);
+          } else if (process.stdin.isTTY && rl) {
+            await drainAndWarn(rl);
+            const answer = await promptUser(
+              rl,
+              `  Approve "${params.name}"? (y/n) `,
+            );
+            if (answer.trim().toLowerCase() !== "y") {
+              console.log(`  ${C.dim("Denied by user.")}`);
+              await mcpManager!.disconnect(params.name);
+              return {
+                success: false,
+                error: `User denied approval for "${params.name}".`,
+              };
+            }
+          } else {
+            // Non-interactive, not auto-approved — refuse
+            await mcpManager!.disconnect(params.name);
+            return {
+              success: false,
+              error: `"${params.name}" requires approval but no interactive terminal is available. Run /mcp approve ${params.name} first.`,
+            };
+          }
+
+          // Store approval
+          approveMCPServer(
+            params.name,
+            conn.config,
+            connected.tools.map((t) => t.name),
+            warnings,
+            approvalStore,
+          );
+        }
+
+        // Sync MCP modules to the sandbox so the LLM can import them
+        await syncPluginsToSandbox();
+
+        console.log(
+          `  ${C.ok(`✓ "${params.name}" connected`)} — ${connected.tools.length} tool(s) available as ${C.dim(`host:mcp-${params.name}`)}`,
+        );
+
+        return {
+          success: true,
+          message: `"${params.name}" connected with ${connected.tools.length} tool(s).`,
+          module: `host:mcp-${params.name}`,
+          tools: connected.tools.map((t) => t.name),
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to connect "${params.name}": ${(err as Error).message}`,
+        };
+      }
     }
 
     // Disconnect
@@ -4251,6 +4354,7 @@ function buildSessionConfig() {
     scratchMb: memory.scratchMb,
     inputKb: buffers.inputKb,
     outputKb: buffers.outputKb,
+    mcpConfigured: mcpManager !== null,
   });
   const pluginAdditions = pluginManager.getSystemMessageAdditions();
 
@@ -5109,6 +5213,20 @@ async function main(): Promise<void> {
 
   // Register event handler for streaming + tool visibility
   registerEventHandler(session);
+
+  // ── Auto-enable MCP gateway if servers are configured ────────
+  // The gateway plugin is a boolean sentinel (zero risk). When MCP
+  // servers are configured, auto-enable it so the LLM can discover
+  // and connect servers via tools without the user having to run
+  // /plugin enable mcp first.
+  if (mcpManager) {
+    const mcpPlugin = pluginManager.getPlugin("mcp");
+    if (mcpPlugin && mcpPlugin.state !== "enabled") {
+      pluginManager.enable("mcp");
+      await syncPluginsToSandbox();
+      console.log(`  ${C.ok("MCP gateway auto-enabled")} (servers configured)`);
+    }
+  }
 
   // ── REPL Loop ────────────────────────────────────────────────
   //
