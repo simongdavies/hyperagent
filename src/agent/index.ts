@@ -727,6 +727,7 @@ import {
   approveMCPServer,
   auditMCPTools,
 } from "./mcp/approval.js";
+import { canAcquireSilently } from "./mcp/auth/msal-oauth.js";
 
 // Load MCP config from ~/.hyperagent/config.json
 let mcpManager: MCPClientManager | null = null;
@@ -3513,6 +3514,27 @@ const manageMCPTool = defineTool("manage_mcp", {
       }
 
       try {
+        // For OAuth servers, check if we can authenticate silently
+        // (cached/refreshed token). If not, interactive auth would
+        // block the tool call indefinitely — bail out and tell the
+        // user to authenticate first via /mcp enable.
+        if (
+          isMCPHttpConfig(conn.config) &&
+          conn.config.auth?.method === "oauth"
+        ) {
+          const canSilent = await canAcquireSilently(
+            params.name,
+            conn.config.auth,
+          );
+          if (!canSilent) {
+            return {
+              success: false,
+              error: `"${params.name}" requires authentication. Tell the user to run: /mcp enable ${params.name}`,
+              hint: "The user needs to authenticate in their browser first. Once done, you can retry manage_mcp to connect.",
+            };
+          }
+        }
+
         // Connect and discover tools
         console.error(`[mcp] Connecting to ${params.name}...`);
         const connected = await mcpManager!.connect(params.name);

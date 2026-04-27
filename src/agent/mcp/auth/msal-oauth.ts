@@ -193,6 +193,24 @@ function openBrowser(url: string): void {
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
+ * Try to acquire a token silently (cached or refresh token).
+ * Returns true if a valid token can be obtained without user interaction.
+ * Returns false if interactive auth (browser/device-code) would be needed.
+ *
+ * Use this to pre-flight check before calling acquireMsalToken() in
+ * contexts where interactive auth would hang (e.g. inside a tool call).
+ */
+export async function canAcquireSilently(
+  serverName: string,
+  authConfig: MCPOAuthConfig,
+): Promise<boolean> {
+  const pca = buildPca(serverName, authConfig);
+  const scopes = resolveScopes(authConfig);
+  const result = await tryAcquireSilent(pca, scopes);
+  return result !== null;
+}
+
+/**
  * Acquire an OAuth access token using MSAL.
  *
  * 1. Tries silent acquisition (cached / refresh token).

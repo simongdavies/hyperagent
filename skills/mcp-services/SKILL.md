@@ -94,8 +94,11 @@ Other servers use their own names (e.g. `github`, `filesystem`).
 
 ### Error handling
 
-- If `manage_mcp` returns `success: false` — the user denied approval or
-  auth failed. Tell the user what happened.
+- If `manage_mcp` returns `success: false` with "requires authentication" —
+  tell the user to run `/mcp enable <name>` to authenticate in their browser.
+  Once they've done that, retry `manage_mcp` — it will connect silently.
+- If `manage_mcp` returns `success: false` with "denied approval" — the user
+  declined. Don't retry — explain what the server does and ask if they want to try again.
 - If a tool call fails — check `lastError` in `list_mcp_servers()` output.
 - OAuth servers may prompt for browser auth on first connect — this is normal.
 
