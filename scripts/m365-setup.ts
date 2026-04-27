@@ -9,7 +9,8 @@
 // Usage:
 //   tsx scripts/m365-setup.ts [services] [clientId] [tenantId] [scopeOverride]
 //
-//   services         "all" (default) or comma-separated alias list
+//   services         "all" (default), comma-separated alias list, or
+//                    "list" to print the catalog and exit.
 //   clientId         Override Entra app client id (else read from state)
 //   tenantId         Override Entra tenant id (else read from state)
 //   scopeOverride    Force a single scope for every server (testing)
@@ -86,6 +87,36 @@ function readJson<T>(path: string): T | undefined {
   }
 }
 
+/**
+ * Rewrite a discovery URL (`/agents/servers/<name>`) into the
+ * tenant-scoped form the Agent 365 gateway actually serves
+ * (`/agents/tenants/<tid>/servers/<name>`).
+ *
+ * If the URL already contains `/agents/tenants/...` it's left alone
+ * (the catalog could legitimately store tenant-already-baked URLs in
+ * the future).
+ */
+function injectTenantIntoUrl(url: string, tenantId: string): string {
+  if (!tenantId) {
+    fail("tenantId is required to build M365 MCP server URLs");
+  }
+  if (url.includes("/agents/tenants/")) return url;
+  const marker = "/agents/servers/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) {
+    fail(
+      `Catalog URL does not contain '${marker}' — cannot inject tenant: ${url}`,
+    );
+  }
+  return (
+    url.slice(0, idx) +
+    "/agents/tenants/" +
+    tenantId +
+    "/servers/" +
+    url.slice(idx + marker.length)
+  );
+}
+
 function writeServerEntry(
   configFile: string,
   name: string,
@@ -149,6 +180,24 @@ function main(): void {
   if (!catalog) fail(`Catalog missing: ${CATALOG_PATH}`);
   const known = Object.keys(catalog.servers);
   const raw = (servicesArg || "all").trim().toLowerCase();
+
+  // `list` / `--list` / `ls`: print catalog and exit (no config writes).
+  if (raw === "list" || raw === "--list" || raw === "ls") {
+    console.log("Available M365 / Agent 365 MCP servers:\n");
+    const sorted = [...known].sort();
+    const aliasWidth = Math.max(...sorted.map((a) => a.length));
+    for (const alias of sorted) {
+      const srv = catalog.servers[alias];
+      console.log(`  ${alias.padEnd(aliasWidth)}  ${srv.scope}`);
+    }
+    console.log("");
+    console.log("Usage:");
+    console.log("  just mcp-setup-m365              # writes ALL servers");
+    console.log('  just mcp-setup-m365 "mail,planner"  # subset');
+    console.log("  just mcp-setup-m365 list         # this listing");
+    return;
+  }
+
   const selected =
     raw === "" || raw === "all"
       ? known
@@ -204,10 +253,19 @@ function main(): void {
     if (!srv.url || !scope) {
       fail(`Catalog entry for ${s} missing url or scope`);
     }
+    // The discovery endpoint returns URLs of the form
+    //   https://<host>/agents/servers/<name>
+    // but the Agent 365 gateway requires the caller's tenantId in the
+    // path, otherwise it responds with EndpointInvalid / TenantIdInvalid:
+    //   https://<host>/agents/tenants/<tenantId>/servers/<name>
+    // Inject the tenantId here at config-write time. We don't store the
+    // already-tenanted URL in the catalog because the catalog is shared
+    // across tenants.
+    const tenantedUrl = injectTenantIntoUrl(srv.url, tenantId);
     writeServerEntry(
       configFile,
       ALIAS_PREFIX + s,
-      srv.url,
+      tenantedUrl,
       clientId,
       tenantId,
       scope,

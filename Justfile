@@ -878,12 +878,15 @@ mcp-m365-create-app *ARGS:
 # from ~/.hyperagent/m365.json by default; override with explicit args.
 #
 # Each server uses the URL and per-server scope discovered from
-# Agent 365 (see catalog file). The Agent 365 gateway uses the
-# /agents/servers/<name> URL pattern — NOT /tenants/<tid>/servers/<name>
-# from the MS Learn docs (verified against discoverToolServers).
+# Agent 365 (see catalog file). The catalog stores the discovery URL
+# (/agents/servers/<name>); the setup script injects the caller's
+# tenantId at config-write time to produce the actual gateway URL
+# (/agents/tenants/<tid>/servers/<name>) that the gateway requires —
+# without it the server returns EndpointInvalid / TenantIdInvalid.
 #
 # Args:
-#   SERVICES        "all" (default), or comma-separated alias list ("mail,teams")
+#   SERVICES        "all" (default), comma-separated alias list ("mail,teams"),
+#                   or "list" to print all known service aliases and exit.
 #   CLIENT_ID       Override Entra app client id
 #   TENANT_ID       Override Entra tenant id (used for OAuth authority)
 #   SCOPE_OVERRIDE  Optional: force a single scope for every server
