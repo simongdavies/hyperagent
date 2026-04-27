@@ -59,23 +59,48 @@ export type MCPAuthMethod =
   | "client-credentials";
 
 /**
- * OAuth 2.0 browser-based authentication (PKCE).
- * Used for interactive local sessions — opens a browser for sign-in.
+ * OAuth 2.0 user-delegated authentication via MSAL.
+ *
+ * Uses @azure/msal-node's PublicClientApplication under the hood.
+ * Token caching, refresh, and PKCE are handled by MSAL automatically.
+ *
+ * Two flows are supported and `flow` MUST be set explicitly:
+ *
+ *   • "browser" — acquireTokenInteractive (auth-code + PKCE).
+ *     MSAL opens the system browser and spins up an ephemeral loopback
+ *     server on http://localhost (random port, no path suffix). This
+ *     redirect URI is registered by default on MSAL-compatible Entra
+ *     apps (FOCI / VS Code / az CLI). Custom registrations may need a
+ *     different `redirectUri` — see below.
+ *
+ *   • "device-code" — acquireTokenByDeviceCode (RFC 8628).
+ *     Prints a verification URL + user code to the terminal; the user
+ *     opens the URL on any device, types the code, signs in. No
+ *     redirect URI or loopback port needed — works in SSH sessions,
+ *     containers, and locked-down corporate machines.
  */
 export interface MCPOAuthConfig {
   method: "oauth";
 
+  /** Which user-interaction flow to use. Required — no default. */
+  flow: "browser" | "device-code";
+
   /** OAuth client (application) ID. */
   clientId: string;
 
-  /** Entra ID tenant ID (for Microsoft identity). */
+  /** Entra ID tenant ID. If omitted, defaults to "organizations". */
   tenantId?: string;
 
   /** Requested OAuth scopes (e.g. ["Mail.Read"]). */
   scopes?: string[];
 
-  /** Local port for the OAuth callback server. @default 8080 */
-  callbackPort?: number;
+  /**
+   * Override redirect URI for the browser flow. @default "http://localhost"
+   * Only needed for custom Entra app registrations that have a different
+   * redirect URI configured. MSAL-compatible apps (VS Code FOCI, az CLI)
+   * work with the default. Ignored for device-code flow.
+   */
+  redirectUri?: string;
 }
 
 /**

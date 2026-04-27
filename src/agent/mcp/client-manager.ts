@@ -26,10 +26,10 @@ import {
 } from "./types.js";
 import { sanitiseToolName, sanitiseDescription } from "./sanitise.js";
 import {
-  createBrowserOAuthProvider,
-  type BrowserOAuthProviderResult,
-} from "./auth/browser-oauth.js";
-import { hasCachedTokens } from "./auth/token-cache.js";
+  acquireMsalToken,
+  createMsalOAuthProvider,
+  hasMsalCache,
+} from "./auth/msal-oauth.js";
 import { createRetryFetch } from "./retry-fetch.js";
 import {
   loadCachedSession,
@@ -64,9 +64,9 @@ export function createMCPClientManager() {
 
   /**
    * Connect to an MCP server, discover tools, and apply filtering.
-   * For HTTP servers with OAuth, handles the browser auth flow:
-   *   1. Attempt connection (may use cached tokens)
-   *   2. If UnauthorizedError → open browser, wait for callback, retry
+   * For HTTP servers with OAuth, handles auth via MSAL:
+   *   1. Attempt token acquisition via MSAL (silent → interactive)
+   *   2. Connect with authenticated transport
    *   3. If no TTY and no cached tokens → fail with clear instructions
    * Throws on connection failure after timeout.
    */
@@ -93,12 +93,12 @@ export function createMCPClientManager() {
     conn.state = "connecting";
 
     try {
-      // For HTTP + OAuth servers, handle the auth flow
+      // For HTTP + OAuth servers, handle the auth flow via MSAL
       if (
         isMCPHttpConfig(conn.config) &&
         conn.config.auth?.method === "oauth"
       ) {
-        return await connectWithOAuth(name, conn);
+        return await connectWithMsal(name, conn);
       }
 
       // Standard connection (stdio or unauthenticated HTTP)
@@ -129,11 +129,17 @@ export function createMCPClientManager() {
   }
 
   /**
-   * Connect to an HTTP server with OAuth authentication.
-   * Handles the full browser-based auth flow including
-   * UnauthorizedError retry.
+   * Connect to an HTTP server using MSAL for OAuth authentication.
+   *
+   * MSAL handles both browser (PKCE, ephemeral loopback) and device-code
+   * flows, plus silent token refresh via its internal cache. We eagerly
+   * acquire a token before connecting so the MCP SDK transport gets a
+   * valid Bearer token on the first request.
+   *
+   * If there's already a valid cached token, acquireMsalToken() returns
+   * it silently — no browser or device-code prompt.
    */
-  async function connectWithOAuth(
+  async function connectWithMsal(
     name: string,
     conn: MCPConnection,
   ): Promise<MCPConnection> {
@@ -141,26 +147,45 @@ export function createMCPClientManager() {
     const authConfig = httpConfig.auth!;
 
     if (authConfig.method !== "oauth") {
-      throw new Error(`[mcp] connectWithOAuth called with non-oauth method`);
+      throw new Error(`[mcp] connectWithMsal called with non-oauth method`);
     }
 
-    // Check if we can do interactive auth
-    const hasCached = hasCachedTokens(name);
     const isInteractive = process.stdin.isTTY === true;
-
-    if (!hasCached && !isInteractive) {
-      throw new Error(
-        `[mcp] OAuth authentication required for "${name}" but no cached ` +
-          `tokens found and no interactive terminal available.\n` +
-          `  Run HyperAgent interactively first to authenticate:\n` +
-          `    npx tsx src/agent/index.ts\n` +
-          `    /mcp enable ${name}`,
-      );
+    if (!isInteractive) {
+      // In non-interactive mode, we can only succeed if MSAL has a
+      // cached token to refresh silently. Check for the cache file
+      // first — if it doesn't exist, fail fast with a clear message
+      // instead of letting MSAL hang trying to do interactive auth.
+      if (!hasMsalCache(name)) {
+        throw new Error(
+          `[mcp] OAuth authentication required for "${name}" but no cached ` +
+            `tokens found and no interactive terminal available.\n` +
+            `  Run HyperAgent interactively first to authenticate:\n` +
+            `    npx tsx src/agent/index.ts\n` +
+            `    /mcp enable ${name}`,
+        );
+      }
+      // Cache exists — try silent refresh.
+      try {
+        await acquireMsalToken(name, authConfig);
+      } catch {
+        throw new Error(
+          `[mcp] OAuth authentication required for "${name}" but cached ` +
+            `tokens could not be refreshed and no interactive terminal ` +
+            `available.\n` +
+            `  Run HyperAgent interactively first to re-authenticate:\n` +
+            `    npx tsx src/agent/index.ts\n` +
+            `    /mcp enable ${name}`,
+        );
+      }
+    } else {
+      // Interactive: acquire token eagerly (silent → browser/device-code).
+      await acquireMsalToken(name, authConfig);
+      console.error(`[mcp] ✅ Authentication successful.`);
     }
 
-    // Create the OAuth provider (loads cached tokens automatically)
-    const { provider, waitForAuthCallback, stopCallbackServer } =
-      createBrowserOAuthProvider(name, authConfig);
+    // Build a provider that serves cached tokens to the MCP transport.
+    const provider = createMsalOAuthProvider(name, authConfig);
 
     const url = new URL(httpConfig.url);
     const requestInit: RequestInit = {};
@@ -176,35 +201,7 @@ export function createMCPClientManager() {
       ...(cachedSessionId ? { sessionId: cachedSessionId } : {}),
     });
 
-    try {
-      // First attempt — may succeed with cached tokens
-      return await connectWithTransport(name, conn, transport);
-    } catch (err) {
-      // If it's not an auth error, or we can't do interactive, re-throw
-      if (!(err instanceof UnauthorizedError) || !isInteractive) {
-        stopCallbackServer();
-        throw err;
-      }
-
-      // Interactive OAuth flow — browser was opened by the provider's
-      // redirectToAuthorization(), now wait for the callback
-      console.error(`[mcp] 🔐 Waiting for browser authentication...`);
-
-      try {
-        const authCode = await waitForAuthCallback();
-        await transport.finishAuth(authCode);
-
-        console.error(`[mcp] ✅ Authentication successful — reconnecting...`);
-
-        // Retry connection with authenticated transport
-        return await connectWithTransport(name, conn, transport);
-      } catch (authErr) {
-        stopCallbackServer();
-        throw new Error(
-          `OAuth authentication failed: ${(authErr as Error).message}`,
-        );
-      }
-    }
+    return await connectWithTransport(name, conn, transport);
   }
 
   /**
@@ -442,7 +439,7 @@ function createTransport(config: MCPServerConfig, serverName?: string): any {
 /**
  * Create a StreamableHTTPClientTransport for an HTTP MCP server.
  * Used for unauthenticated HTTP servers and non-OAuth auth methods.
- * OAuth is handled separately in connectWithOAuth().
+ * OAuth is handled separately in connectWithMsal().
  */
 function createHttpTransport(
   config: MCPHttpServerConfig,

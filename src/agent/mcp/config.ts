@@ -315,18 +315,19 @@ function validateOAuthConfig(
     }
   }
 
-  if (obj.callbackPort !== undefined) {
-    if (
-      typeof obj.callbackPort !== "number" ||
-      !Number.isInteger(obj.callbackPort) ||
-      obj.callbackPort < 1 ||
-      obj.callbackPort > 65535
-    ) {
-      errors.push({
-        server: name,
-        message: '"auth.callbackPort" must be an integer between 1 and 65535.',
-      });
-    }
+  if (obj.redirectUri !== undefined && typeof obj.redirectUri !== "string") {
+    errors.push({
+      server: name,
+      message: '"auth.redirectUri" must be a string.',
+    });
+  }
+
+  if (obj.flow !== "browser" && obj.flow !== "device-code") {
+    errors.push({
+      server: name,
+      message:
+        '"auth.flow" is required and must be "browser" or "device-code".',
+    });
   }
 
   return errors;
@@ -512,11 +513,12 @@ function resolveAuthConfig(raw: Record<string, unknown>): MCPAuthConfig {
     case "oauth":
       return {
         method: "oauth",
+        flow: raw.flow as "browser" | "device-code",
         clientId: (raw.clientId as string).trim(),
         ...(raw.tenantId ? { tenantId: (raw.tenantId as string).trim() } : {}),
         ...(raw.scopes ? { scopes: raw.scopes as string[] } : {}),
-        ...(raw.callbackPort
-          ? { callbackPort: raw.callbackPort as number }
+        ...(raw.redirectUri
+          ? { redirectUri: (raw.redirectUri as string).trim() }
           : {}),
       };
 

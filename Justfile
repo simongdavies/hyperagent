@@ -830,11 +830,11 @@ mcp-setup-workiq:
 # Args:
 #   NAME           Config key (becomes the alias for /mcp enable <NAME>).
 #   URL            HTTPS endpoint of the MCP server.
-#   CLIENT_ID      Optional. If set, OAuth (browser+PKCE) is configured.
+#   CLIENT_ID      Optional. If set, OAuth is configured (and FLOW becomes required).
 #   TENANT_ID      Optional. Defaults to the auth-side default ('organizations').
 #   SCOPES         Optional, comma-separated. If empty + CLIENT_ID set,
 #                  defaults to '<URL-origin>/.default'.
-#   CALLBACK_PORT  Optional. Defaults to 8080.
+#   FLOW           REQUIRED when CLIENT_ID is set. "browser" or "device-code".
 #
 # Add an HTTP MCP server entry to ~/.hyperagent/config.json. Used by
 # `mcp-setup-m365` and intended for direct use when wiring custom HTTP
@@ -844,9 +844,9 @@ mcp-setup-workiq:
 #   just mcp-add-http example https://mcp.example.com/sse
 #   just mcp-add-http work-iq-mail \
 #       https://agent365.svc.cloud.microsoft/agents/servers/mcp_MailRemoteServer \
-#       <client-id> <tenant-id>
-mcp-add-http NAME URL CLIENT_ID="" TENANT_ID="" SCOPES="" CALLBACK_PORT="8080":
-    npx tsx scripts/mcp-add-http.ts "{{ NAME }}" "{{ URL }}" "{{ CLIENT_ID }}" "{{ TENANT_ID }}" "{{ SCOPES }}" "{{ CALLBACK_PORT }}"
+#       <client-id> <tenant-id> "" browser
+mcp-add-http NAME URL CLIENT_ID="" TENANT_ID="" SCOPES="" FLOW="":
+    npx tsx scripts/mcp-add-http.ts "{{ NAME }}" "{{ URL }}" "{{ CLIENT_ID }}" "{{ TENANT_ID }}" "{{ SCOPES }}" "{{ FLOW }}"
 
 # ── Microsoft 365 / Agent 365 HTTP MCP servers ───────────────────────
 #
@@ -861,7 +861,7 @@ mcp-add-http NAME URL CLIENT_ID="" TENANT_ID="" SCOPES="" CALLBACK_PORT="8080":
 #   2. just mcp-m365-setup                # writes one entry per M365 service
 #   3. just start → /plugin enable mcp → /mcp enable work-iq-<service>
 #
-# State lives at ~/.hyperagent/m365.json (clientId, tenantId, callbackPort).
+# State lives at ~/.hyperagent/m365.json (clientId, tenantId).
 # The server catalog (alias → mcp_* id mapping) lives at
 # scripts/m365-mcp-servers.json — refresh via `just mcp-m365-refresh-servers`.
 
@@ -891,8 +891,14 @@ mcp-m365-create-app *ARGS:
 #   TENANT_ID       Override Entra tenant id (used for OAuth authority)
 #   SCOPE_OVERRIDE  Optional: force a single scope for every server
 #                   (default: each server uses its catalogued scope)
-mcp-setup-m365 SERVICES="all" CLIENT_ID="" TENANT_ID="" SCOPE_OVERRIDE="":
-    npx tsx scripts/m365-setup.ts "{{ SERVICES }}" "{{ CLIENT_ID }}" "{{ TENANT_ID }}" "{{ SCOPE_OVERRIDE }}"
+#   FLOW            REQUIRED. "browser" or "device-code". Picks which
+#                   user-interaction OAuth flow gets baked into every
+#                   server entry. There is no default — different
+#                   environments (laptop vs SSH vs FOCI app) need
+#                   different flows so the recipe forces an explicit
+#                   choice.
+mcp-setup-m365 SERVICES="all" CLIENT_ID="" TENANT_ID="" SCOPE_OVERRIDE="" FLOW="":
+    npx tsx scripts/m365-setup.ts "{{ SERVICES }}" "{{ CLIENT_ID }}" "{{ TENANT_ID }}" "{{ SCOPE_OVERRIDE }}" "{{ FLOW }}"
 
 # Refresh scripts/m365-mcp-servers.json from the live Agent 365 catalog.
 # Existing alias→server-id mappings are preserved; new server ids appear

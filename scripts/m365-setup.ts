@@ -7,23 +7,24 @@
 // writer logic).
 //
 // Usage:
-//   tsx scripts/m365-setup.ts [services] [clientId] [tenantId] [scopeOverride]
+//   tsx scripts/m365-setup.ts [services] [clientId] [tenantId] [scopeOverride] <flow>
 //
 //   services         "all" (default), comma-separated alias list, or
 //                    "list" to print the catalog and exit.
 //   clientId         Override Entra app client id (else read from state)
 //   tenantId         Override Entra tenant id (else read from state)
 //   scopeOverride    Force a single scope for every server (testing)
+//   flow             REQUIRED. "browser" or "device-code".
+//                    No default — every config must explicitly choose.
 //
-// State file at ~/.hyperagent/m365.json supplies clientId/tenantId/
-// callbackPort when not overridden.
+// State file at ~/.hyperagent/m365.json supplies clientId/tenantId
+// when not overridden.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_CALLBACK_PORT = 8080;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const ALIAS_PREFIX = "work-iq-";
 
@@ -48,14 +49,13 @@ interface Catalog {
 interface SavedState {
   clientId?: string;
   tenantId?: string;
-  callbackPort?: number;
   appName?: string;
 }
 
 interface OAuthAuth {
   method: "oauth";
+  flow: "browser" | "device-code";
   clientId: string;
-  callbackPort: number;
   scopes: string[];
   tenantId?: string;
 }
@@ -124,7 +124,7 @@ function writeServerEntry(
   clientId: string,
   tenantId: string,
   scope: string,
-  callbackPort: number,
+  flow: "browser" | "device-code",
 ): void {
   if (!NAME_PATTERN.test(name)) {
     fail(`Invalid alias '${name}' — must match ${NAME_PATTERN}`);
@@ -152,15 +152,15 @@ function writeServerEntry(
     url,
     auth: {
       method: "oauth",
+      flow,
       clientId,
-      callbackPort,
       scopes: [scope],
       ...(tenantId ? { tenantId } : {}),
     },
   };
 
   writeFileSync(configFile, JSON.stringify(cfg, null, 2) + "\n");
-  console.log(`✅ Wrote mcpServers.${name} → ${url} (oauth)`);
+  console.log(`✅ Wrote mcpServers.${name} → ${url} (oauth/${flow})`);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
@@ -171,6 +171,7 @@ function main(): void {
     clientIdArg = "",
     tenantIdArg = "",
     scopeOverride = "",
+    flowArg = "",
   ] = process.argv.slice(2);
 
   const stateFile = join(homedir(), ".hyperagent", "m365.json");
@@ -182,6 +183,8 @@ function main(): void {
   const raw = (servicesArg || "all").trim().toLowerCase();
 
   // `list` / `--list` / `ls`: print catalog and exit (no config writes).
+  // Runs BEFORE flow validation so users can discover the catalog
+  // without having to pick a flow first.
   if (raw === "list" || raw === "--list" || raw === "ls") {
     console.log("Available M365 / Agent 365 MCP servers:\n");
     const sorted = [...known].sort();
@@ -191,12 +194,22 @@ function main(): void {
       console.log(`  ${alias.padEnd(aliasWidth)}  ${srv.scope}`);
     }
     console.log("");
-    console.log("Usage:");
-    console.log("  just mcp-setup-m365              # writes ALL servers");
-    console.log('  just mcp-setup-m365 "mail,planner"  # subset');
-    console.log("  just mcp-setup-m365 list         # this listing");
+    console.log("Usage (FLOW is required — browser or device-code):");
+    console.log('  just mcp-setup-m365 all "" "" "" browser');
+    console.log('  just mcp-setup-m365 "mail,planner" "" "" "" device-code');
+    console.log("  just mcp-setup-m365 list                          # this listing");
     return;
   }
+
+  // `flow` is mandatory for any path that writes config. Comes last
+  // positionally so earlier optional args can be left blank —
+  // `just mcp-setup-m365 ... "" "" "" device-code`.
+  if (flowArg !== "browser" && flowArg !== "device-code") {
+    fail(
+      `flow is required and must be "browser" or "device-code" (got: "${flowArg}")`,
+    );
+  }
+  const flow = flowArg as "browser" | "device-code";
 
   const selected =
     raw === "" || raw === "all"
@@ -212,10 +225,9 @@ function main(): void {
     process.exit(1);
   }
 
-  // Resolve client/tenant/callbackPort from args ⊕ state file.
+  // Resolve client/tenant from args ⊕ state file.
   let clientId = clientIdArg;
   let tenantId = tenantIdArg;
-  let callbackPort = DEFAULT_CALLBACK_PORT;
 
   if (!clientId || !tenantId) {
     const state = readJson<SavedState>(stateFile);
@@ -229,7 +241,6 @@ function main(): void {
     }
     clientId = clientId || state.clientId || "";
     tenantId = tenantId || state.tenantId || "";
-    callbackPort = state.callbackPort || DEFAULT_CALLBACK_PORT;
     console.log(`▸ Using saved app from ${stateFile}`);
   }
 
@@ -239,8 +250,8 @@ function main(): void {
 
   console.log(`▸ clientId:     ${clientId}`);
   console.log(`▸ tenantId:     ${tenantId}`);
-  console.log(`▸ callbackPort: ${callbackPort}`);
   console.log(`▸ services:     ${servicesArg}`);
+  console.log(`▸ flow:         ${flow}`);
   if (scopeOverride) {
     console.log(`▸ scope (override): ${scopeOverride}`);
   }
@@ -269,7 +280,7 @@ function main(): void {
       clientId,
       tenantId,
       scope,
-      callbackPort,
+      flow,
     );
     count += 1;
   }
@@ -282,7 +293,11 @@ function main(): void {
   console.log("     /plugin enable mcp");
   console.log("     /mcp enable work-iq-<service>");
   console.log("");
-  console.log("   First enable opens a browser for Microsoft sign-in.");
+  console.log(
+    flow === "device-code"
+      ? "   First enable shows a device code + URL to enter on any browser."
+      : "   First enable opens a browser for Microsoft sign-in.",
+  );
   console.log("   Tokens cached in ~/.hyperagent/mcp-tokens/");
 }
 

@@ -157,10 +157,10 @@ describe("parseMCPConfig", () => {
         url: "https://agent365.svc.cloud.microsoft/mcp",
         auth: {
           method: "oauth",
+          flow: "browser",
           clientId: "18f4deab-76fc-406d-b9d8-3cc0377fa30d",
           tenantId: "9c23c1e3-15be-4744-a3d7-027089c33654",
           scopes: ["Mail.Read"],
-          callbackPort: 8080,
         },
       },
     });
@@ -178,7 +178,6 @@ describe("parseMCPConfig", () => {
         "9c23c1e3-15be-4744-a3d7-027089c33654",
       );
       expect(server.auth!.scopes).toEqual(["Mail.Read"]);
-      expect(server.auth!.callbackPort).toBe(8080);
     }
   });
 
@@ -310,21 +309,70 @@ describe("parseMCPConfig", () => {
       "no-client-id": {
         type: "http",
         url: "https://example.com/mcp",
-        auth: { method: "oauth" },
+        auth: { method: "oauth", flow: "browser" },
       },
     });
     expect(errors.some((e) => e.message.includes("auth.clientId"))).toBe(true);
   });
 
-  it("rejects OAuth auth with invalid callbackPort", () => {
+  it("rejects OAuth auth missing flow", () => {
     const { errors } = parseMCPConfig({
-      "bad-port": {
+      "no-flow": {
         type: "http",
         url: "https://example.com/mcp",
-        auth: { method: "oauth", clientId: "abc", callbackPort: 99999 },
+        auth: { method: "oauth", clientId: "abc" },
       },
     });
-    expect(errors.some((e) => e.message.includes("callbackPort"))).toBe(true);
+    expect(errors.some((e) => e.message.includes("auth.flow"))).toBe(true);
+  });
+
+  it("rejects OAuth auth with invalid flow", () => {
+    const { errors } = parseMCPConfig({
+      "bad-flow": {
+        type: "http",
+        url: "https://example.com/mcp",
+        auth: { method: "oauth", flow: "magic", clientId: "abc" },
+      },
+    });
+    expect(errors.some((e) => e.message.includes("auth.flow"))).toBe(true);
+  });
+
+  it("accepts OAuth auth with device-code flow", () => {
+    const { config, errors } = parseMCPConfig({
+      "dc-server": {
+        type: "http",
+        url: "https://example.com/mcp",
+        auth: {
+          method: "oauth",
+          flow: "device-code",
+          clientId: "abc",
+          tenantId: "tid",
+          scopes: ["Mail.Read"],
+        },
+      },
+    });
+    expect(errors).toHaveLength(0);
+    const server = config.servers.get("dc-server") as MCPHttpServerConfig;
+    expect(server.auth!.method).toBe("oauth");
+    if (server.auth!.method === "oauth") {
+      expect(server.auth!.flow).toBe("device-code");
+    }
+  });
+
+  it("rejects OAuth auth with invalid redirectUri", () => {
+    const { errors } = parseMCPConfig({
+      "bad-redirect": {
+        type: "http",
+        url: "https://example.com/mcp",
+        auth: {
+          method: "oauth",
+          flow: "browser",
+          clientId: "abc",
+          redirectUri: 12345,
+        },
+      },
+    });
+    expect(errors.some((e) => e.message.includes("redirectUri"))).toBe(true);
   });
 
   it("rejects client-credentials auth missing required fields", () => {
@@ -348,7 +396,7 @@ describe("parseMCPConfig", () => {
       "remote-mail": {
         type: "http",
         url: "https://agent365.svc.cloud.microsoft/mcp",
-        auth: { method: "oauth", clientId: "abc" },
+        auth: { method: "oauth", flow: "browser", clientId: "abc" },
       },
     });
 
@@ -455,7 +503,11 @@ describe("computeMCPConfigHash", () => {
     const hash1 = computeMCPConfigHash("test", {
       type: "http" as const,
       url: "https://example.com/mcp",
-      auth: { method: "oauth" as const, clientId: "abc" },
+      auth: {
+        method: "oauth" as const,
+        flow: "browser" as const,
+        clientId: "abc",
+      },
     });
     const hash2 = computeMCPConfigHash("test", {
       type: "http" as const,
@@ -469,12 +521,20 @@ describe("computeMCPConfigHash", () => {
     const hash1 = computeMCPConfigHash("test", {
       type: "http" as const,
       url: "https://example.com/mcp",
-      auth: { method: "oauth" as const, clientId: "abc" },
+      auth: {
+        method: "oauth" as const,
+        flow: "browser" as const,
+        clientId: "abc",
+      },
     });
     const hash2 = computeMCPConfigHash("test", {
       type: "http" as const,
       url: "https://example.com/mcp",
-      auth: { method: "oauth" as const, clientId: "xyz" },
+      auth: {
+        method: "oauth" as const,
+        flow: "browser" as const,
+        clientId: "xyz",
+      },
     });
     expect(hash1).not.toBe(hash2);
   });
@@ -602,7 +662,7 @@ describe("createMCPClientManager — HTTP transport", () => {
     manager.registerServer("oauth-headless", {
       type: "http",
       url: "https://localhost:19999/mcp",
-      auth: { method: "oauth", clientId: "test-id" },
+      auth: { method: "oauth", flow: "browser", clientId: "test-id" },
     });
 
     await expect(manager.connect("oauth-headless")).rejects.toThrow(
@@ -721,28 +781,19 @@ describe("token cache", () => {
   });
 });
 
-// ── Browser OAuth provider ───────────────────────────────────────────
+// ── MSAL OAuth provider ──────────────────────────────────────────────
 
-import { createBrowserOAuthProvider } from "../src/agent/mcp/auth/browser-oauth.js";
+import { createMsalOAuthProvider } from "../src/agent/mcp/auth/msal-oauth.js";
 import { afterEach } from "vitest";
 
-describe("createBrowserOAuthProvider", () => {
-  const testServer = `test-oauth-${Date.now()}`;
-
-  afterEach(() => {
-    deleteCachedTokens(testServer);
-  });
-
-  it("creates a provider with correct client metadata", () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-client-id",
-        scopes: ["Mail.Read", "Calendar.Read"],
-        callbackPort: 9999,
-      },
-    );
+describe("createMsalOAuthProvider", () => {
+  it("returns correct client metadata and information", () => {
+    const provider = createMsalOAuthProvider("test-msal", {
+      method: "oauth",
+      flow: "browser",
+      clientId: "test-client-id",
+      scopes: ["Mail.Read", "Calendar.Read"],
+    });
 
     const metadata = provider.clientMetadata;
     expect(metadata.client_name).toBe("HyperAgent");
@@ -750,119 +801,53 @@ describe("createBrowserOAuthProvider", () => {
     expect(metadata.grant_types).toContain("refresh_token");
     expect(metadata.scope).toBe("Mail.Read Calendar.Read");
 
-    const redirectUrl = provider.redirectUrl;
-    expect(redirectUrl).toBeDefined();
-    expect(redirectUrl!.toString()).toContain("localhost:9999");
-
-    stopCallbackServer();
+    // MSAL handles redirects internally; provider returns OOB urn.
+    expect(String(provider.redirectUrl)).toBe("urn:ietf:wg:oauth:2.0:oob");
   });
 
   it("returns static client information", async () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "my-app-id",
-      },
-    );
+    const provider = createMsalOAuthProvider("test-msal-info", {
+      method: "oauth",
+      flow: "browser",
+      clientId: "my-app-id",
+    });
 
     const info = await provider.clientInformation();
     expect(info).toBeDefined();
     expect(info!.client_id).toBe("my-app-id");
-
-    stopCallbackServer();
   });
 
-  it("stores and retrieves code verifier", () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-id",
-      },
-    );
-
-    provider.saveCodeVerifier("test-verifier-123");
-    expect(provider.codeVerifier()).toBe("test-verifier-123");
-
-    stopCallbackServer();
-  });
-
-  it("saves and loads tokens via cache", async () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-id",
-      },
-    );
-
-    // Initially no tokens
-    expect(await provider.tokens()).toBeUndefined();
-
-    // Save tokens
-    provider.saveTokens({
-      access_token: "cached-access",
-      token_type: "Bearer",
-      refresh_token: "cached-refresh",
+  it("tokens() returns undefined when no MSAL cache exists", async () => {
+    const provider = createMsalOAuthProvider(`test-msal-empty-${Date.now()}`, {
+      method: "oauth",
+      flow: "browser",
+      clientId: "test-id",
     });
 
-    // Should load from cache
-    const loaded = await provider.tokens();
-    expect(loaded).toBeDefined();
-    expect(loaded!.access_token).toBe("cached-access");
-
-    stopCallbackServer();
-  });
-
-  it("invalidateCredentials clears tokens", async () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-id",
-      },
-    );
-
-    provider.saveTokens({
-      access_token: "to-be-cleared",
-      token_type: "Bearer",
-    });
-    expect(await provider.tokens()).toBeDefined();
-
-    provider.invalidateCredentials!("tokens");
-    expect(await provider.tokens()).toBeUndefined();
-
-    stopCallbackServer();
-  });
-
-  it("uses default callback port when not specified", () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-id",
-      },
-    );
-
-    const redirectUrl = provider.redirectUrl;
-    expect(redirectUrl!.toString()).toContain("localhost:8080");
-
-    stopCallbackServer();
+    // No accounts in cache → silent acquisition returns undefined.
+    const tokens = await provider.tokens();
+    expect(tokens).toBeUndefined();
   });
 
   it("omits scope when not configured", () => {
-    const { provider, stopCallbackServer } = createBrowserOAuthProvider(
-      testServer,
-      {
-        method: "oauth",
-        clientId: "test-id",
-      },
-    );
+    const provider = createMsalOAuthProvider("test-msal-noscope", {
+      method: "oauth",
+      flow: "device-code",
+      clientId: "test-id",
+    });
 
     expect(provider.clientMetadata.scope).toBeUndefined();
+  });
 
-    stopCallbackServer();
+  it("codeVerifier stubs return empty string (MSAL handles PKCE)", () => {
+    const provider = createMsalOAuthProvider("test-msal-pkce", {
+      method: "oauth",
+      flow: "browser",
+      clientId: "test-id",
+    });
+
+    provider.saveCodeVerifier("whatever");
+    expect(provider.codeVerifier()).toBe("");
   });
 });
 
