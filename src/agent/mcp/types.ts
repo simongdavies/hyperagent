@@ -275,7 +275,7 @@ export type MCPApprovalStore = Record<string, MCPApprovalRecord>;
 // ── Constants ────────────────────────────────────────────────────────
 
 /** Maximum number of configured MCP servers. */
-export const MAX_MCP_SERVERS = 20;
+export const MAX_MCP_SERVERS = 50;
 
 /** Maximum concurrent MCP connections. */
 export const MAX_MCP_CONNECTIONS = 5;
