@@ -168,16 +168,25 @@ async function tryAcquireSilent(
 
 // ── Browser flow helpers ─────────────────────────────────────────────
 
-/** Open a URL in the system browser (best-effort, fire-and-forget). */
+/**
+ * Open a URL in the system browser (best-effort).
+ *
+ * Always prints the URL to stderr so the user can copy/paste if the
+ * browser doesn't open (e.g. headless distro, SSH, no xdg-open).
+ */
 function openBrowser(url: string): void {
+  console.error(`[mcp]    If the browser doesn't open, visit:`);
+  console.error(`[mcp]    ${url}`);
+
   const cmd =
     process.platform === "darwin"
       ? `open "${url}"`
       : process.platform === "win32"
         ? `start "" "${url}"`
         : `xdg-open "${url}"`;
+
   exec(cmd, { timeout: 10_000 }, () => {
-    // ignore errors — user can copy/paste if browser launch fails
+    // ignore errors — URL is printed above for manual use
   });
 }
 

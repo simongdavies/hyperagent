@@ -257,10 +257,20 @@ function main(): void {
   }
   console.log("");
 
+  // The Agent 365 resource app id. Per-server scopes (e.g.
+  // McpServers.MailTools.All) are not fully qualified — MSAL doesn't
+  // know which resource they belong to and falls back to Graph, which
+  // breaks with FOCI apps like the VS Code client. Using
+  // {resourceId}/.default requests all pre-consented scopes for the
+  // Agent 365 resource in one shot, matching what a365cli does.
+  const defaultScope = catalog.resourceId
+    ? `${catalog.resourceId}/.default`
+    : undefined;
+
   let count = 0;
   for (const s of selected) {
     const srv = catalog.servers[s];
-    const scope = scopeOverride || srv.scope;
+    const scope = scopeOverride || defaultScope || srv.scope;
     if (!srv.url || !scope) {
       fail(`Catalog entry for ${s} missing url or scope`);
     }
