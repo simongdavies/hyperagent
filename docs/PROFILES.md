@@ -2,9 +2,16 @@
 
 Profiles bundle resource limits and plugin requirements into named presets. They simplify configuration for common use cases.
 
+There are two ways profiles are used:
+
+- CLI `--profile` applies CPU, wall-clock, heap, and scratch limits at startup.
+- `/profile apply` and the `apply_profile` tool apply resource limits and request the profile's plugin requirements.
+
 ## Using Profiles
 
 ### Via CLI
+
+CLI profiles are useful when a run needs larger heap, scratch space, or timeouts from the start. They do not silently enable plugins, and input/output buffer profile limits are only applied through `/profile apply`, `apply_profile`, or runtime configuration.
 
 ```bash
 # Single profile
@@ -20,10 +27,10 @@ hyperagent --profile file-builder --skill pptx-expert
 ### Via Slash Command
 
 ```
-You: /profile file-builder
-  📦 Applied profile: file-builder
-     Heap: 64MB, CPU: 3000ms, Wall: 10s
-     Plugins: fs-write
+You: /profile apply file-builder
+  Applied profile: file-builder
+  Heap: 128MB, CPU: 15000ms, Wall: 60s
+  Plugins: fs-write
 ```
 
 ### Via Tool
@@ -31,21 +38,21 @@ You: /profile file-builder
 The LLM can apply profiles:
 
 ```
-LLM calls apply_profile({ name: "web-research" })
+LLM calls apply_profile({ profiles: "web-research" })
 ```
 
 ## Built-in Profiles
 
-| Profile | Heap | CPU | Wall | Plugins | Use Case |
-|---------|------|-----|------|---------|----------|
-| `default` | 16MB | 1000ms | 5s | — | Math, algorithms, data transforms |
-| `file-builder` | 64MB | 3000ms | 10s | fs-write | ZIP, PPTX, CSV, image generation |
-| `web-research` | 32MB | 2000ms | 30s | fetch, fs-write | API calls, web scraping, pipelines |
-| `heavy-compute` | 64MB | 10000ms | 15s | — | Large datasets, crypto, simulations |
+| Profile         | Heap  | CPU     | Wall | Plugins         | Use Case                            |
+| --------------- | ----- | ------- | ---- | --------------- | ----------------------------------- |
+| `default`       | 16MB  | 1000ms  | 5s   | --              | Math, algorithms, data transforms   |
+| `file-builder`  | 128MB | 15000ms | 60s  | fs-write        | ZIP, PPTX, PDF, CSV, images         |
+| `web-research`  | 64MB  | 2000ms  | 120s | fetch, fs-write | API calls, web scraping, pipelines  |
+| `heavy-compute` | 64MB  | 10000ms | 15s  | --              | Large datasets, crypto, simulations |
 
 ## Profile Stacking
 
-When multiple profiles are applied, settings are combined:
+When multiple profiles are applied with `/profile apply` or `apply_profile`, settings are combined:
 
 - **Resource limits**: Maximum of each limit
 - **Plugins**: Union of all plugins
@@ -53,13 +60,14 @@ When multiple profiles are applied, settings are combined:
 ### Example
 
 ```bash
-hyperagent --profile "web-research heavy-compute"
+/profile apply web-research heavy-compute
 ```
 
 Results in:
-- Heap: 64MB (max of 32MB and 64MB)
+
+- Heap: 64MB (max of 64MB and 64MB)
 - CPU: 10000ms (max of 2000ms and 10000ms)
-- Wall: 30s (max of 30s and 15s)
+- Wall: 120s (max of 120s and 15s)
 - Plugins: fetch, fs-write
 
 ## Resource Limits
@@ -67,7 +75,9 @@ Results in:
 ### CPU Timeout
 
 Maximum CPU time per handler execution:
+
 - `default`: 1000ms (1 second)
+- `file-builder`: 15000ms (15 seconds)
 - `heavy-compute`: 10000ms (10 seconds)
 
 Override: `--cpu-timeout <ms>` or `/timeout cpu <ms>`
@@ -75,23 +85,30 @@ Override: `--cpu-timeout <ms>` or `/timeout cpu <ms>`
 ### Wall Timeout
 
 Maximum wall-clock time per execution:
+
 - `default`: 5000ms (5 seconds)
-- `web-research`: 30000ms (30 seconds)
+- `file-builder`: 60000ms (60 seconds)
+- `web-research`: 120000ms (120 seconds)
 
 Override: `--wall-timeout <ms>` or `/timeout wall <ms>`
 
 ### Heap Size
 
 Maximum JavaScript heap:
+
 - `default`: 16MB
-- `file-builder`: 64MB
+- `file-builder`: 128MB
+- `web-research`: 64MB
 
 Override: `--heap-size <MB>`
 
 ### Scratch Size
 
 Scratch space (includes stack):
+
 - `default`: 16MB
+- `file-builder`: 128MB
+- `web-research`: 64MB
 
 Override: `--scratch-size <MB>`
 
@@ -99,12 +116,13 @@ Override: `--scratch-size <MB>`
 
 Profiles can require plugins:
 
-| Profile | Required Plugins |
-|---------|-----------------|
-| `file-builder` | fs-write |
-| `web-research` | fetch, fs-write |
+| Profile        | Required Plugins |
+| -------------- | ---------------- |
+| `file-builder` | fs-write         |
+| `web-research` | fetch, fs-write  |
 
-When a profile is applied:
+When a profile is applied with `/profile apply` or `apply_profile`:
+
 1. Required plugins are enabled if not already
 2. Plugin configuration may be prompted
 3. Approved plugins skip audit
@@ -114,6 +132,7 @@ When a profile is applied:
 ### Default (No Profile)
 
 For pure computation:
+
 - Mathematical calculations
 - Algorithm implementation
 - Data transformation (in memory)
@@ -122,6 +141,7 @@ For pure computation:
 ### file-builder
 
 For generating files:
+
 - ZIP archives
 - PowerPoint presentations
 - CSV/JSON exports
@@ -130,6 +150,7 @@ For generating files:
 ### web-research
 
 For accessing external data:
+
 - API calls
 - Web scraping
 - Data pipelines
@@ -138,6 +159,7 @@ For accessing external data:
 ### heavy-compute
 
 For intensive calculations:
+
 - Large datasets
 - Cryptographic operations
 - Simulations
@@ -148,10 +170,10 @@ For intensive calculations:
 Profiles provide resources, skills provide knowledge:
 
 ```bash
-# Build presentations: need file access + PPTX knowledge
+# Build presentations: start with file-building limits + PPTX knowledge
 hyperagent --profile file-builder --skill pptx-expert
 
-# Web scraping: need network + scraping techniques
+# Web scraping: start with web-research limits + scraping techniques
 hyperagent --profile web-research --skill web-scraper
 ```
 
@@ -179,11 +201,11 @@ Runtime adjustments:
 
 ## Profile vs Manual Configuration
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| Profile | Quick, tested combinations | Less flexible |
-| Manual | Fine-grained control | More typing |
-| Stacked | Best of multiple profiles | Can be overkill |
+| Approach | Pros                       | Cons            |
+| -------- | -------------------------- | --------------- |
+| Profile  | Quick, tested combinations | Less flexible   |
+| Manual   | Fine-grained control       | More typing     |
+| Stacked  | Best of multiple profiles  | Can be overkill |
 
 ## Implementation Details
 
@@ -195,13 +217,13 @@ const profiles: Record<string, Profile> = {
     heapSize: 16,
     cpuTimeout: 1000,
     wallTimeout: 5000,
-    plugins: []
+    plugins: [],
   },
   "file-builder": {
-    heapSize: 64,
-    cpuTimeout: 3000,
-    wallTimeout: 10000,
-    plugins: ["fs-write"]
+    heapSize: 128,
+    cpuTimeout: 15000,
+    wallTimeout: 60000,
+    plugins: ["fs-write"],
   },
   // ...
 };

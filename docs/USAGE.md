@@ -4,57 +4,65 @@ Complete reference for HyperAgent configuration, features, and commands.
 
 ## CLI Flags
 
-| Flag                         | Description                                                          |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `--model <name>`             | LLM model (default: `claude-opus-4.6`)                               |
-| `--cpu-timeout <ms>`         | CPU time limit per JS execution (default: 1000)                      |
-| `--wall-timeout <ms>`        | Wall-clock backstop per execution (default: 5000)                    |
-| `--send-timeout <ms>`        | Agent inactivity timeout (default: 300000)                           |
-| `--heap-size <MB>`           | Guest heap size (default: 16)                                        |
-| `--scratch-size <MB>`        | Guest scratch size, includes stack (default: 16)                     |
-| `--profile <name>`           | Apply resource profile at startup (stackable)                        |
-| `--skill <name>`             | Invoke skill(s) before the prompt                                    |
-| `--auto-approve`             | Auto-approve all interactive prompts                                 |
-| `--prompt "<text>"`          | Non-interactive: send prompt, wait for completion, exit              |
-| `--show-code`                | Log generated JS to a timestamped file                               |
-| `--show-timing`              | Log timing breakdown to a timestamped file                           |
-| `--show-reasoning [level]`   | Set reasoning effort (low\|medium\|high\|xhigh, default: high)       |
-| `--verbose`                  | Verbose output mode (scrolling reasoning, turn details)              |
-| `--transcript`               | Record session transcript to `~/.hyperagent/logs/`                   |
-| `--tune`                     | Capture LLM decision/reasoning logs to JSONL                         |
-| `--plugins-dir <path>`       | Custom plugins directory (default: `./plugins`)                      |
-| `--list-models`              | List available models and exit                                       |
-| `--resume [id]`              | Resume a previous session (latest if no ID given)                    |
-| `--debug`                    | Enable debug event/lifecycle logging                                 |
-| `--version`                  | Show version and exit                                                |
-| `--help`                     | Show help message                                                    |
+| Flag                       | Description                                                    |
+| -------------------------- | -------------------------------------------------------------- |
+| `--model <name>`           | LLM model (default: `claude-opus-4.6`)                         |
+| `--cpu-timeout <ms>`       | CPU time limit per JS execution (default: 1000)                |
+| `--wall-timeout <ms>`      | Wall-clock backstop per execution (default: 5000)              |
+| `--send-timeout <ms>`      | Agent inactivity timeout (default: 300000)                     |
+| `--heap-size <MB>`         | Guest heap size (default: 16)                                  |
+| `--scratch-size <MB>`      | Guest scratch size, includes stack (default: 16)               |
+| `--profile <name>`         | Apply resource profile at startup (stackable)                  |
+| `--skill <name>`           | Invoke skill(s) before the prompt                              |
+| `--auto-approve`           | Auto-approve all interactive prompts                           |
+| `--prompt "<text>"`        | Non-interactive: send prompt, wait for completion, exit        |
+| `--prompt-file <path>`     | Read the non-interactive prompt from a file                    |
+| `--show-code`              | Log generated JS to a timestamped file                         |
+| `--show-timing`            | Log timing breakdown to a timestamped file                     |
+| `--show-reasoning [level]` | Set reasoning effort (low\|medium\|high\|xhigh, default: high) |
+| `--verbose`                | Verbose output mode (scrolling reasoning, turn details)        |
+| `--transcript`             | Record session transcript to `~/.hyperagent/logs/`             |
+| `--tune`                   | Capture LLM decision/reasoning logs to JSONL                   |
+| `--plugins-dir <path>`     | Custom plugins directory (default: `./plugins`)                |
+| `--list-models`            | List available models and exit                                 |
+| `--resume [id]`            | Resume a previous session (latest if no ID given)              |
+| `--skip-suggest`           | Disable command suggestions after LLM responses                |
+| `--output-threshold <n>`   | Large output threshold in bytes (default: 20480)               |
+| `--debug`                  | Enable debug event/lifecycle logging                           |
+| `--version`                | Show version and exit                                          |
+| `--help`                   | Show help message                                              |
 
 ## Environment Variables
 
 All configuration is also available via environment variables (overridden by CLI flags):
 
-| Variable                      | Default             | Description                                    |
-| ----------------------------- | ------------------- | ---------------------------------------------- |
-| `COPILOT_MODEL`               | `claude-opus-4.6`   | Model name for the Copilot SDK session         |
-| `HYPERLIGHT_CPU_TIMEOUT_MS`   | `1000`              | Max CPU time per JS execution (ms)             |
-| `HYPERLIGHT_WALL_TIMEOUT_MS`  | `5000`              | Max wall-clock time per execution (ms)         |
-| `HYPERAGENT_SEND_TIMEOUT_MS`  | `300000`            | Agent inactivity timeout (ms)                  |
-| `HYPERLIGHT_HEAP_SIZE_MB`     | `16`                | Guest heap size (megabytes)                    |
-| `HYPERLIGHT_SCRATCH_SIZE_MB`  | `16`                | Guest scratch size, includes stack (megabytes) |
-| `HYPERLIGHT_INPUT_BUFFER_KB`  | `64`                | Input buffer size (kilobytes)                  |
-| `HYPERLIGHT_OUTPUT_BUFFER_KB` | `64`                | Output buffer size (kilobytes)                 |
-| `HYPERAGENT_PROFILE`          | _(none)_            | Profile name(s) to apply at startup            |
-| `HYPERAGENT_AUTO_APPROVE`     | _(none)_            | Set to `1` for auto-approve mode               |
-| `HYPERAGENT_PROMPT`           | _(none)_            | Non-interactive prompt text                    |
-| `HYPERAGENT_SKILL`            | _(none)_            | Skill name(s) to invoke                        |
-| `HYPERAGENT_TUNE`             | _(none)_            | Set to `1` to capture LLM decision logs        |
-| `HYPERAGENT_SHOW_REASONING`   | _(none)_            | Reasoning effort level (low/medium/high/xhigh) |
-| `HYPERAGENT_VERBOSE`          | _(none)_            | Set to `1` for verbose output mode             |
-| `HYPERAGENT_PLUGINS_DIR`      | _(none)_            | Custom plugins directory path                  |
-| `HYPERAGENT_TIMING_LOG`       | _(none)_            | Path to timing log file (default: `~/.hyperagent/logs/`)  |
-| `HYPERAGENT_CODE_LOG`         | _(none)_            | Path to code log file (default: `~/.hyperagent/logs/`)    |
-| `HYPERAGENT_TRANSCRIPT`       | _(none)_            | Set to `1` to record session transcript        |
-| `HYPERAGENT_DEBUG`            | _(none)_            | Set to `1` for debug logging to `~/.hyperagent/logs/`   |
+| Variable                            | Default           | Description                                              |
+| ----------------------------------- | ----------------- | -------------------------------------------------------- |
+| `COPILOT_MODEL`                     | `claude-opus-4.6` | Model name for the Copilot SDK session                   |
+| `HYPERLIGHT_CPU_TIMEOUT_MS`         | `1000`            | Max CPU time per JS execution (ms)                       |
+| `HYPERLIGHT_WALL_TIMEOUT_MS`        | `5000`            | Max wall-clock time per execution (ms)                   |
+| `HYPERAGENT_SEND_TIMEOUT_MS`        | `300000`          | Agent inactivity timeout (ms)                            |
+| `HYPERLIGHT_HEAP_SIZE_MB`           | `16`              | Guest heap size (megabytes)                              |
+| `HYPERLIGHT_SCRATCH_SIZE_MB`        | `16`              | Guest scratch size, includes stack (megabytes)           |
+| `HYPERLIGHT_INPUT_BUFFER_KB`        | `64`              | Input buffer size (kilobytes)                            |
+| `HYPERLIGHT_OUTPUT_BUFFER_KB`       | `64`              | Output buffer size (kilobytes)                           |
+| `HYPERAGENT_PROFILE`                | _(none)_          | Profile name(s) to apply at startup                      |
+| `HYPERAGENT_AUTO_APPROVE`           | _(none)_          | Set to `1` for auto-approve mode                         |
+| `HYPERAGENT_PROMPT`                 | _(none)_          | Non-interactive prompt text                              |
+| `HYPERAGENT_PROMPT_FILE`            | _(none)_          | File containing the non-interactive prompt               |
+| `HYPERAGENT_SKILL`                  | _(none)_          | Skill name(s) to invoke                                  |
+| `HYPERAGENT_TUNE`                   | _(none)_          | Set to `1` to capture LLM decision logs                  |
+| `HYPERAGENT_SHOW_REASONING`         | _(none)_          | Reasoning effort level (low/medium/high/xhigh)           |
+| `HYPERAGENT_VERBOSE`                | _(none)_          | Set to `1` for verbose output mode                       |
+| `HYPERAGENT_LIST_MODELS`            | _(none)_          | Set to `1` to list models and exit                       |
+| `HYPERAGENT_RESUME_SESSION`         | _(none)_          | Session ID to resume, or `__last__` for latest           |
+| `HYPERAGENT_PLUGINS_DIR`            | _(none)_          | Custom plugins directory path                            |
+| `HYPERAGENT_SKIP_SUGGEST`           | _(none)_          | Set to `1` to disable command suggestions                |
+| `HYPERAGENT_OUTPUT_THRESHOLD_BYTES` | `20480`           | Large output threshold in bytes                          |
+| `HYPERAGENT_TIMING_LOG`             | _(none)_          | Path to timing log file (default: `~/.hyperagent/logs/`) |
+| `HYPERAGENT_CODE_LOG`               | _(none)_          | Path to code log file (default: `~/.hyperagent/logs/`)   |
+| `HYPERAGENT_TRANSCRIPT`             | _(none)_          | Set to `1` to record session transcript                  |
+| `HYPERAGENT_DEBUG`                  | _(none)_          | Set to `1` for debug logging to `~/.hyperagent/logs/`    |
 
 Example:
 
@@ -90,6 +98,10 @@ Toggle options at runtime without restarting. Type `/` and press Tab for complet
 | `/plugin approve <name>`      | Approve a plugin (persists until source changes or unapproved)  |
 | `/plugin unapprove <name>`    | Remove plugin approval                                          |
 | `/plugin audit <name>`        | Force re-audit a plugin (after source changes)                  |
+| `/profile list`               | List available resource profiles                                |
+| `/profile apply <name> ...`   | Apply profile limits and request required plugins               |
+| `/mcp list`                   | List configured MCP servers                                     |
+| `/mcp enable <name>`          | Approve and connect an MCP server                               |
 | `/config`                     | Show current configuration (model, timeouts, buffers, plugins)  |
 | `/help`                       | List available commands                                         |
 | `/exit`                       | Exit the agent (or just type `exit`)                            |
@@ -99,43 +111,48 @@ Toggle options at runtime without restarting. Type `/` and press Tab for complet
 The agent registers custom tools that the LLM can call. All SDK built-in tools
 (bash, grep, edit, etc.) are **blocked** by the tool gating layer.
 
-| Tool                    | Purpose                                                            |
-| ----------------------- | ------------------------------------------------------------------ |
-| `register_handler`      | Register named JavaScript handler code in the sandbox              |
-| `execute_javascript`    | Execute a registered handler with optional event data              |
-| `delete_handler`        | Remove a handler from the sandbox                                  |
-| `reset_sandbox`         | Clear sandbox state, keep handlers registered                      |
-| `configure_sandbox`     | Change resource limits at runtime (heap, scratch, timeouts, buffers) |
-| `register_module`       | Create a reusable ES module (persisted to `~/.hyperagent/modules/`) |
-| `list_modules`          | List available modules (system + user)                             |
-| `module_info`           | Get module exports, JSDoc, and metadata                            |
-| `delete_module`         | Delete a user-created module                                       |
-| `manage_plugin`         | Enable/disable plugins with configuration                          |
-| `list_plugins`          | Discover available plugins                                         |
-| `plugin_info`           | Detailed plugin information and config schema                      |
-| `apply_profile`         | Apply named resource profiles (limits + plugins in one step)       |
-| `sandbox_help`          | On-demand guidance: patterns, state, binary I/O, fetch, debugging  |
-| `ask_user`              | Ask the user structured questions (free-form or multiple choice)   |
-| `llm_thought`           | *(tune mode only)* Log structured reasoning for prompt engineering |
+| Tool                 | Purpose                                                              |
+| -------------------- | -------------------------------------------------------------------- |
+| `register_handler`   | Register named JavaScript handler code in the sandbox                |
+| `execute_javascript` | Execute a registered handler with optional event data                |
+| `delete_handler`     | Remove a handler from the sandbox                                    |
+| `reset_sandbox`      | Clear sandbox state, keep handlers registered                        |
+| `configure_sandbox`  | Change resource limits at runtime (heap, scratch, timeouts, buffers) |
+| `register_module`    | Create a reusable ES module (persisted to `~/.hyperagent/modules/`)  |
+| `list_modules`       | List available modules (system + user)                               |
+| `module_info`        | Get module exports, JSDoc, and metadata                              |
+| `delete_module`      | Delete a user-created module                                         |
+| `manage_plugin`      | Enable/disable plugins with configuration                            |
+| `list_plugins`       | Discover available plugins                                           |
+| `plugin_info`        | Detailed plugin information and config schema                        |
+| `apply_profile`      | Apply named resource profiles (limits + plugins in one step)         |
+| `sandbox_help`       | On-demand guidance: patterns, state, binary I/O, fetch, debugging    |
+| `ask_user`           | Ask the user structured questions (free-form or multiple choice)     |
+| `llm_thought`        | _(tune mode only)_ Log structured reasoning for prompt engineering   |
 
 ## Profiles
 
 Profiles bundle resource limits and plugin requirements into named presets.
 Profiles are **additive** — stacking multiple takes the max of each limit
-and the union of all plugins.
+and the union of all plugins when applied during a session.
 
-| Profile          | Heap  | CPU     | Wall   | Plugins              | Use case                            |
-| ---------------- | ----- | ------- | ------ | -------------------- | ----------------------------------- |
-| `default`        | 16MB  | 1000ms  | 5s     | _(none)_             | Math, algorithms, data transforms   |
-| `file-builder`   | 64MB  | 3000ms  | 10s    | fs-write             | ZIP, PPTX, CSV, image generation    |
-| `web-research`   | 32MB  | 2000ms  | 30s    | fetch, fs-write      | API calls, web scraping, data pipelines |
-| `heavy-compute`  | 64MB  | 10000ms | 15s    | _(none)_             | Large datasets, crypto, simulations |
+CLI `--profile` applies CPU, wall-clock, heap, and scratch limits at startup.
+It does not silently enable plugins, and input/output buffer profile limits are
+only applied at runtime. During a run, use `/profile apply` or let the LLM call
+`apply_profile` to request the profile's plugin requirements.
+
+| Profile         | Heap  | CPU     | Wall | Plugins         | Use case                                |
+| --------------- | ----- | ------- | ---- | --------------- | --------------------------------------- |
+| `default`       | 16MB  | 1000ms  | 5s   | _(none)_        | Math, algorithms, data transforms       |
+| `file-builder`  | 128MB | 15000ms | 60s  | fs-write        | ZIP, PPTX, PDF, CSV, image generation   |
+| `web-research`  | 64MB  | 2000ms  | 120s | fetch, fs-write | API calls, web scraping, data pipelines |
+| `heavy-compute` | 64MB  | 10000ms | 15s  | _(none)_        | Large datasets, crypto, simulations     |
 
 ```bash
 # Single profile
 hyperagent --profile file-builder
 
-# Stacked — takes max of each limit, union of plugins
+# Stacked at startup — takes max of each limit
 hyperagent --profile "web-research heavy-compute"
 ```
 
@@ -153,7 +170,6 @@ allowed-tools:
   - register_handler
   - execute_javascript
 ---
-
 # PowerPoint Presentation Expert
 You are an expert at building professional, polished PowerPoint presentations...
 ```
@@ -196,19 +212,26 @@ sessions. They're importable via `import { fn } from "ha:<name>"`.
 
 Builtin ES modules available to handler code via `import { fn } from "ha:<name>"`:
 
-| Module         | Description                                                             |
-| -------------- | ----------------------------------------------------------------------- |
-| `str-bytes`    | String↔binary conversion, uint LE encoding, array concat               |
-| `crc32`        | CRC-32 checksum for ZIP/PNG                                             |
-| `base64`       | Base64 encode/decode                                                    |
-| `xml-escape`   | XML escaping + element builder                                          |
-| `deflate`      | DEFLATE compression (RFC 1951)                                          |
-| `shared-state` | Cross-handler key-value store (auto-preserved across recompiles)        |
-| `zip-format`   | ZIP archive builder (DEFLATE compressed)                                |
-| `ooxml-core`   | EMU conversions, 5 themes, Content_Types, rels XML                      |
-| `pptx`         | PowerPoint builder — 7 layouts, 13 shapes, notes, transitions, images   |
-| `pptx-charts`  | Bar, pie/donut, line, area, combo charts (editable in PowerPoint)       |
-| `pptx-tables`  | Styled tables, key-value lists, comparisons, timelines                  |
+| Module         | Description                                                       |
+| -------------- | ----------------------------------------------------------------- |
+| `shared-state` | Cross-handler state preserved across sandbox recompiles           |
+| `ziplib`       | Native DEFLATE compression/decompression                          |
+| `zip-format`   | ZIP archive builder for document formats                          |
+| `doc-core`     | Shared document themes, colour validation, and input guards       |
+| `ooxml-core`   | Shared OOXML units, colours, themes, content types, and rels      |
+| `pptx`         | PowerPoint presentation generation                                |
+| `pptx-charts`  | Editable PowerPoint charts                                        |
+| `pptx-tables`  | PowerPoint tables, comparisons, and timeline helpers              |
+| `xlsx`         | Excel workbook generation with sheets, pivots, charts, and styles |
+| `pdf`          | PDF document generation                                           |
+| `pdf-charts`   | PDF chart rendering                                               |
+| `markdown`     | Markdown to HTML or plain text conversion                         |
+| `html`         | HTML text and link extraction                                     |
+| `image`        | PNG/JPEG/GIF/BMP dimension reading                                |
+| `base64`       | Base64 encode/decode for binary data                              |
+| `str-bytes`    | String and byte conversion utilities                              |
+| `crc32`        | CRC-32 checksums for ZIP/PNG/gzip                                 |
+| `xml-escape`   | XML escaping and simple element building                          |
 
 ## Model Management
 
@@ -278,7 +301,8 @@ then auto-stripped to clean `.txt` on exit.
 ## Non-Interactive / Scripted Mode
 
 Combine `--prompt`, `--auto-approve`, and `--skill` for fully autonomous
-operation — no interactive prompts, no human in the loop:
+operation — no interactive prompts, no human in the loop. Treat this as yolo
+mode for trusted prompts only:
 
 ```bash
 # Autonomous PPTX generation
@@ -292,6 +316,7 @@ hyperagent --auto-approve \
 ```
 
 In auto-approve mode:
+
 - Plugin enables are approved automatically
 - `ask_user` questions select the first option
 - Config changes are applied without confirmation
