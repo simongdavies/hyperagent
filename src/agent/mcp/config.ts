@@ -223,6 +223,15 @@ function validateHttpServerEntry(
         server: name,
         message: '"headers" must be an object of string key-value pairs.',
       });
+    } else if (
+      !Object.entries(obj.headers as Record<string, unknown>).every(
+        ([key, value]) => key.length > 0 && typeof value === "string",
+      )
+    ) {
+      errors.push({
+        server: name,
+        message: '"headers" values must all be strings with non-empty keys.',
+      });
     }
   }
 
@@ -312,7 +321,18 @@ function validateOAuthConfig(
         server: name,
         message: '"auth.scopes" must be an array of strings.',
       });
+    } else if (obj.scopes.length === 0) {
+      errors.push({
+        server: name,
+        message:
+          '"auth.scopes" must contain at least one scope (e.g. ["api://resource/.default"]).',
+      });
     }
+  } else {
+    errors.push({
+      server: name,
+      message: '"auth.scopes" is required for OAuth authentication.',
+    });
   }
 
   if (obj.redirectUri !== undefined && typeof obj.redirectUri !== "string") {
@@ -573,11 +593,26 @@ export function computeMCPConfigHash(
   if (isMCPHttpConfig(config)) {
     hash.update("http", "utf8");
     hash.update(config.url, "utf8");
+    // Include headers keys (not values — could contain secrets)
+    if (config.headers) {
+      hash.update(JSON.stringify(Object.keys(config.headers).sort()), "utf8");
+    }
     if (config.auth) {
       hash.update(config.auth.method, "utf8");
-      if ("clientId" in config.auth) {
+      if (config.auth.method === "oauth") {
+        hash.update(config.auth.flow, "utf8");
         hash.update(config.auth.clientId, "utf8");
+        hash.update(config.auth.tenantId ?? "", "utf8");
+        hash.update(JSON.stringify(config.auth.scopes ?? []), "utf8");
+        hash.update(config.auth.redirectUri ?? "", "utf8");
+      } else if (config.auth.method === "client-credentials") {
+        hash.update(config.auth.clientId, "utf8");
+        hash.update(config.auth.tenantId, "utf8");
+        // clientSecretEnv name (not the secret itself)
+        hash.update(config.auth.clientSecretEnv, "utf8");
+        hash.update(JSON.stringify(config.auth.scopes ?? []), "utf8");
       }
+      // workload-identity has no config fields to hash
     }
   } else {
     hash.update("stdio", "utf8");

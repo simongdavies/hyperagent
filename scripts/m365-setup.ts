@@ -92,13 +92,20 @@ function computeConfigHash(
   name: string,
   url: string,
   clientId: string,
+  flow: string,
+  tenantId: string,
+  scopes: string[],
 ): string {
   return createHash("sha256")
     .update(name, "utf8")
     .update("http", "utf8")
     .update(url, "utf8")
     .update("oauth", "utf8") // auth method
+    .update(flow, "utf8")
     .update(clientId, "utf8")
+    .update(tenantId, "utf8")
+    .update(JSON.stringify(scopes), "utf8")
+    .update("", "utf8") // redirectUri (empty = default)
     .update("[]", "utf8") // allowTools
     .update("[]", "utf8") // denyTools
     .digest("hex");
@@ -110,7 +117,14 @@ function computeConfigHash(
  * if the config changes, re-approval is required.
  */
 function preApproveServers(
-  servers: Array<{ name: string; url: string; clientId: string }>,
+  servers: Array<{
+    name: string;
+    url: string;
+    clientId: string;
+    flow: string;
+    tenantId: string;
+    scopes: string[];
+  }>,
 ): void {
   let store: Record<string, ApprovalRecord> = {};
   try {
@@ -125,9 +139,16 @@ function preApproveServers(
 
   for (const srv of servers) {
     store[srv.name] = {
-      configHash: computeConfigHash(srv.name, srv.url, srv.clientId),
+      configHash: computeConfigHash(
+        srv.name,
+        srv.url,
+        srv.clientId,
+        srv.flow,
+        srv.tenantId,
+        srv.scopes,
+      ),
       approvedAt: new Date().toISOString(),
-      approvedTools: [], // Tools not known until connect — empty is fine
+      approvedTools: [],
       auditWarnings: [],
     };
   }
@@ -335,7 +356,14 @@ function main(): void {
     : undefined;
 
   let count = 0;
-  const configured: Array<{ name: string; url: string; clientId: string }> = [];
+  const configured: Array<{
+    name: string;
+    url: string;
+    clientId: string;
+    flow: string;
+    tenantId: string;
+    scopes: string[];
+  }> = [];
   for (const s of selected) {
     const srv = catalog.servers[s];
     const scope = scopeOverride || defaultScope || srv.scope;
@@ -364,6 +392,9 @@ function main(): void {
       name: ALIAS_PREFIX + s,
       url: tenantedUrl,
       clientId,
+      flow,
+      tenantId,
+      scopes: [scope],
     });
     count += 1;
   }

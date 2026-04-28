@@ -396,7 +396,12 @@ describe("parseMCPConfig", () => {
       "remote-mail": {
         type: "http",
         url: "https://agent365.svc.cloud.microsoft/mcp",
-        auth: { method: "oauth", flow: "browser", clientId: "abc" },
+        auth: {
+          method: "oauth",
+          flow: "browser",
+          clientId: "abc",
+          scopes: ["api://.default"],
+        },
       },
     });
 
@@ -662,11 +667,16 @@ describe("createMCPClientManager — HTTP transport", () => {
     manager.registerServer("oauth-headless", {
       type: "http",
       url: "https://localhost:19999/mcp",
-      auth: { method: "oauth", flow: "browser", clientId: "test-id" },
+      auth: {
+        method: "oauth",
+        flow: "browser",
+        clientId: "test-id",
+        scopes: ["api://.default"],
+      },
     });
 
     await expect(manager.connect("oauth-headless")).rejects.toThrow(
-      /no cached tokens.*no interactive terminal/i,
+      /no.*cached tokens.*no interactive terminal/i,
     );
 
     // Restore
@@ -810,6 +820,7 @@ describe("createMsalOAuthProvider", () => {
       method: "oauth",
       flow: "browser",
       clientId: "my-app-id",
+      scopes: ["api://.default"],
     });
 
     const info = await provider.clientInformation();
@@ -822,6 +833,7 @@ describe("createMsalOAuthProvider", () => {
       method: "oauth",
       flow: "browser",
       clientId: "test-id",
+      scopes: ["api://.default"],
     });
 
     // No accounts in cache → silent acquisition returns undefined.
@@ -829,14 +841,14 @@ describe("createMsalOAuthProvider", () => {
     expect(tokens).toBeUndefined();
   });
 
-  it("omits scope when not configured", () => {
-    const provider = createMsalOAuthProvider("test-msal-noscope", {
-      method: "oauth",
-      flow: "device-code",
-      clientId: "test-id",
-    });
-
-    expect(provider.clientMetadata.scope).toBeUndefined();
+  it("throws when scopes not configured", () => {
+    expect(() =>
+      createMsalOAuthProvider("test-msal-noscope", {
+        method: "oauth",
+        flow: "device-code",
+        clientId: "test-id",
+      }),
+    ).toThrow(/scopes are required/);
   });
 
   it("codeVerifier stubs return empty string (MSAL handles PKCE)", () => {
@@ -844,6 +856,7 @@ describe("createMsalOAuthProvider", () => {
       method: "oauth",
       flow: "browser",
       clientId: "test-id",
+      scopes: ["api://.default"],
     });
 
     provider.saveCodeVerifier("whatever");

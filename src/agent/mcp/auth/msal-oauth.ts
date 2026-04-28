@@ -129,15 +129,16 @@ function buildPca(
  * configured. Always includes `offline_access` for refresh tokens.
  */
 function resolveScopes(authConfig: MCPOAuthConfig): string[] {
-  const base =
-    authConfig.scopes && authConfig.scopes.length > 0
-      ? [...authConfig.scopes]
-      : [];
-  // offline_access is needed for refresh_token. openid + profile for
-  // id_token. MSAL adds these itself for interactive flows but being
-  // explicit avoids surprises.
-  for (const s of ["offline_access"]) {
-    if (!base.includes(s)) base.push(s);
+  if (!authConfig.scopes || authConfig.scopes.length === 0) {
+    throw new Error(
+      "OAuth scopes are required but none configured. " +
+        'Set "scopes" in the auth config (e.g. ["api://resource/.default"]).',
+    );
+  }
+  const base = [...authConfig.scopes];
+  // offline_access is needed for refresh_token.
+  if (!base.includes("offline_access")) {
+    base.push("offline_access");
   }
   return base;
 }

@@ -28,7 +28,7 @@ import { sanitiseToolName, sanitiseDescription } from "./sanitise.js";
 import {
   acquireMsalToken,
   createMsalOAuthProvider,
-  hasMsalCache,
+  canAcquireSilently,
 } from "./auth/msal-oauth.js";
 import { createRetryFetch } from "./retry-fetch.js";
 import {
@@ -152,28 +152,15 @@ export function createMCPClientManager() {
 
     const isInteractive = process.stdin.isTTY === true;
     if (!isInteractive) {
-      // In non-interactive mode, we can only succeed if MSAL has a
-      // cached token to refresh silently. Check for the cache file
-      // first — if it doesn't exist, fail fast with a clear message
-      // instead of letting MSAL hang trying to do interactive auth.
-      if (!hasMsalCache(name)) {
+      // In non-interactive mode, we can only succeed if MSAL can
+      // refresh silently. Use canAcquireSilently() which never triggers
+      // interactive auth — it returns false if interaction is needed.
+      const canSilent = await canAcquireSilently(name, authConfig);
+      if (!canSilent) {
         throw new Error(
-          `[mcp] OAuth authentication required for "${name}" but no cached ` +
-            `tokens found and no interactive terminal available.\n` +
+          `[mcp] OAuth authentication required for "${name}" but no valid ` +
+            `cached tokens and no interactive terminal available.\n` +
             `  Run HyperAgent interactively first to authenticate:\n` +
-            `    npx tsx src/agent/index.ts\n` +
-            `    /mcp enable ${name}`,
-        );
-      }
-      // Cache exists — try silent refresh.
-      try {
-        await acquireMsalToken(name, authConfig);
-      } catch {
-        throw new Error(
-          `[mcp] OAuth authentication required for "${name}" but cached ` +
-            `tokens could not be refreshed and no interactive terminal ` +
-            `available.\n` +
-            `  Run HyperAgent interactively first to re-authenticate:\n` +
             `    npx tsx src/agent/index.ts\n` +
             `    /mcp enable ${name}`,
         );
