@@ -332,6 +332,12 @@ interface ColumnOutlineEntry {
   from: number;
   to: number;
   level: number;
+  collapsed: boolean;
+}
+
+interface RowOutlineEntry {
+  level: number;
+  collapsed: boolean;
 }
 
 interface NamedRangeEntry {
@@ -551,8 +557,9 @@ export function cellRef(row: number, col: number): string {
 
 /** Convert JS Date to Excel serial date number. */
 export function dateToSerial(d: Date): number {
-  const epoch = new Date(1899, 11, 30);
-  return (d.getTime() - epoch.getTime()) / 86400000;
+  const epoch = new Date(1899, 11, 31);
+  const serial = (d.getTime() - epoch.getTime()) / 86400000;
+  return serial >= 60 ? serial + 1 : serial;
 }
 
 export class Sheet {
@@ -572,7 +579,7 @@ export class Sheet {
   _tabColor: string | null;
   _hyperlinks: HyperlinkEntry[];
   _images: ImageEntry[];
-  _rowOutline: Map<number, number>;
+  _rowOutline: Map<number, RowOutlineEntry>;
   _colOutline: ColumnOutlineEntry[];
   _protection: SheetProtectionOptions | null;
   _printArea: string | null;
@@ -786,8 +793,11 @@ export class Sheet {
     const o = opts || {};
     const lvl = o.level || 1;
     for (let r = from; r <= to; r++) {
-      const cur = this._rowOutline.get(r) || 0;
-      this._rowOutline.set(r, Math.max(cur, lvl));
+      const cur = this._rowOutline.get(r);
+      this._rowOutline.set(r, {
+        level: Math.max(cur ? cur.level : 0, lvl),
+        collapsed: !!(cur?.collapsed || o.collapsed),
+      });
     }
     return this;
   }
@@ -800,7 +810,12 @@ export class Sheet {
     const o = opts || {};
     const f = typeof from === "string" ? colToNum(from) : from;
     const t = typeof to === "string" ? colToNum(to) : to;
-    this._colOutline.push({ from: f, to: t, level: o.level || 1 });
+    this._colOutline.push({
+      from: f,
+      to: t,
+      level: o.level || 1,
+      collapsed: !!o.collapsed,
+    });
     return this;
   }
 
@@ -1754,7 +1769,7 @@ function buildDataValXml(dvList: readonly DataValidationEntry[]): string {
     x += ">";
     if (dv.type === "list" || !dv.type) {
       if (dv.values)
-        x += '<formula1>"' + [...dv.values].join(",") + '"</formula1>';
+        x += '<formula1>"' + inlineListFormula(dv.values) + '"</formula1>';
       else if (dv.formula)
         x += "<formula1>" + escapeXml(dv.formula) + "</formula1>";
     } else if (dv.type === "custom")
@@ -1766,6 +1781,16 @@ function buildDataValXml(dvList: readonly DataValidationEntry[]): string {
     x += "</dataValidation>";
   }
   return x + "</dataValidations>";
+}
+
+function inlineListFormula(values: readonly string[]): string {
+  for (const value of values) {
+    if (value.includes(",") || value.includes('"'))
+      throw new Error(
+        "Inline XLSX validation lists cannot contain comma or quote characters; use a formula range instead",
+      );
+  }
+  return escapeXml([...values].join(","));
 }
 
 function buildSparklineXml(
@@ -2233,6 +2258,7 @@ export class Workbook {
     if (rows.length) {
       minR = Math.min(...rows);
       maxR = Math.max(...rows);
+      minC = Infinity;
       for (const [, rc] of sh._rows) {
         const cols = [...rc.keys()];
         if (cols.length) {
@@ -2240,6 +2266,7 @@ export class Workbook {
           maxC = Math.max(maxC, ...cols);
         }
       }
+      if (!Number.isFinite(minC)) minC = 1;
     }
     x +=
       '<dimension ref="' +
@@ -2261,21 +2288,30 @@ export class Workbook {
     }
     x += '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"';
     if (hasOutline)
-      x += ' outlineLevelRow="' + Math.max(...sh._rowOutline.values(), 0) + '"';
+      x +=
+        ' outlineLevelRow="' +
+        Math.max(...[...sh._rowOutline.values()].map((o) => o.level), 0) +
+        '"';
     x += "/>";
-    const colOutMap = new Map<number, number>();
+    const colOutMap = new Map<number, ColumnOutlineEntry>();
     for (const cg of sh._colOutline)
       for (let c = cg.from; c <= cg.to; c++)
-        colOutMap.set(c, Math.max(colOutMap.get(c) || 0, cg.level));
+        colOutMap.set(c, {
+          from: c,
+          to: c,
+          level: Math.max(colOutMap.get(c)?.level || 0, cg.level),
+          collapsed: !!(colOutMap.get(c)?.collapsed || cg.collapsed),
+        });
     const allCols = new Set([...sh._colW.keys(), ...colOutMap.keys()]);
     if (allCols.size) {
       x += "<cols>";
       for (const c of [...allCols].sort((a, b) => a - b)) {
         const w = sh._colW.get(c) || 8.43;
-        const ol = colOutMap.get(c) || 0;
+        const ol = colOutMap.get(c);
         x += '<col min="' + c + '" max="' + c + '" width="' + w + '"';
         if (sh._colW.has(c)) x += ' customWidth="1"';
-        if (ol) x += ' outlineLevel="' + ol + '"';
+        if (ol) x += ' outlineLevel="' + ol.level + '"';
+        if (ol?.collapsed) x += ' collapsed="1"';
         x += "/>";
       }
       x += "</cols>";
@@ -2286,8 +2322,11 @@ export class Workbook {
       x += '<row r="' + rn + '"';
       if (sh._rowH.has(rn))
         x += ' ht="' + sh._rowH.get(rn) + '" customHeight="1"';
-      if (sh._rowOutline.has(rn))
-        x += ' outlineLevel="' + sh._rowOutline.get(rn) + '"';
+      if (sh._rowOutline.has(rn)) {
+        const outline = sh._rowOutline.get(rn)!;
+        x += ' outlineLevel="' + outline.level + '"';
+        if (outline.collapsed) x += ' collapsed="1"';
+      }
       x += ">";
       for (const cn of [...rc.keys()].sort((a, b) => a - b)) {
         const cell = rc.get(cn)!;
@@ -2304,15 +2343,15 @@ export class Workbook {
       x += '<sheetProtection sheet="1" objects="1" scenarios="1"';
       if (sh._protection.password)
         x += ' password="' + hashPassword(sh._protection.password) + '"';
-      if (sh._protection.allowSort) x += ' sort="0"';
-      if (sh._protection.allowFilter) x += ' autoFilter="0"';
-      if (sh._protection.allowFormatCells) x += ' formatCells="0"';
-      if (sh._protection.allowFormatColumns) x += ' formatColumns="0"';
-      if (sh._protection.allowFormatRows) x += ' formatRows="0"';
-      if (sh._protection.allowInsertColumns) x += ' insertColumns="0"';
-      if (sh._protection.allowInsertRows) x += ' insertRows="0"';
-      if (sh._protection.allowDeleteColumns) x += ' deleteColumns="0"';
-      if (sh._protection.allowDeleteRows) x += ' deleteRows="0"';
+      if (sh._protection.allowSort) x += ' sort="1"';
+      if (sh._protection.allowFilter) x += ' autoFilter="1"';
+      if (sh._protection.allowFormatCells) x += ' formatCells="1"';
+      if (sh._protection.allowFormatColumns) x += ' formatColumns="1"';
+      if (sh._protection.allowFormatRows) x += ' formatRows="1"';
+      if (sh._protection.allowInsertColumns) x += ' insertColumns="1"';
+      if (sh._protection.allowInsertRows) x += ' insertRows="1"';
+      if (sh._protection.allowDeleteColumns) x += ' deleteColumns="1"';
+      if (sh._protection.allowDeleteRows) x += ' deleteRows="1"';
       x += "/>";
     }
     if (sh._af) x += '<autoFilter ref="' + sh._af + '"/>';

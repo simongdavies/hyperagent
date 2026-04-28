@@ -5317,6 +5317,11 @@ declare module "ha:xlsx" {
       from: number;
       to: number;
       level: number;
+      collapsed: boolean;
+  }
+  interface RowOutlineEntry {
+      level: number;
+      collapsed: boolean;
   }
   interface NamedRangeEntry {
       name: string;
@@ -5407,7 +5412,7 @@ declare module "ha:xlsx" {
       _tabColor: string | null;
       _hyperlinks: HyperlinkEntry[];
       _images: ImageEntry[];
-      _rowOutline: Map<number, number>;
+      _rowOutline: Map<number, RowOutlineEntry>;
       _colOutline: ColumnOutlineEntry[];
       _protection: SheetProtectionOptions | null;
       _printArea: string | null;

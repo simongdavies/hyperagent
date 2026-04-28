@@ -2067,6 +2067,7 @@ describe("xlsx builtin module", () => {
         "    parsed: parseCellRef('BC42'),",
         "    ref: cellRef(99, 28),",
         "    serial: dateToSerial(new Date(1900, 0, 1)),",
+        "    leapBugSerial: dateToSerial(new Date(1900, 2, 1)),",
         "    invalidRef,",
         "  };",
         "}",
@@ -2081,9 +2082,48 @@ describe("xlsx builtin module", () => {
       num703: "AAA",
       parsed: { col: 55, row: 42 },
       ref: "AB99",
-      serial: 2,
+      serial: 1,
+      leapBugSerial: 61,
       invalidRef: "Invalid cell ref: not-a-cell",
     });
+  });
+
+  it("should write accurate dimensions and safe validation list XML", async () => {
+    const tool = createSandboxTool({
+      inputBufferKb: 512,
+      outputBufferKb: 1024,
+    });
+    loadXlsxModules(tool);
+
+    await tool.registerHandler(
+      "xlsx-validation-xml-test",
+      [
+        'import { createWorkbook } from "ha:xlsx";',
+        "export function handler() {",
+        "  const wb = createWorkbook();",
+        "  const sh = wb.addSheet('Validation');",
+        "  sh.setCell('C3', 'First');",
+        "  sh.setCell('D4', 'Last');",
+        "  sh.addDataValidation('C3:C10', { type: 'list', values: ['R&D', '<Open>'] });",
+        "  const bytes = wb.build();",
+        "  let invalidMessage = '';",
+        "  try {",
+        "    const bad = createWorkbook();",
+        "    bad.addSheet('Bad').addDataValidation('A1:A2', { type: 'list', values: ['Needs, comma'] });",
+        "    bad.build();",
+        "  } catch (err) { invalidMessage = err.message; }",
+        "  return { bytes: Array.from(bytes), invalidMessage };",
+        "}",
+      ].join("\n"),
+    );
+
+    const r = await tool.executeJavaScript("xlsx-validation-xml-test");
+    expect(r.success).toBe(true);
+    const entries = parseZipEntries(r.result.bytes);
+    const sheetXml = zipText(entries, "xl/worksheets/sheet1.xml");
+    expect(sheetXml).toContain('<dimension ref="C3:D4"/>');
+    expect(sheetXml).toContain('<formula1>"R&amp;D,&lt;Open&gt;"</formula1>');
+    expect(r.result.invalidMessage).toContain("use a formula range instead");
   });
 
   it("should write core workbook entries and worksheet layout XML", async () => {
@@ -2107,7 +2147,7 @@ describe("xlsx builtin module", () => {
         "  sh.addRow(5, ['Total', 3, '=SUM(C3:C4)']);",
         "  sh.setColumnWidth('A', 22).setRowHeight(1, 24);",
         "  sh.mergeCells('A1', 'C1').freezeRows(1).freezeColumns(1).setAutoFilter('A2:C5');",
-        "  sh.groupRows(3, 4, { level: 2 }).groupColumns('B', 'C', { level: 1 });",
+        "  sh.groupRows(3, 4, { level: 2, collapsed: true }).groupColumns('B', 'C', { level: 1, collapsed: true });",
         "  sh.setTabColor('#FFAA00');",
         "  sh.protect({ password: 'secret', allowSort: true, allowFilter: true });",
         "  sh.setPrintArea('A1:C5');",
@@ -2149,15 +2189,15 @@ describe("xlsx builtin module", () => {
       '<col min="1" max="1" width="22" customWidth="1"/>',
     );
     expect(sheetXml).toContain(
-      '<col min="2" max="2" width="8.43" outlineLevel="1"/>',
+      '<col min="2" max="2" width="8.43" outlineLevel="1" collapsed="1"/>',
     );
     expect(sheetXml).toContain('<row r="1" ht="24" customHeight="1"');
-    expect(sheetXml).toContain('<row r="3" outlineLevel="2"');
+    expect(sheetXml).toContain('<row r="3" outlineLevel="2" collapsed="1"');
     expect(sheetXml).toContain(
       '<sheetProtection sheet="1" objects="1" scenarios="1"',
     );
-    expect(sheetXml).toContain(' sort="0"');
-    expect(sheetXml).toContain(' autoFilter="0"');
+    expect(sheetXml).toContain(' sort="1"');
+    expect(sheetXml).toContain(' autoFilter="1"');
     expect(sheetXml).toContain('<autoFilter ref="A2:C5"/>');
     expect(sheetXml).toContain('<mergeCell ref="A1:C1"/>');
     expect(sheetXml).toContain(
