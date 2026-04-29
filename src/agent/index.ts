@@ -184,6 +184,12 @@ if (cli.showVersion) {
   process.exit(0);
 }
 
+// ── Standalone MCP setup/config commands: run and exit ──────────────
+if (cli.mcpSetupCommand) {
+  await runMCPSetupCommand(cli.mcpSetupCommand, { contentRoot: CONTENT_ROOT });
+  process.exit(0);
+}
+
 // Propagate CLI → env vars (so sandbox-tool.js and other modules pick them up)
 process.env.COPILOT_MODEL = cli.model;
 process.env.HYPERLIGHT_CPU_TIMEOUT_MS = cli.cpuTimeout;
@@ -759,6 +765,7 @@ import {
   auditMCPTools,
 } from "./mcp/approval.js";
 import { canAcquireSilently } from "./mcp/auth/msal-oauth.js";
+import { runMCPSetupCommand } from "./mcp/setup-commands.js";
 import { findMCPTool, selectMCPTools } from "./mcp/tool-utils.js";
 
 // Load MCP config from ~/.hyperagent/config.json
