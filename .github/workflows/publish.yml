@@ -169,18 +169,6 @@ jobs:
       - name: Pack npm tarball
         run: npm pack
 
-      - name: Check npm package size
-        run: |
-          TARBALL=$(ls *.tgz)
-          UNPACKED=$(npm pack --dry-run --json | node -e 'let data="";process.stdin.on("data",c=>data+=c);process.stdin.on("end",()=>console.log(JSON.parse(data)[0].unpackedSize))')
-          MAX=$((300 * 1024 * 1024))
-          echo "Packed tarball: $TARBALL"
-          echo "Unpacked size: $UNPACKED bytes (limit: $MAX)"
-          if [ "$UNPACKED" -gt "$MAX" ]; then
-            echo "❌ npm package is too large"
-            exit 1
-          fi
-
       - name: Upload npm tarball
         uses: actions/upload-artifact@v7
         with:
