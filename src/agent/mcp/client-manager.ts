@@ -345,15 +345,26 @@ export function createMCPClientManager() {
         };
       }
 
-      // Extract content, enforce size limit
+      // Extract content, enforce size limit against the useful payload first.
+      // raw duplicates the original MCP content and may be much larger than
+      // the parsed data/text the handler actually needs.
       const normalised = normaliseToolResult(result.content);
-      const contentStr = JSON.stringify(normalised);
-      if (contentStr.length > MCP_MAX_RESPONSE_BYTES) {
+      const payloadSize = JSON.stringify({
+        data: normalised.data,
+        text: normalised.text,
+        meta: normalised.meta,
+      }).length;
+      if (payloadSize > MCP_MAX_RESPONSE_BYTES) {
         return {
           ok: false,
-          error: `Response too large (${contentStr.length} bytes). Maximum is ${MCP_MAX_RESPONSE_BYTES} bytes.`,
+          error: `Response too large (${payloadSize} bytes). Maximum is ${MCP_MAX_RESPONSE_BYTES} bytes.`,
           truncated: true,
         };
+      }
+
+      const fullSize = JSON.stringify(normalised).length;
+      if (fullSize > MCP_MAX_RESPONSE_BYTES) {
+        return { ...normalised, raw: undefined, truncated: true };
       }
 
       return normalised;

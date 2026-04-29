@@ -237,7 +237,7 @@ gate uses the MCP spec's `ToolAnnotations` (hints from the server):
 
 The gate runs on the **host side** while the guest VM is paused — the
 LLM's handler code sees either a normal result or
-`{ error: "Operation denied..." }`. The LLM doesn't need to know about
+`{ ok: false, error: "Operation denied..." }`. The LLM doesn't need to know about
 the gate; it writes code normally.
 
 Example prompt shown to the user:
@@ -438,9 +438,9 @@ Instead of the single stdio `workiq` server you can connect to the
 per-service Agent 365 HTTP endpoints directly. This gives you finer
 `/mcp enable` control per M365 service and uses MSAL for OAuth.
 
-The setup script uses the VS Code MCP extension's pre-registered client ID
-(`aebc6443-...`) which has `McpServers.*` scopes admin-consented in all
-M365 Copilot tenants — no per-tenant app registration needed.
+Use an Entra public-client app registration for OAuth. You can create or reuse
+one with `hyperagent --mcp-m365-create-app`, then configure the per-service MCP
+entries from the saved app details.
 
 The bundled catalog includes the available Agent 365 servers (see the full list
 with `hyperagent --mcp-setup-m365 list`).
@@ -459,17 +459,16 @@ Common ones:
 #### Setup
 
 ```bash
+# One-time: create or reuse an Entra public-client app registration
+hyperagent --mcp-m365-create-app
+
 # Configure all M365 servers with browser auth (one-time)
 hyperagent --mcp-setup-m365 all \
-  aebc6443-996d-45c2-90f0-388ff96faa56 \
-  <your-tenant-id> \
-  "" browser
+  <your-client-id> <your-tenant-id> "" browser
 
 # Or a subset
 hyperagent --mcp-setup-m365 "mail,teams,planner" \
-  aebc6443-996d-45c2-90f0-388ff96faa56 \
-  <your-tenant-id> \
-  "" browser
+  <your-client-id> <your-tenant-id> "" browser
 
 # List available services
 hyperagent --mcp-setup-m365 list
@@ -477,6 +476,9 @@ hyperagent --mcp-setup-m365 list
 
 This writes config entries AND pre-approves all configured servers so the
 LLM can connect them without interactive prompts.
+
+If you just ran `hyperagent --mcp-m365-create-app`, you can pass empty strings
+for the client ID and tenant ID to use the saved app details.
 
 #### Auth flows
 
@@ -500,19 +502,17 @@ works with cached tokens.
 
 #### Custom Entra app registration
 
-If your tenant blocks the VS Code client ID, create your own app:
+If you already have a tenant-owned public-client app registration, pass it
+explicitly instead of using the saved app state:
 
 ```bash
-hyperagent --mcp-m365-create-app
-# Then use your app's client ID:
 hyperagent --mcp-setup-m365 all <your-client-id> <your-tenant-id> "" browser
 ```
 
 #### Scope
 
-All servers use `ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/.default` (the Agent 365
-resource app ID with `.default`), which requests all pre-consented scopes in
-one shot. This matches what [a365cli](https://github.com/sozercan/a365cli) uses.
+All servers use the Agent 365 resource `.default` scope, which requests the
+pre-consented Agent 365 MCP scopes in one shot.
 
 #### Refreshing the server catalog
 

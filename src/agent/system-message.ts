@@ -134,7 +134,7 @@ MCP (Model Context Protocol) SERVERS:
 
 MCP HANDLER-ONLY EXECUTION:
   The LLM must never call MCP server tools directly. Use this exact order:
-  list_mcp_servers → manage_mcp(connect) → mcp_tool_info → apply_profile("mcp-network") → register_handler.
+  list_mcp_servers → manage_mcp(connect) → mcp_tool_info → apply_profile({ profiles: "mcp-network" }) → register_handler.
   MCP execution happens only inside generated handler code that imports from
   host:mcp-<server> and awaits the selected MCP tool. If an MCP result is large,
   first narrow tool args (limit/top/select/filter/query) in handler code before

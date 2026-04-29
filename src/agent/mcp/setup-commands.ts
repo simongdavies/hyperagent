@@ -221,10 +221,10 @@ function spawnCapture(command: string, args: string[]): string | undefined {
   return result.stdout.trim() || undefined;
 }
 
-export async function runMCPSetupCommand(
+export function runMCPSetupCommand(
   command: MCPSetupCommand,
   options: RunOptions,
-): Promise<void> {
+): void {
   switch (command.kind) {
     case "setup-everything":
       setupEverything();
@@ -251,7 +251,7 @@ export async function runMCPSetupCommand(
       setupM365(command.args, options.contentRoot);
       return;
     case "m365-refresh-servers":
-      await refreshM365Servers(command.args, options.contentRoot);
+      refreshM365Servers(command.args, options.contentRoot);
       return;
     case "m365-show":
       showM365();
@@ -1136,10 +1136,7 @@ function preApproveServers(
   });
 }
 
-async function refreshM365Servers(
-  argv: string[],
-  contentRoot: string,
-): Promise<void> {
+function refreshM365Servers(argv: string[], contentRoot: string): void {
   const args = parseRefreshArgs(argv);
   const catalog = readCatalog(contentRoot);
   const endpoint = catalog.discoverEndpoint;
@@ -1153,19 +1150,7 @@ async function refreshM365Servers(
   }
 
   logStep(`Fetching ${endpoint}`);
-  const response = await fetch(endpoint, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    fail(
-      `Discovery failed: ${response.status} ${response.statusText}\n${body.slice(0, 500)}`,
-    );
-  }
-  const payload = (await response.json()) as DiscoveryPayload;
+  const payload = fetchDiscoveryPayload(endpoint, token);
   const list = payload.mcpServers ?? [];
   if (list.length === 0) fail("Discovery returned no servers");
 
@@ -1224,6 +1209,53 @@ async function refreshM365Servers(
   logSuccess(
     `Rewrote ${M365_USER_CATALOG} (${Object.keys(catalog.servers).length} servers, ${added} new, ${skipped} skipped)`,
   );
+}
+
+function fetchDiscoveryPayload(
+  endpoint: string,
+  token: string,
+): DiscoveryPayload {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+const endpoint = process.env.HYPERAGENT_DISCOVERY_ENDPOINT;
+const token = process.env.HYPERAGENT_DISCOVERY_TOKEN;
+if (!endpoint || !token) process.exit(2);
+const response = await fetch(endpoint, {
+  headers: { Accept: "application/json", Authorization: \`Bearer \${token}\` },
+});
+if (!response.ok) {
+  const body = await response.text().catch(() => "");
+  console.error(\`Discovery failed: \${response.status} \${response.statusText}\\n\${body.slice(0, 500)}\`);
+  process.exit(1);
+}
+process.stdout.write(await response.text());
+`,
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HYPERAGENT_DISCOVERY_ENDPOINT: endpoint,
+        HYPERAGENT_DISCOVERY_TOKEN: token,
+      },
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (result.error) fail(`Discovery failed: ${result.error.message}`);
+  if (result.status !== 0) fail(result.stderr.trim() || "Discovery failed");
+  try {
+    return JSON.parse(result.stdout) as DiscoveryPayload;
+  } catch (error) {
+    fail(
+      `Discovery returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function parseRefreshArgs(argv: string[]): {

@@ -87,6 +87,7 @@ export function createMCPPluginAdapter(
             );
             if (!allowed) {
               return {
+                ok: false,
                 error: `Operation denied: ${tool.name} on ${conn.name} was blocked by the write-safety gate. The user declined the operation.`,
               };
             }

@@ -186,7 +186,7 @@ if (cli.showVersion) {
 
 // ── Standalone MCP setup/config commands: run and exit ──────────────
 if (cli.mcpSetupCommand) {
-  await runMCPSetupCommand(cli.mcpSetupCommand, { contentRoot: CONTENT_ROOT });
+  runMCPSetupCommand(cli.mcpSetupCommand, { contentRoot: CONTENT_ROOT });
   process.exit(0);
 }
 
