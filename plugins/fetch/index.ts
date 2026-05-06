@@ -95,76 +95,66 @@ export const SCHEMA = {
   },
   connectTimeoutMs: {
     type: "number" as const,
-    description: "TCP+TLS connect timeout in milliseconds (max 10000)",
+    description: "TCP+TLS connect timeout in milliseconds",
     default: 5000,
     minimum: 1000,
-    maximum: 10000,
   },
   readTimeoutMs: {
     type: "number" as const,
-    description: "Read timeout in milliseconds (max 30000)",
+    description: "Read timeout in milliseconds",
     default: 10000,
     minimum: 1000,
-    maximum: 30000,
   },
   maxResponseSizeKb: {
     type: "number" as const,
     description:
-      "Maximum total response body size in KB (max 8192). Responses larger than this are rejected.",
+      "Maximum total response body size in KB. Responses larger than this are rejected.",
     default: 1024,
     minimum: 1,
-    maximum: 8192,
   },
   readSizeKb: {
     type: "number" as const,
     description:
-      "Maximum body size returned per read() call in KB (max 256). Must be smaller than the sandbox output buffer.",
+      "Maximum body size returned per read() call in KB. Must be smaller than the sandbox output buffer.",
     default: 48,
     minimum: 8,
-    maximum: 256,
   },
   responseCacheTtlSeconds: {
     type: "number" as const,
     description:
-      "How long response bodies stay cached on the host before expiring (seconds, max 600)",
+      "How long response bodies stay cached on the host before expiring (seconds)",
     default: 300,
     minimum: 30,
-    maximum: 600,
   },
   maxRequestBodySizeKb: {
     type: "number" as const,
-    description: "Maximum POST request body size in KB (max 64)",
+    description: "Maximum POST request body size in KB",
     default: 4,
     minimum: 1,
-    maximum: 64,
   },
   maxRequestsPerMinute: {
     type: "number" as const,
     description: "Maximum fetch calls per minute (sliding window)",
     default: 30,
     minimum: 1,
-    maximum: 60,
   },
   maxRequestsPerHour: {
     type: "number" as const,
     description: "Maximum fetch calls per hour (session-scoped)",
     default: 100,
     minimum: 1,
-    maximum: 500,
   },
   maxDomainsPerSession: {
     type: "number" as const,
     description: "Maximum unique domains per session",
     default: 5,
     minimum: 1,
-    maximum: 20,
   },
   maxDataReceivedKb: {
     type: "number" as const,
     description: "Maximum total response data per session in KB",
     default: 2048,
     minimum: 1,
-    maximum: 16384,
   },
   returnXRequestId: {
     type: "boolean" as const,
@@ -175,10 +165,9 @@ export const SCHEMA = {
   conditionalCacheMaxEntries: {
     type: "number" as const,
     description:
-      "Maximum number of URLs cached for conditional requests (ETag/Last-Modified). 0 effectively disables caching (min 1).",
+      "Maximum number of URLs cached for conditional requests (ETag/Last-Modified).",
     default: 20,
     minimum: 1,
-    maximum: 100,
   },
   conditionalCacheTtlSeconds: {
     type: "number" as const,
@@ -186,7 +175,6 @@ export const SCHEMA = {
       "How long conditional-cache entries remain valid (seconds). After this, the next GET sends a normal request without conditional headers.",
     default: 600,
     minimum: 60,
-    maximum: 3600,
   },
   autoRetryOn429: {
     type: "boolean" as const,
@@ -200,7 +188,6 @@ export const SCHEMA = {
       "Maximum seconds to wait for a single 429 retry. If server asks for longer, returns error instead of waiting.",
     default: 30,
     minimum: 1,
-    maximum: 120,
   },
   autoRetryMaxAttempts: {
     type: "number" as const,
@@ -208,7 +195,6 @@ export const SCHEMA = {
       "Maximum number of retry attempts on 429 before giving up and returning the error.",
     default: 3,
     minimum: 1,
-    maximum: 10,
   },
   maxParallelFetches: {
     type: "number" as const,
@@ -216,7 +202,6 @@ export const SCHEMA = {
       "Maximum concurrent requests for batch operations like fetchBinaryBatch. Higher values speed up bulk downloads but may trigger server rate limits. Default 1 (serial).",
     default: 1,
     minimum: 1,
-    maximum: 10,
   },
   diskCacheMaxMb: {
     type: "number" as const,
@@ -224,7 +209,6 @@ export const SCHEMA = {
       "Maximum disk cache size in MB for anonymous HTTP responses. Cached in $HOME/.hyperagent/fetch-cache with LFU eviction. Set to 0 to disable.",
     default: 100,
     minimum: 0,
-    maximum: 1000,
   },
   maxRedirects: {
     type: "number" as const,
@@ -232,7 +216,6 @@ export const SCHEMA = {
       "Maximum number of HTTP redirects to follow. Each hop is re-validated against the domain allowlist and SSRF checks.",
     default: 5,
     minimum: 0,
-    maximum: 20,
   },
   maxJsonResponseBytes: {
     type: "number" as const,
@@ -240,7 +223,6 @@ export const SCHEMA = {
       "Maximum response size in bytes for fetchJSON convenience method. Larger responses should use get() + read() streaming.",
     default: 1048576,
     minimum: 1024,
-    maximum: 10485760,
   },
   maxTextResponseBytes: {
     type: "number" as const,
@@ -248,7 +230,6 @@ export const SCHEMA = {
       "Maximum response size in bytes for fetchText convenience method. Larger responses should use get() + read() streaming.",
     default: 2097152,
     minimum: 1024,
-    maximum: 10485760,
   },
 } satisfies ConfigSchema;
 
@@ -516,10 +497,6 @@ interface SecureFetchSingleOptions extends Omit<
 /** Minimum delay (ms) on ALL responses — collapses timing side-channels.
  *  A blocked domain and a successful fetch both take ≥ this long. */
 const MIN_RESPONSE_DELAY_MS = 200;
-
-/** Maximum number of HTTP redirects to follow (hard ceiling for config).
- *  Each hop is re-validated against the domain allowlist and SSRF checks. */
-const MAX_REDIRECTS = 20;
 
 /** HTTP status codes that trigger redirect following. */
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
@@ -2478,7 +2455,7 @@ function validateRedirectTarget(
 /**
  * Perform a secure HTTPS request with redirect following.
  *
- * Wraps secureFetchSingle in a redirect loop (up to MAX_REDIRECTS hops).
+ * Wraps secureFetchSingle in a redirect loop (up to opts.maxRedirects hops).
  * Each redirect target is fully re-validated:
  *   - HTTPS only (no protocol downgrade)
  *   - Domain must be in the operator's allowlist
@@ -2864,27 +2841,35 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
   // Enforce manifest-declared minimums as the floor parameter (4th arg).
   // Previously floor defaulted to 1, so e.g. connectTimeoutMs=1 was silently
   // accepted despite the manifest declaring minimum: 1000 (audit finding F-08).
+  // No artificial ceilings — the user decides what's appropriate for their
+  // hardware and use case. Number.MAX_SAFE_INTEGER means "no ceiling".
+  const NO_CEIL = Number.MAX_SAFE_INTEGER;
   const connectTimeoutMs = safeNumericConfig(
     cfg.connectTimeoutMs,
     5000,
-    10_000,
+    NO_CEIL,
     1000,
   );
   const readTimeoutMs = safeNumericConfig(
     cfg.readTimeoutMs,
     10_000,
-    30_000,
+    NO_CEIL,
     1000,
   );
   const maxResponseBytes =
-    safeNumericConfig(cfg.maxResponseSizeKb, 256, 8192) * 1024;
-  const readSizeBytes = safeNumericConfig(cfg.readSizeKb, 48, 256, 8) * 1024;
+    safeNumericConfig(cfg.maxResponseSizeKb, 1024, NO_CEIL) * 1024;
+  const readSizeBytes =
+    safeNumericConfig(cfg.readSizeKb, 48, NO_CEIL, 8) * 1024;
   const responseCacheTtlMs =
-    safeNumericConfig(cfg.responseCacheTtlSeconds, 300, 600, 30) * 1000;
+    safeNumericConfig(cfg.responseCacheTtlSeconds, 300, NO_CEIL, 30) * 1000;
   const maxRequestBodyBytes =
-    safeNumericConfig(cfg.maxRequestBodySizeKb, 4, 64) * 1024;
-  const maxPerMinuteRaw = safeNumericConfig(cfg.maxRequestsPerMinute, 30, 60);
-  const maxPerHour = safeNumericConfig(cfg.maxRequestsPerHour, 100, 500);
+    safeNumericConfig(cfg.maxRequestBodySizeKb, 4, NO_CEIL) * 1024;
+  const maxPerMinuteRaw = safeNumericConfig(
+    cfg.maxRequestsPerMinute,
+    30,
+    NO_CEIL,
+  );
+  const maxPerHour = safeNumericConfig(cfg.maxRequestsPerHour, 100, NO_CEIL);
   // Clamp per-minute to never exceed per-hour — an operator setting
   // 60/minute with 1/hour makes no sense and defeats the hourly cap.
   const maxPerMinute = Math.min(maxPerMinuteRaw, maxPerHour);
@@ -2893,54 +2878,58 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
       `[fetch] maxRequestsPerMinute (${maxPerMinuteRaw}) exceeds maxRequestsPerHour (${maxPerHour}) — clamped to ${maxPerMinute}`,
     );
   }
-  const maxDomains = safeNumericConfig(cfg.maxDomainsPerSession, 5, 20);
+  const maxDomains = safeNumericConfig(cfg.maxDomainsPerSession, 5, NO_CEIL);
   const maxDataReceivedBytes =
-    safeNumericConfig(cfg.maxDataReceivedKb, 512, 16384) * 1024;
+    safeNumericConfig(cfg.maxDataReceivedKb, 2048, NO_CEIL) * 1024;
   const returnXRequestId = !!cfg.returnXRequestId;
   const conditionalCacheMax = safeNumericConfig(
     cfg.conditionalCacheMaxEntries,
     20,
-    100,
+    NO_CEIL,
   );
   const conditionalCacheTtlMs =
-    safeNumericConfig(cfg.conditionalCacheTtlSeconds, 600, 3600, 60) * 1000;
+    safeNumericConfig(cfg.conditionalCacheTtlSeconds, 600, NO_CEIL, 60) * 1000;
 
   // Auto-retry on 429 configuration
   const autoRetryOn429 = !!cfg.autoRetryOn429;
   const autoRetryMaxWaitSeconds = safeNumericConfig(
     cfg.autoRetryMaxWaitSeconds,
     30,
-    120,
+    NO_CEIL,
   );
   const autoRetryMaxAttempts = safeNumericConfig(
     cfg.autoRetryMaxAttempts,
     3,
-    10,
+    NO_CEIL,
   );
 
   // Parallel fetch configuration — controls how many requests can be in flight
   // simultaneously. Default 1 for backwards compatibility (serial).
   // Higher values speed up batch downloads but may trigger server rate limits.
-  const maxParallelFetches = safeNumericConfig(cfg.maxParallelFetches, 1, 10);
+  const maxParallelFetches = safeNumericConfig(
+    cfg.maxParallelFetches,
+    1,
+    NO_CEIL,
+  );
 
   // Redirect, JSON, and text response size limits — user-configurable.
-  const maxRedirects = safeNumericConfig(cfg.maxRedirects, 5, MAX_REDIRECTS, 0);
+  const maxRedirects = safeNumericConfig(cfg.maxRedirects, 5, NO_CEIL, 0);
   const maxJsonResponseBytes = safeNumericConfig(
     cfg.maxJsonResponseBytes,
     1024 * 1024,
-    10 * 1024 * 1024,
+    NO_CEIL,
     1024,
   );
   const maxTextResponseBytes = safeNumericConfig(
     cfg.maxTextResponseBytes,
     2 * 1024 * 1024,
-    10 * 1024 * 1024,
+    NO_CEIL,
     1024,
   );
 
   // Disk cache configuration — persistent LFU cache in $HOME/.hyperagent/fetch-cache
   const diskCacheMaxBytes =
-    safeNumericConfig(cfg.diskCacheMaxMb, 100, 1000, 0) * 1024 * 1024;
+    safeNumericConfig(cfg.diskCacheMaxMb, 100, NO_CEIL, 0) * 1024 * 1024;
 
   // Build allowed header names set (lowercased)
   const rawAllowedHeaders = Array.isArray(cfg.allowedRequestHeaders)

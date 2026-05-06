@@ -10,7 +10,7 @@
       "All paths are relative to baseDir — absolute paths become relative",
       "Symlinks are REJECTED when writing",
       "Dotfiles are BLOCKED (no .env, .git, etc.)",
-      "Per-call limit: 2MB — use multiple appends for larger files",
+      "Per-call default: 2MB (configurable via maxWriteChunkKb) — use multiple appends for larger files",
       "Text functions return {error}, binary functions THROW",
       "writeFileBinary for Uint8Array (PPTX, images), writeFile for text"
     ],

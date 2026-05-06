@@ -548,7 +548,6 @@ export const SCHEMA = {
         description: "Maximum file size in KB",
         default: 1024,
         minimum: 1,
-        maximum: 10240,
     },
 } satisfies ConfigSchema;
 

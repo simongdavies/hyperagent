@@ -63,26 +63,23 @@ export const SCHEMA = {
   maxWriteSizeKb: {
     type: "number" as const,
     description:
-      "Maximum per-file cumulative size for writes/appends in kilobytes. Cumulative for appends (existing + new). Set to 0 to block non-empty writes. Clamped to 51200 (50 MB).",
+      "Maximum per-file cumulative size for writes/appends in kilobytes. Cumulative for appends (existing + new). Set to 0 to block non-empty writes.",
     default: 20480,
     minimum: 0,
-    maximum: 51200,
   },
   maxEntries: {
     type: "number" as const,
     description:
-      "Maximum number of files and directories that can be created (combined total). Prevents inode/disk exhaustion from runaway writes. Set to 0 to block all creation. Clamped to 10000.",
+      "Maximum number of files and directories that can be created (combined total). Prevents inode/disk exhaustion from runaway writes. Set to 0 to block all creation.",
     default: 1000,
     minimum: 0,
-    maximum: 10000,
   },
   maxWriteChunkKb: {
     type: "number" as const,
     description:
-      "Maximum data accepted by a single writeFile/appendFile call in kilobytes. Tied to the Hyperlight output buffer size — do not raise beyond the configured buffer. Clamped to 10240 (10 MB).",
+      "Maximum data accepted by a single writeFile/appendFile call in kilobytes. Tied to the Hyperlight output buffer size — raising this beyond the configured buffer will cause VM faults.",
     default: 2048,
     minimum: 64,
-    maximum: 10240,
   },
 } satisfies ConfigSchema;
 
@@ -113,27 +110,10 @@ export interface MkdirResult {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-/** Maximum allowed config value for size limits (50 MB). */
-const MAX_SIZE_LIMIT_KB = 51200;
-
-/**
- * Hard ceiling for the per-call write chunk config (10 MB).
- *
- * The actual value is user-configurable via maxWriteChunkKb (default
- * 2048 KB / 2 MB). When raising this, also raise
- * DEFAULT_OUTPUT_BUFFER_KB in sandbox-tool.js — writeFile call data
- * transits the Hyperlight output buffer (guest→host shared memory)
- * and exceeding it causes a hard VM fault.
- */
-const MAX_WRITE_CHUNK_KB = 10240;
-
 /**
  * Allowed encoding values for write operations.
  */
 const ALLOWED_ENCODINGS = new Set(["utf8", "base64"]);
-
-/** Maximum allowed config value for entry creation limit. */
-const MAX_ENTRIES_LIMIT = 10000;
 
 /** File creation mode — owner read/write only. */
 const FILE_MODE = 0o600;
@@ -207,13 +187,15 @@ export function createHostFunctions(
     );
   }
 
-  const maxWriteBytes =
-    safeNumericConfig(cfg.maxWriteSizeKb, 20480, MAX_SIZE_LIMIT_KB) * 1024;
+  // No artificial ceilings — the user decides based on their hardware
+  // and sandbox buffer configuration.
+  const maxWriteBytes = safeNumericConfig(cfg.maxWriteSizeKb, 20480) * 1024;
 
   // Per-call chunk limit — configurable via maxWriteChunkKb (default 2 MB).
-  // Tied to sandbox output buffer size — see MAX_WRITE_CHUNK_KB comment.
+  // Note: raising this beyond the Hyperlight output buffer size will cause
+  // VM faults. The user is responsible for matching buffer + chunk config.
   const maxWriteChunkBytes =
-    safeNumericConfig(cfg.maxWriteChunkKb, 2048, MAX_WRITE_CHUNK_KB) * 1024;
+    safeNumericConfig(cfg.maxWriteChunkKb, 2048) * 1024;
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.
   // On Windows it doesn't exist — we rely on the lstatSync pre-check
@@ -222,9 +204,7 @@ export function createHostFunctions(
   // privileges (SeCreateSymbolicLinkPrivilege or Developer Mode).
   const O_NOFOLLOW = FS_CONSTANTS.O_NOFOLLOW ?? 0;
 
-  const maxEntries = Math.floor(
-    safeNumericConfig(cfg.maxEntries, 500, MAX_ENTRIES_LIMIT),
-  );
+  const maxEntries = Math.floor(safeNumericConfig(cfg.maxEntries, 1000));
   let entriesCreated = 0;
 
   // ── Host function implementations ────────────────────────────
@@ -259,7 +239,7 @@ export function createHostFunctions(
 
     if (contentBytes > maxWriteChunkBytes) {
       return {
-        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${MAX_WRITE_CHUNK_KB}KB. Split into multiple appendFile calls.`,
+        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into multiple appendFile calls.`,
       };
     }
     if (contentBytes > maxWriteBytes) {
@@ -349,7 +329,7 @@ export function createHostFunctions(
 
     if (contentBytes > maxWriteChunkBytes) {
       return {
-        error: `Append content too large for single call: ${contentBytes} bytes exceeds per-call limit of ${MAX_WRITE_CHUNK_KB}KB. Split into smaller appendFile calls.`,
+        error: `Append content too large for single call: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into smaller appendFile calls.`,
       };
     }
     if (contentBytes > maxWriteBytes) {
@@ -451,7 +431,7 @@ export function createHostFunctions(
         : " Split into multiple appendFileBinary calls.";
       throw new Error(
         `Content too large for single write: ${contentBytes} bytes exceeds ` +
-          `per-call limit of ${MAX_WRITE_CHUNK_KB}KB.${hint}`,
+          `per-call limit of ${maxWriteChunkBytes / 1024}KB.${hint}`,
       );
     }
     if (contentBytes > maxWriteBytes) {
@@ -535,7 +515,7 @@ export function createHostFunctions(
     if (contentBytes > maxWriteChunkBytes) {
       throw new Error(
         `Append content too large for single call: ${contentBytes} bytes exceeds ` +
-          `per-call limit of ${MAX_WRITE_CHUNK_KB}KB. ` +
+          `per-call limit of ${maxWriteChunkBytes / 1024}KB. ` +
           `Split into smaller appendFileBinary calls.`,
       );
     }

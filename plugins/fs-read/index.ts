@@ -61,25 +61,22 @@ export const SCHEMA = {
   maxFileSizeKb: {
     type: "number" as const,
     description:
-      "Maximum total file size allowed for reads in kilobytes. Files larger than this are rejected outright. Clamped to 10240 (10 MB).",
+      "Maximum total file size allowed for reads in kilobytes. Files larger than this are rejected outright.",
     default: 10240,
     minimum: 0,
-    maximum: 10240,
   },
   maxReadChunkKb: {
     type: "number" as const,
     description:
-      "Maximum data returned by a single readFile/readFileBinary call in kilobytes. Tied to the Hyperlight input buffer size — do not raise beyond the configured buffer. Clamped to 10240 (10 MB).",
+      "Maximum data returned by a single readFile/readFileBinary call in kilobytes. Tied to the Hyperlight input buffer size — raising this beyond the configured buffer will cause VM faults.",
     default: 1024,
     minimum: 64,
-    maximum: 10240,
   },
   maxListResults: {
     type: "number" as const,
     description: "Maximum number of entries returned by a single listDir call.",
     default: 1000,
     minimum: 10,
-    maximum: 50000,
   },
 } satisfies ConfigSchema;
 
@@ -131,20 +128,6 @@ export interface StatResult {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-/** Maximum allowed config value for size limits (10 MB). */
-const MAX_SIZE_LIMIT_KB = 10240;
-
-/**
- * Hard ceiling for the per-call read chunk config (10 MB).
- *
- * The actual value is user-configurable via maxReadChunkKb (default
- * 1024 KB / 1 MB). When raising this, also raise
- * DEFAULT_INPUT_BUFFER_KB in sandbox-tool.js — readFile return values
- * transit the Hyperlight input buffer (host→guest shared memory) and
- * exceeding it causes a hard VM fault.
- */
-const MAX_READ_CHUNK_KB = 10240;
-
 /**
  * Allowed encoding values for read operations.
  * "utf8" (default) returns text; "base64" returns raw bytes as a
@@ -152,9 +135,6 @@ const MAX_READ_CHUNK_KB = 10240;
  * PDF, etc.) that would corrupt as UTF-8.
  */
 const ALLOWED_ENCODINGS = new Set(["utf8", "base64"]);
-
-/** Hard ceiling for the listDir results config. */
-const MAX_LIST_RESULTS = 50000;
 
 /** Length of random suffix for temp directory names. */
 const TEMP_DIR_RANDOM_BYTES = 8;
@@ -239,17 +219,18 @@ export function createHostFunctions(
   }
 
   // safeNumericConfig rejects NaN/Infinity/negative and clamps to ceiling.
-  const maxFileBytes =
-    safeNumericConfig(cfg.maxFileSizeKb, MAX_SIZE_LIMIT_KB) * 1024;
+  // No artificial ceilings — the user decides based on their hardware
+  // and sandbox buffer configuration.
+  const maxFileBytes = safeNumericConfig(cfg.maxFileSizeKb, 10240) * 1024;
 
   // Per-call chunk limit — configurable via maxReadChunkKb (default 1 MB).
-  // Tied to sandbox input buffer size — see MAX_READ_CHUNK_KB comment.
-  const maxReadChunkBytes =
-    safeNumericConfig(cfg.maxReadChunkKb, 1024, MAX_READ_CHUNK_KB) * 1024;
+  // Note: raising this beyond the Hyperlight input buffer size will cause
+  // VM faults. The user is responsible for matching buffer + chunk config.
+  const maxReadChunkBytes = safeNumericConfig(cfg.maxReadChunkKb, 1024) * 1024;
 
   // Maximum directory listing results — configurable via maxListResults.
   const maxListEntries = Math.floor(
-    safeNumericConfig(cfg.maxListResults, 1000, MAX_LIST_RESULTS),
+    safeNumericConfig(cfg.maxListResults, 1000),
   );
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.
