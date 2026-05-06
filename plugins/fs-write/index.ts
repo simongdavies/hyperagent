@@ -76,6 +76,14 @@ export const SCHEMA = {
     minimum: 0,
     maximum: 10000,
   },
+  maxWriteChunkKb: {
+    type: "number" as const,
+    description:
+      "Maximum data accepted by a single writeFile/appendFile call in kilobytes. Tied to the Hyperlight output buffer size — do not raise beyond the configured buffer. Clamped to 10240 (10 MB).",
+    default: 2048,
+    minimum: 64,
+    maximum: 10240,
+  },
 } satisfies ConfigSchema;
 
 // Hints are now in plugin.json (structured metadata).
@@ -109,10 +117,15 @@ export interface MkdirResult {
 const MAX_SIZE_LIMIT_KB = 51200;
 
 /**
- * Maximum data accepted by a single writeFile/appendFile call (2 MB).
- * Increased from 1MB to support larger single writes when output buffer is configured.
+ * Hard ceiling for the per-call write chunk config (10 MB).
+ *
+ * The actual value is user-configurable via maxWriteChunkKb (default
+ * 2048 KB / 2 MB). When raising this, also raise
+ * DEFAULT_OUTPUT_BUFFER_KB in sandbox-tool.js — writeFile call data
+ * transits the Hyperlight output buffer (guest→host shared memory)
+ * and exceeding it causes a hard VM fault.
  */
-const MAX_WRITE_CHUNK_KB = 2048;
+const MAX_WRITE_CHUNK_KB = 10240;
 
 /**
  * Allowed encoding values for write operations.
@@ -196,7 +209,11 @@ export function createHostFunctions(
 
   const maxWriteBytes =
     safeNumericConfig(cfg.maxWriteSizeKb, 20480, MAX_SIZE_LIMIT_KB) * 1024;
-  const maxWriteChunkBytes = MAX_WRITE_CHUNK_KB * 1024;
+
+  // Per-call chunk limit — configurable via maxWriteChunkKb (default 2 MB).
+  // Tied to sandbox output buffer size — see MAX_WRITE_CHUNK_KB comment.
+  const maxWriteChunkBytes =
+    safeNumericConfig(cfg.maxWriteChunkKb, 2048, MAX_WRITE_CHUNK_KB) * 1024;
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.
   // On Windows it doesn't exist — we rely on the lstatSync pre-check

@@ -226,6 +226,30 @@ export const SCHEMA = {
     minimum: 0,
     maximum: 1000,
   },
+  maxRedirects: {
+    type: "number" as const,
+    description:
+      "Maximum number of HTTP redirects to follow. Each hop is re-validated against the domain allowlist and SSRF checks.",
+    default: 5,
+    minimum: 0,
+    maximum: 20,
+  },
+  maxJsonResponseBytes: {
+    type: "number" as const,
+    description:
+      "Maximum response size in bytes for fetchJSON convenience method. Larger responses should use get() + read() streaming.",
+    default: 1048576,
+    minimum: 1024,
+    maximum: 10485760,
+  },
+  maxTextResponseBytes: {
+    type: "number" as const,
+    description:
+      "Maximum response size in bytes for fetchText convenience method. Larger responses should use get() + read() streaming.",
+    default: 2097152,
+    minimum: 1024,
+    maximum: 10485760,
+  },
 } satisfies ConfigSchema;
 
 // Hints are now in plugin.json (structured metadata).\n\n// ── TypeScript Interfaces ────────────────────────────────────────────
@@ -462,6 +486,7 @@ interface SecureFetchOptions {
   returnXRequestId: boolean;
   exactDomains: Set<string>;
   wildcardDomains: string[];
+  maxRedirects: number;
   signal?: AbortSignal;
 }
 
@@ -492,9 +517,9 @@ interface SecureFetchSingleOptions extends Omit<
  *  A blocked domain and a successful fetch both take ≥ this long. */
 const MIN_RESPONSE_DELAY_MS = 200;
 
-/** Maximum number of HTTP redirects to follow. Each hop is
- *  re-validated against the domain allowlist and SSRF checks. */
-const MAX_REDIRECTS = 5;
+/** Maximum number of HTTP redirects to follow (hard ceiling for config).
+ *  Each hop is re-validated against the domain allowlist and SSRF checks. */
+const MAX_REDIRECTS = 20;
 
 /** HTTP status codes that trigger redirect following. */
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
@@ -2487,7 +2512,7 @@ async function secureFetch(
   let currentBody = opts.body;
   const visited = new Set();
 
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+  for (let hop = 0; hop <= opts.maxRedirects; hop++) {
     const urlKey = currentUrl.href;
 
     // Redirect loop detection
@@ -2544,7 +2569,9 @@ async function secureFetch(
   }
 
   // Exhausted redirect budget
-  return { error: `fetch blocked: too many redirects (max ${MAX_REDIRECTS})` };
+  return {
+    error: `fetch blocked: too many redirects (max ${opts.maxRedirects})`,
+  };
 }
 
 // ── Utility ──────────────────────────────────────────────────────────
@@ -2896,6 +2923,21 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
   // Higher values speed up batch downloads but may trigger server rate limits.
   const maxParallelFetches = safeNumericConfig(cfg.maxParallelFetches, 1, 10);
 
+  // Redirect, JSON, and text response size limits — user-configurable.
+  const maxRedirects = safeNumericConfig(cfg.maxRedirects, 5, MAX_REDIRECTS, 0);
+  const maxJsonResponseBytes = safeNumericConfig(
+    cfg.maxJsonResponseBytes,
+    1024 * 1024,
+    10 * 1024 * 1024,
+    1024,
+  );
+  const maxTextResponseBytes = safeNumericConfig(
+    cfg.maxTextResponseBytes,
+    2 * 1024 * 1024,
+    10 * 1024 * 1024,
+    1024,
+  );
+
   // Disk cache configuration — persistent LFU cache in $HOME/.hyperagent/fetch-cache
   const diskCacheMaxBytes =
     safeNumericConfig(cfg.diskCacheMaxMb, 100, 1000, 0) * 1024 * 1024;
@@ -3177,6 +3219,7 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
               returnXRequestId,
               exactDomains,
               wildcardDomains,
+              maxRedirects,
               signal,
             }),
             safetyTimeout,
@@ -3478,12 +3521,10 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
     const body = chunks.join("");
 
     // Guard against oversized responses blowing through heap limits.
-    // 1MB is reasonable for JSON APIs; larger responses should stream.
-    const MAX_JSON_BYTES = 1024 * 1024;
-    if (body.length > MAX_JSON_BYTES) {
+    if (body.length > maxJsonResponseBytes) {
       throw new Error(
         `fetchJSON: response too large ` +
-          `(${body.length} bytes, max ${MAX_JSON_BYTES}). ` +
+          `(${body.length} bytes, max ${maxJsonResponseBytes}). ` +
           `Use get() + read() loop to stream large responses instead.`,
       );
     }
@@ -3543,12 +3584,10 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
     const body = chunks.join("");
 
     // Guard against oversized responses blowing through heap limits.
-    // 2MB is reasonable for text content like HTML pages.
-    const MAX_TEXT_BYTES = 2 * 1024 * 1024;
-    if (body.length > MAX_TEXT_BYTES) {
+    if (body.length > maxTextResponseBytes) {
       throw new Error(
         `fetchText: response too large ` +
-          `(${body.length} bytes, max ${MAX_TEXT_BYTES}). ` +
+          `(${body.length} bytes, max ${maxTextResponseBytes}). ` +
           `Use get() + read() loop to stream large responses instead.`,
       );
     }

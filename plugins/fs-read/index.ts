@@ -66,6 +66,21 @@ export const SCHEMA = {
     minimum: 0,
     maximum: 10240,
   },
+  maxReadChunkKb: {
+    type: "number" as const,
+    description:
+      "Maximum data returned by a single readFile/readFileBinary call in kilobytes. Tied to the Hyperlight input buffer size — do not raise beyond the configured buffer. Clamped to 10240 (10 MB).",
+    default: 1024,
+    minimum: 64,
+    maximum: 10240,
+  },
+  maxListResults: {
+    type: "number" as const,
+    description: "Maximum number of entries returned by a single listDir call.",
+    default: 1000,
+    minimum: 10,
+    maximum: 50000,
+  },
 } satisfies ConfigSchema;
 
 // Hints are now in plugin.json (structured metadata).
@@ -120,18 +135,15 @@ export interface StatResult {
 const MAX_SIZE_LIMIT_KB = 10240;
 
 /**
- * Maximum data returned by a single readFile call (1 MB).
+ * Hard ceiling for the per-call read chunk config (10 MB).
  *
- * This is a hard limit — NOT configurable. It exists because readFile
- * return values transit the Hyperlight input buffer (host→guest shared
- * memory). The buffer must be at least MAX_READ_CHUNK_KB + 16 KB of
- * protocol framing. Files larger than this should be read via
- * readFileChunk with explicit offset/length.
- *
- * DO NOT raise this without also raising DEFAULT_INPUT_BUFFER_KB in
- * sandbox-tool.js — exceeding the buffer causes a hard VM fault.
+ * The actual value is user-configurable via maxReadChunkKb (default
+ * 1024 KB / 1 MB). When raising this, also raise
+ * DEFAULT_INPUT_BUFFER_KB in sandbox-tool.js — readFile return values
+ * transit the Hyperlight input buffer (host→guest shared memory) and
+ * exceeding it causes a hard VM fault.
  */
-const MAX_READ_CHUNK_KB = 1024;
+const MAX_READ_CHUNK_KB = 10240;
 
 /**
  * Allowed encoding values for read operations.
@@ -141,8 +153,8 @@ const MAX_READ_CHUNK_KB = 1024;
  */
 const ALLOWED_ENCODINGS = new Set(["utf8", "base64"]);
 
-/** Maximum number of entries returned by listDir. */
-const MAX_LIST_RESULTS = 1000;
+/** Hard ceiling for the listDir results config. */
+const MAX_LIST_RESULTS = 50000;
 
 /** Length of random suffix for temp directory names. */
 const TEMP_DIR_RANDOM_BYTES = 8;
@@ -230,10 +242,15 @@ export function createHostFunctions(
   const maxFileBytes =
     safeNumericConfig(cfg.maxFileSizeKb, MAX_SIZE_LIMIT_KB) * 1024;
 
-  // Per-call chunk limit — hard cap tied to sandbox buffer size.
-  // readFile rejects files above this; readFileChunk enforces it
-  // on the length parameter. Not configurable by design.
-  const maxReadChunkBytes = MAX_READ_CHUNK_KB * 1024;
+  // Per-call chunk limit — configurable via maxReadChunkKb (default 1 MB).
+  // Tied to sandbox input buffer size — see MAX_READ_CHUNK_KB comment.
+  const maxReadChunkBytes =
+    safeNumericConfig(cfg.maxReadChunkKb, 1024, MAX_READ_CHUNK_KB) * 1024;
+
+  // Maximum directory listing results — configurable via maxListResults.
+  const maxListEntries = Math.floor(
+    safeNumericConfig(cfg.maxListResults, 1000, MAX_LIST_RESULTS),
+  );
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.
   // On Windows it doesn't exist — we rely on the lstatSync pre-check
@@ -276,7 +293,7 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxReadChunkBytes) {
         return {
-          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${MAX_READ_CHUNK_KB}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks.`,
+          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${maxReadChunkBytes / 1024}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks.`,
         };
       }
 
@@ -417,7 +434,7 @@ export function createHostFunctions(
         if (entry.name.startsWith(".")) continue;
         if (entry.isSymbolicLink()) continue;
         if (!entry.isFile() && !entry.isDirectory()) continue;
-        if (results.length >= MAX_LIST_RESULTS) break;
+        if (results.length >= maxListEntries) break;
 
         results.push({
           name: entry.name,
@@ -489,7 +506,7 @@ export function createHostFunctions(
       if (fileStat.size > maxReadChunkBytes) {
         throw new Error(
           `File too large for single read: ${fileStat.size} bytes exceeds ` +
-            `per-call limit of ${MAX_READ_CHUNK_KB}KB. ` +
+            `per-call limit of ${maxReadChunkBytes / 1024}KB. ` +
             `Use readFileChunkBinary(path, offsetBytes, lengthBytes) to read in chunks.`,
         );
       }
