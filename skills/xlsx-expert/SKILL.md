@@ -60,11 +60,41 @@ You are an expert at building professional Excel `.xlsx` workbooks inside the Hy
 
 ## Setup Sequence
 
-1. `apply_profile({ profiles: 'file-builder' })` for binary output and larger buffers.
-2. `manage_plugin('fs-write', 'enable')` if the workbook needs to be written to disk.
-3. `module_info('xlsx')` and read the type definitions.
-4. Register a handler that imports from `ha:xlsx`.
-5. Build the workbook, then write the returned `Uint8Array` with the fs-write binary API.
+1. **Clarify requirements** — use `ask_user` (see Clarifying Questions below)
+2. `apply_profile({ profiles: 'file-builder' })` for binary output and larger buffers.
+3. `manage_plugin('fs-write', 'enable')` if the workbook needs to be written to disk.
+4. `module_info('xlsx')` and read the type definitions.
+5. Register a handler that imports from `ha:xlsx`.
+6. Build the workbook, then write the returned `Uint8Array` with the fs-write binary API.
+
+## Clarifying Questions
+
+Before building, check the user's request for these details. Ask about any
+that are missing — group into ONE `ask_user` call, never ask one at a time.
+Skip anything the user already specified. Offer sensible defaults they can
+accept with "yes" or "looks good".
+
+**Always needed (ask if missing):**
+
+- **Purpose** — What will this workbook be used for? (tracking, analysis, reporting)
+- **Data structure** — What columns/fields are needed? How many rows approximately?
+- **Data source** — Will data come from a file, URL, or should I generate sample data? If a URL, also apply `web-research` profile to enable fetching.
+
+**Ask if relevant to the request:**
+
+- **Multiple sheets** — One sheet or multiple? (e.g. summary + detail, by category)
+- **Charts** — Any visualisations needed? What types? (column, bar, line, pie)
+- **Formulas** — Any calculations? (totals, averages, percentages, lookups)
+- **Formatting** — Conditional formatting, data bars, colour coding for thresholds?
+- **Pivot tables** — Any pivot analysis needed? Which fields to group by?
+- **Filters/Sorting** — Auto-filter, frozen header rows?
+
+**Never ask — use sensible defaults:**
+
+- Column widths → auto-size based on content
+- Header styling → bold, coloured background, border
+- Number formats → auto-detect from data types
+- Sheet protection → don't apply unless explicitly requested
 
 ## Common Patterns
 
