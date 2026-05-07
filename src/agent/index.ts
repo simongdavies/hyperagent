@@ -1220,7 +1220,13 @@ async function validateHandlerCode(
       moduleJsons: newModuleJsons,
     } = loadModuleFilesForValidator(validation.missingSources, pluginManager);
 
-    if (Object.keys(newSources).length === 0) {
+    if (
+      Object.keys(newSources).length === 0 &&
+      Object.keys(newModuleJsons).length === 0 &&
+      Object.keys(newDtsSources).length === 0
+    ) {
+      // No new sources, module metadata, or type definitions found.
+      // Check if any specifiers are missing a ha: or host: prefix.
       const unresolvable = validation.missingSources.filter(
         (s) => !s.startsWith("ha:") && !s.startsWith("host:"),
       );
@@ -1401,7 +1407,12 @@ const registerHandlerTool = defineTool("register_handler", {
 
         // If we couldn't resolve ANY of the missing sources, generate helpful errors
         // This happens when imports use wrong prefixes (e.g., "pptx" instead of "ha:pptx")
-        if (Object.keys(newSources).length === 0) {
+        // Native modules have module.json but no .js source — check all three.
+        if (
+          Object.keys(newSources).length === 0 &&
+          Object.keys(newModuleJsons).length === 0 &&
+          Object.keys(newDtsSources).length === 0
+        ) {
           const unresolvable = validation.missingSources.filter(
             (s) => !s.startsWith("ha:") && !s.startsWith("host:"),
           );
