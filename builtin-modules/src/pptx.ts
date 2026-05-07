@@ -5869,6 +5869,26 @@ export function restorePresentation(state: SerializedPresentation): Pres {
     );
   }
 
+  // Restore shape ID counter FIRST — before createPresentation or any other
+  // function that might generate shapes. This prevents ID collisions when
+  // the module's global counter has been reset (e.g., handler recompilation
+  // resets ESM module-level variables to initial values).
+  if (typeof state.shapeIdCounter === "number") {
+    setShapeIdCounter(state.shapeIdCounter);
+  } else if (state.slides && Array.isArray(state.slides)) {
+    // No saved counter — scan existing slides to find the max shape ID
+    // so new shapes don't collide with restored ones.
+    let maxId = 1;
+    for (const slide of state.slides) {
+      const idMatches = slide.shapes.matchAll(/<p:cNvPr\s+id="(\d+)"/g);
+      for (const m of idMatches) {
+        const id = parseInt(m[1], 10);
+        if (id > maxId) maxId = id;
+      }
+    }
+    setShapeIdCounter(maxId);
+  }
+
   // Recreate the presentation with the same options
   const pres = createPresentation({
     theme: state.themeName,
@@ -5897,12 +5917,6 @@ export function restorePresentation(state: SerializedPresentation): Pres {
   }
   if (state.chartEntries && Array.isArray(state.chartEntries)) {
     pres._chartEntries = state.chartEntries;
-  }
-
-  // Restore shape ID counter to prevent duplicate IDs when adding new shapes
-  // This is critical for addSlideNumbers/addFooter called after restore
-  if (typeof state.shapeIdCounter === "number") {
-    setShapeIdCounter(state.shapeIdCounter);
   }
 
   return pres;
