@@ -143,7 +143,7 @@ accept with "yes" or "looks good".
 - **Theme/Style** — Professional/corporate, creative, minimal, dark? Any brand colours?
 - **Content structure** — Do you have an outline, or should I create one?
 - **Data/Charts** — Any data to visualise? What chart types? (bar, pie, line, etc.)
-- **Images** — Any images to include? (URLs or descriptions for placeholders)
+- **Images** — Any images to include? (local file paths or descriptions for placeholders. If remote URLs are needed, also apply `web-research` profile)
 
 **Never ask — use sensible defaults:**
 

@@ -78,7 +78,7 @@ accept with "yes" or "looks good".
 
 - **Purpose** — What will this workbook be used for? (tracking, analysis, reporting)
 - **Data structure** — What columns/fields are needed? How many rows approximately?
-- **Data source** — Will data come from a file, URL, or should I generate sample data?
+- **Data source** — Will data come from a file, URL, or should I generate sample data? If a URL, also apply `web-research` profile to enable fetching.
 
 **Ask if relevant to the request:**
 

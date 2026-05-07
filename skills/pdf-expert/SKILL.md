@@ -170,7 +170,7 @@ accept with "yes" or "looks good".
 - **Length** — Approximate page count, or let content determine naturally?
 - **Style/Tone** — Formal/professional, casual, academic, technical?
 - **Data/Charts** — Any data to visualise? What chart types?
-- **Branding** — Company colours, logo image URL?
+- **Branding** — Company colours, logo image? (local path or provided bytes. If remote URLs are needed, also apply `web-research` profile)
 - **Table of contents** — Include a TOC? (suggest yes for 5+ pages)
 
 **Never ask — use sensible defaults:**
