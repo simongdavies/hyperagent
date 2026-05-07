@@ -272,12 +272,12 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxFileBytes) {
         return {
-          error: `File too large: exceeds read limit of ${maxFileBytes / 1024}KB`,
+          error: `File too large: exceeds read limit of ${maxFileBytes / 1024}KB. To increase, reconfigure fs-read with a larger maxFileSizeKb.`,
         };
       }
       if (fileStat.size > maxReadChunkBytes) {
         return {
-          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${maxReadChunkBytes / 1024}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks.`,
+          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${maxReadChunkBytes / 1024}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb.`,
         };
       }
 
@@ -343,7 +343,7 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxFileBytes) {
         return {
-          error: `File too large: exceeds read limit of ${maxFileBytes / 1024}KB`,
+          error: `File too large: exceeds read limit of ${maxFileBytes / 1024}KB. To increase, reconfigure fs-read with a larger maxFileSizeKb.`,
         };
       }
 
@@ -484,14 +484,14 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxFileBytes) {
         throw new Error(
-          `File too large: exceeds read limit of ${maxFileBytes / 1024}KB`,
+          `File too large: exceeds read limit of ${maxFileBytes / 1024}KB. To increase, reconfigure fs-read with a larger maxFileSizeKb.`,
         );
       }
       if (fileStat.size > maxReadChunkBytes) {
         throw new Error(
           `File too large for single read: ${fileStat.size} bytes exceeds ` +
             `per-call limit of ${maxReadChunkBytes / 1024}KB. ` +
-            `Use readFileChunkBinary(path, offsetBytes, lengthBytes) to read in chunks.`,
+            `Use readFileChunkBinary(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb.`,
         );
       }
 
@@ -547,7 +547,7 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxFileBytes) {
         throw new Error(
-          `File too large: exceeds read limit of ${maxFileBytes / 1024}KB`,
+          `File too large: exceeds read limit of ${maxFileBytes / 1024}KB. To increase, reconfigure fs-read with a larger maxFileSizeKb.`,
         );
       }
 
