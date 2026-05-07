@@ -243,12 +243,12 @@ export function createHostFunctions(
 
     if (contentBytes > maxWriteChunkBytes) {
       return {
-        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into multiple appendFile calls.`,
+        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Write the first chunk with writeFile, then append remaining chunks with appendFile. Or reconfigure fs-write with a larger maxWriteChunkKb (ensure the sandbox output buffer is large enough to match).`,
       };
     }
     if (contentBytes > maxWriteBytes) {
       return {
-        error: `Content too large: exceeds cumulative file write limit of ${maxWriteBytes / 1024}KB`,
+        error: `Content too large: exceeds cumulative file write limit of ${maxWriteBytes / 1024}KB. To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
       };
     }
 
@@ -263,7 +263,7 @@ export function createHostFunctions(
       if (isNew) {
         if (entriesCreated >= maxEntries) {
           return {
-            error: `Entry limit reached: cannot create more than ${maxEntries} files/directories`,
+            error: `Entry limit reached: cannot create more than ${maxEntries} files/directories. To increase, reconfigure fs-write with a larger maxEntries.`,
           };
         }
         entriesCreated++;
@@ -333,12 +333,12 @@ export function createHostFunctions(
 
     if (contentBytes > maxWriteChunkBytes) {
       return {
-        error: `Append content too large for single call: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into smaller appendFile calls.`,
+        error: `Append content too large for single call: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into smaller appendFile calls, or reconfigure fs-write with a larger maxWriteChunkKb.`,
       };
     }
     if (contentBytes > maxWriteBytes) {
       return {
-        error: `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB`,
+        error: `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB. To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
       };
     }
 
@@ -353,7 +353,7 @@ export function createHostFunctions(
       if (isNew) {
         if (entriesCreated >= maxEntries) {
           return {
-            error: `Entry limit reached: cannot create more than ${maxEntries} files/directories`,
+            error: `Entry limit reached: cannot create more than ${maxEntries} files/directories. To increase, reconfigure fs-write with a larger maxEntries.`,
           };
         }
         entriesCreated++;
@@ -372,7 +372,7 @@ export function createHostFunctions(
       }
       if (fdStat.size + contentBytes > maxWriteBytes) {
         return {
-          error: `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB (current: ${fdStat.size} bytes + new: ${contentBytes} bytes)`,
+          error: `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB (current: ${fdStat.size} bytes + new: ${contentBytes} bytes). To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
         };
       }
 
@@ -432,15 +432,15 @@ export function createHostFunctions(
         filePath.toLowerCase().endsWith(".docx");
       const hint = isOffice
         ? ` For ${isPptx ? "PPTX" : "Office"} files, use exportToFile(pres, filename, fsWrite) from ha:pptx which handles chunking automatically.`
-        : " Split into multiple appendFileBinary calls.";
+        : " Write the first chunk with writeFileBinary, then append remaining chunks with appendFileBinary.";
       throw new Error(
         `Content too large for single write: ${contentBytes} bytes exceeds ` +
-          `per-call limit of ${maxWriteChunkBytes / 1024}KB.${hint}`,
+          `per-call limit of ${maxWriteChunkBytes / 1024}KB.${hint} Or reconfigure fs-write with a larger maxWriteChunkKb (ensure the sandbox output buffer is large enough to match).`,
       );
     }
     if (contentBytes > maxWriteBytes) {
       throw new Error(
-        `Content too large: exceeds cumulative file write limit of ${maxWriteBytes / 1024}KB`,
+        `Content too large: exceeds cumulative file write limit of ${maxWriteBytes / 1024}KB. To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
       );
     }
 
@@ -455,7 +455,7 @@ export function createHostFunctions(
       if (isNew) {
         if (entriesCreated >= maxEntries) {
           throw new Error(
-            `Entry limit reached: cannot create more than ${maxEntries} files/directories`,
+            `Entry limit reached: cannot create more than ${maxEntries} files/directories. To increase, reconfigure fs-write with a larger maxEntries.`,
           );
         }
         entriesCreated++;
@@ -520,12 +520,12 @@ export function createHostFunctions(
       throw new Error(
         `Append content too large for single call: ${contentBytes} bytes exceeds ` +
           `per-call limit of ${maxWriteChunkBytes / 1024}KB. ` +
-          `Split into smaller appendFileBinary calls.`,
+          `Split into smaller appendFileBinary calls, or reconfigure fs-write with a larger maxWriteChunkKb.`,
       );
     }
     if (contentBytes > maxWriteBytes) {
       throw new Error(
-        `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB`,
+        `Append would exceed cumulative file write limit of ${maxWriteBytes / 1024}KB. To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
       );
     }
 
@@ -540,7 +540,7 @@ export function createHostFunctions(
       if (isNew) {
         if (entriesCreated >= maxEntries) {
           throw new Error(
-            `Entry limit reached: cannot create more than ${maxEntries} files/directories`,
+            `Entry limit reached: cannot create more than ${maxEntries} files/directories. To increase, reconfigure fs-write with a larger maxEntries.`,
           );
         }
         entriesCreated++;
@@ -560,7 +560,7 @@ export function createHostFunctions(
       if (fdStat.size + contentBytes > maxWriteBytes) {
         throw new Error(
           `Append would exceed cumulative file write limit of ` +
-            `${maxWriteBytes / 1024}KB (current: ${fdStat.size} bytes + new: ${contentBytes} bytes)`,
+            `${maxWriteBytes / 1024}KB (current: ${fdStat.size} bytes + new: ${contentBytes} bytes). To increase, reconfigure fs-write with a larger maxWriteSizeKb.`,
         );
       }
 
@@ -595,7 +595,7 @@ export function createHostFunctions(
       }
       if (entriesCreated >= maxEntries) {
         return {
-          error: `Entry limit reached: cannot create more than ${maxEntries} files/directories`,
+          error: `Entry limit reached: cannot create more than ${maxEntries} files/directories. To increase, reconfigure fs-write with a larger maxEntries.`,
         };
       }
       entriesCreated++;

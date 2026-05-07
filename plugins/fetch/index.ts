@@ -1112,7 +1112,8 @@ function createRateLimiter(config: {
     if (timestamps.length >= config.maxPerMinute) {
       return {
         allowed: false,
-        reason: "fetch blocked: rate limit exceeded (per-minute)",
+        reason:
+          "fetch blocked: rate limit exceeded (per-minute). To increase, reconfigure fetch with a larger maxRequestsPerMinute.",
       };
     }
 
@@ -1120,7 +1121,8 @@ function createRateLimiter(config: {
     if (totalRequests >= config.maxPerHour) {
       return {
         allowed: false,
-        reason: "fetch blocked: rate limit exceeded (per-hour)",
+        reason:
+          "fetch blocked: rate limit exceeded (per-hour). To increase, reconfigure fetch with a larger maxRequestsPerHour.",
       };
     }
 
@@ -1128,13 +1130,18 @@ function createRateLimiter(config: {
     if (!domains.has(hostname) && domains.size >= config.maxDomains) {
       return {
         allowed: false,
-        reason: "fetch blocked: too many unique domains",
+        reason:
+          "fetch blocked: too many unique domains. To increase, reconfigure fetch with a larger maxDomainsPerSession.",
       };
     }
 
     // Data budget
     if (totalBytesReceived >= config.maxDataReceivedBytes) {
-      return { allowed: false, reason: "fetch blocked: data budget exhausted" };
+      return {
+        allowed: false,
+        reason:
+          "fetch blocked: data budget exhausted. To increase, reconfigure fetch with a larger maxDataReceivedKb.",
+      };
     }
 
     return { allowed: true };
@@ -2239,7 +2246,10 @@ function secureFetchSingle(
           clearTimeout(readTimer);
           clearTimeout(hardTimer);
           res.destroy();
-          return settle({ error: "fetch blocked: response too large" });
+          return settle({
+            error:
+              "fetch blocked: response too large. To increase, reconfigure fetch with a larger maxResponseSizeKb.",
+          });
         }
         chunks.push(chunk);
       });
@@ -2547,7 +2557,7 @@ async function secureFetch(
 
   // Exhausted redirect budget
   return {
-    error: `fetch blocked: too many redirects (max ${opts.maxRedirects})`,
+    error: `fetch blocked: too many redirects (max ${opts.maxRedirects}). To increase, reconfigure fetch with a larger maxRedirects.`,
   };
 }
 
@@ -3136,7 +3146,7 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
           });
           await enforceMinDelay(startTime, MIN_RESPONSE_DELAY_MS);
           return {
-            error: `fetch blocked: request body too large (max ${maxRequestBodyBytes / 1024}KB)`,
+            error: `fetch blocked: request body too large (max ${maxRequestBodyBytes / 1024}KB). To increase, reconfigure fetch with a larger maxRequestBodySizeKb.`,
           };
         }
 
@@ -3517,7 +3527,7 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
       throw new Error(
         `fetchJSON: response too large ` +
           `(${jsonBodyBytes} bytes, max ${maxJsonResponseBytes}). ` +
-          `Use get() + read() loop to stream large responses instead.`,
+          `Use get() + read() loop to stream large responses instead, or reconfigure fetch with a larger maxJsonResponseBytes.`,
       );
     }
 
@@ -3582,7 +3592,7 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
       throw new Error(
         `fetchText: response too large ` +
           `(${textBodyBytes} bytes, max ${maxTextResponseBytes}). ` +
-          `Use get() + read() loop to stream large responses instead.`,
+          `Use get() + read() loop to stream large responses instead, or reconfigure fetch with a larger maxTextResponseBytes.`,
       );
     }
 
