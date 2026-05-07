@@ -144,11 +144,41 @@ Use `estimateHeight(elements)` to predict total height BEFORE rendering.
 
 ## Setup Sequence
 
-1. `ask_user` — clarify requirements (topic, audience, data sources)
+1. **Clarify requirements** — use `ask_user` (see Clarifying Questions below)
 2. `apply_profile({ profiles: 'file-builder' })` — for fs-write plugin
 3. `module_info('pdf')` → read typeDefinitions for ALL parameters
 4. `module_info('pdf-charts')` → if charts needed
 5. Register handler and execute
+
+## Clarifying Questions
+
+Before building, check the user's request for these details. Ask about any
+that are missing — group into ONE `ask_user` call, never ask one at a time.
+Skip anything the user already specified. Offer sensible defaults they can
+accept with "yes" or "looks good".
+
+**Always needed (ask if missing):**
+
+- **Document type** — Report, letter, invoice, resume, brochure, manual, whitepaper?
+- **Topic/Subject** — What is the document about?
+- **Audience** — Who will read it? (management, clients, public, academic)
+- **Key sections** — What main sections or topics should it cover?
+
+**Ask if relevant to the request:**
+
+- **Page format** — Letter or A4? Portrait or landscape? (default: Letter, portrait)
+- **Length** — Approximate page count, or let content determine naturally?
+- **Style/Tone** — Formal/professional, casual, academic, technical?
+- **Data/Charts** — Any data to visualise? What chart types?
+- **Branding** — Company colours, logo image URL?
+- **Table of contents** — Include a TOC? (suggest yes for 5+ pages)
+
+**Never ask — use sensible defaults:**
+
+- Theme → `light-clean` for content, dark only for title pages
+- Font → use standard PDF fonts
+- Headers/footers/page numbers → always include for multi-page docs
+- Margins → use standard 1" margins
 
 ## Common Mistakes to Avoid
 

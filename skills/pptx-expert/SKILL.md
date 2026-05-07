@@ -119,10 +119,37 @@ Call `module_info('ooxml-core')` to see available themes.
 
 ## Setup Sequence
 
-1. `ask_user` — clarify topic, audience, slide count
+1. **Clarify requirements** — use `ask_user` (see Clarifying Questions below)
 2. `apply_profile({ profiles: 'file-builder' })` — for fs-write
 3. `module_info('pptx')` → read typeDefinitions
 4. Register handler(s) and execute
+
+## Clarifying Questions
+
+Before building, check the user's request for these details. Ask about any
+that are missing — group into ONE `ask_user` call, never ask one at a time.
+Skip anything the user already specified. Offer sensible defaults they can
+accept with "yes" or "looks good".
+
+**Always needed (ask if missing):**
+
+- **Topic/Title** — What is the presentation about?
+- **Audience** — Who will view it? (executives, team, customers, students, general)
+- **Slide count** — How many slides? Suggest 8–12 if unspecified.
+- **Purpose** — Inform, persuade, train, report?
+
+**Ask if relevant to the request:**
+
+- **Theme/Style** — Professional/corporate, creative, minimal, dark? Any brand colours?
+- **Content structure** — Do you have an outline, or should I create one?
+- **Data/Charts** — Any data to visualise? What chart types? (bar, pie, line, etc.)
+- **Images** — Any images to include? (URLs or descriptions for placeholders)
+
+**Never ask — use sensible defaults:**
+
+- Speaker notes style → always include professional speaker notes
+- Font choices → use theme defaults
+- Slide dimensions → always 16:9
 
 ## Common Mistakes
 
