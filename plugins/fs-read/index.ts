@@ -219,18 +219,21 @@ export function createHostFunctions(
   }
 
   // safeNumericConfig rejects NaN/Infinity/negative and clamps to ceiling.
-  // No artificial ceilings — the user decides based on their hardware
-  // and sandbox buffer configuration.
-  const maxFileBytes = safeNumericConfig(cfg.maxFileSizeKb, 10240) * 1024;
+  // No artificial ceilings — pass Number.MAX_SAFE_INTEGER so the user
+  // decides based on their hardware and sandbox buffer configuration.
+  const NO_CEIL = Number.MAX_SAFE_INTEGER;
+  const maxFileBytes =
+    safeNumericConfig(cfg.maxFileSizeKb, 10240, NO_CEIL) * 1024;
 
   // Per-call chunk limit — configurable via maxReadChunkKb (default 1 MB).
   // Note: raising this beyond the Hyperlight input buffer size will cause
   // VM faults. The user is responsible for matching buffer + chunk config.
-  const maxReadChunkBytes = safeNumericConfig(cfg.maxReadChunkKb, 1024) * 1024;
+  const maxReadChunkBytes =
+    safeNumericConfig(cfg.maxReadChunkKb, 1024, NO_CEIL) * 1024;
 
   // Maximum directory listing results — configurable via maxListResults.
   const maxListEntries = Math.floor(
-    safeNumericConfig(cfg.maxListResults, 1000),
+    safeNumericConfig(cfg.maxListResults, 1000, NO_CEIL),
   );
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.

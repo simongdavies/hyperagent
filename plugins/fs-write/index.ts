@@ -187,15 +187,17 @@ export function createHostFunctions(
     );
   }
 
-  // No artificial ceilings — the user decides based on their hardware
-  // and sandbox buffer configuration.
-  const maxWriteBytes = safeNumericConfig(cfg.maxWriteSizeKb, 20480) * 1024;
+  // No artificial ceilings — pass Number.MAX_SAFE_INTEGER so the user
+  // decides based on their hardware and sandbox buffer configuration.
+  const NO_CEIL = Number.MAX_SAFE_INTEGER;
+  const maxWriteBytes =
+    safeNumericConfig(cfg.maxWriteSizeKb, 20480, NO_CEIL) * 1024;
 
   // Per-call chunk limit — configurable via maxWriteChunkKb (default 2 MB).
   // Note: raising this beyond the Hyperlight output buffer size will cause
   // VM faults. The user is responsible for matching buffer + chunk config.
   const maxWriteChunkBytes =
-    safeNumericConfig(cfg.maxWriteChunkKb, 2048) * 1024;
+    safeNumericConfig(cfg.maxWriteChunkKb, 2048, NO_CEIL) * 1024;
 
   // O_NOFOLLOW atomically rejects symlinks at open() on POSIX.
   // On Windows it doesn't exist — we rely on the lstatSync pre-check
@@ -204,7 +206,9 @@ export function createHostFunctions(
   // privileges (SeCreateSymbolicLinkPrivilege or Developer Mode).
   const O_NOFOLLOW = FS_CONSTANTS.O_NOFOLLOW ?? 0;
 
-  const maxEntries = Math.floor(safeNumericConfig(cfg.maxEntries, 1000));
+  const maxEntries = Math.floor(
+    safeNumericConfig(cfg.maxEntries, 1000, NO_CEIL),
+  );
   let entriesCreated = 0;
 
   // ── Host function implementations ────────────────────────────

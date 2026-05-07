@@ -3510,10 +3510,13 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
     const body = chunks.join("");
 
     // Guard against oversized responses blowing through heap limits.
-    if (body.length > maxJsonResponseBytes) {
+    // Use Buffer.byteLength for accurate UTF-8 byte count (body.length
+    // counts UTF-16 code units which undercounts for non-ASCII content).
+    const jsonBodyBytes = Buffer.byteLength(body, "utf8");
+    if (jsonBodyBytes > maxJsonResponseBytes) {
       throw new Error(
         `fetchJSON: response too large ` +
-          `(${body.length} bytes, max ${maxJsonResponseBytes}). ` +
+          `(${jsonBodyBytes} bytes, max ${maxJsonResponseBytes}). ` +
           `Use get() + read() loop to stream large responses instead.`,
       );
     }
@@ -3573,10 +3576,12 @@ export function createHostFunctions(config?: FetchConfig): FetchHostFunctions {
     const body = chunks.join("");
 
     // Guard against oversized responses blowing through heap limits.
-    if (body.length > maxTextResponseBytes) {
+    // Use Buffer.byteLength for accurate UTF-8 byte count.
+    const textBodyBytes = Buffer.byteLength(body, "utf8");
+    if (textBodyBytes > maxTextResponseBytes) {
       throw new Error(
         `fetchText: response too large ` +
-          `(${body.length} bytes, max ${maxTextResponseBytes}). ` +
+          `(${textBodyBytes} bytes, max ${maxTextResponseBytes}). ` +
           `Use get() + read() loop to stream large responses instead.`,
       );
     }

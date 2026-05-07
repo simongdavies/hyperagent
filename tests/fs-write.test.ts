@@ -560,4 +560,74 @@ describe("createHostFunctions", () => {
       }
     });
   });
+
+  // ── configurable limits ──────────────────────────────────────
+
+  describe("configurable limits", () => {
+    it("should enforce custom maxWriteChunkKb for text writes", () => {
+      const chunkDir = makeTempDir();
+      try {
+        // 1 KB per-call limit
+        const chunkFns = createHostFunctions({
+          baseDir: chunkDir,
+          maxWriteChunkKb: 1,
+          maxWriteSizeKb: 100,
+        })["fs-write"];
+        // 2 KB content exceeds 1 KB per-call limit
+        const result = chunkFns.writeFile("big.txt", "x".repeat(2048));
+        expect(result.error).toContain("per-call limit");
+      } finally {
+        rmSync(chunkDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should enforce custom maxWriteChunkKb for binary writes", () => {
+      const chunkDir = makeTempDir();
+      try {
+        const chunkFns = createHostFunctions({
+          baseDir: chunkDir,
+          maxWriteChunkKb: 1,
+          maxWriteSizeKb: 100,
+        })["fs-write"];
+        const data = new Uint8Array(2048); // 2 KB > 1 KB limit
+        expect(() => chunkFns.writeFileBinary("big.bin", data)).toThrow(
+          "per-call limit",
+        );
+      } finally {
+        rmSync(chunkDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should allow writes within custom maxWriteChunkKb", () => {
+      const chunkDir = makeTempDir();
+      try {
+        const chunkFns = createHostFunctions({
+          baseDir: chunkDir,
+          maxWriteChunkKb: 4,
+          maxWriteSizeKb: 100,
+        })["fs-write"];
+        const result = chunkFns.writeFile("ok.txt", "hello");
+        expect(result.ok).toBe(true);
+      } finally {
+        rmSync(chunkDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should allow maxWriteSizeKb above the old 50 MB ceiling", () => {
+      const bigDir = makeTempDir();
+      try {
+        // Verify the ceiling bug is fixed — 51200+ should not be
+        // clamped to 10240 by safeNumericConfig's default ceiling.
+        const bigFns = createHostFunctions({
+          baseDir: bigDir,
+          maxWriteSizeKb: 102400, // 100 MB
+        })["fs-write"];
+        // Write a small file — should be accepted
+        const result = bigFns.writeFile("ok.txt", "hello");
+        expect(result.ok).toBe(true);
+      } finally {
+        rmSync(bigDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
