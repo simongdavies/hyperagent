@@ -1226,7 +1226,7 @@ async function validateHandlerCode(
       Object.keys(newDtsSources).length === 0
     ) {
       // No new sources, module metadata, or type definitions found.
-      // Check if any specifiers are bare (no ha:/host: prefix).
+      // Check if any specifiers are missing a ha: or host: prefix.
       const unresolvable = validation.missingSources.filter(
         (s) => !s.startsWith("ha:") && !s.startsWith("host:"),
       );
