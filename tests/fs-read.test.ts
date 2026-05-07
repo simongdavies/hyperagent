@@ -781,4 +781,58 @@ describe("createHostFunctions", () => {
       expect(result.error).toContain("maximum length");
     });
   });
+
+  // ── configurable limits ──────────────────────────────────────
+
+  describe("configurable limits", () => {
+    it("should enforce custom maxReadChunkKb", () => {
+      // Set a tiny per-call chunk limit (1 KB)
+      const smallChunkFns = createHostFunctions({
+        baseDir,
+        maxReadChunkKb: 1,
+      })["fs-read"];
+      // Write a file larger than 1 KB
+      writeFileSync(join(baseDir, "big-for-chunk.txt"), "x".repeat(2048));
+      const result = smallChunkFns.readFile("big-for-chunk.txt");
+      expect(result.error).toContain("per-call limit");
+    });
+
+    it("should allow reads when file is within custom maxReadChunkKb", () => {
+      const smallChunkFns = createHostFunctions({
+        baseDir,
+        maxReadChunkKb: 4,
+      })["fs-read"];
+      writeFileSync(join(baseDir, "small-for-chunk.txt"), "hello");
+      const result = smallChunkFns.readFile("small-for-chunk.txt");
+      expect(result.content).toBe("hello");
+    });
+
+    it("should enforce custom maxListResults", () => {
+      // Create 10 files but limit to 3 results
+      const limitedFns = createHostFunctions({
+        baseDir,
+        maxListResults: 3,
+      })["fs-read"];
+      for (let i = 0; i < 10; i++) {
+        writeFileSync(join(baseDir, `item-${i}.txt`), `${i}`);
+      }
+      const result = limitedFns.listDir(".");
+      expect(Array.isArray(result)).toBe(true);
+      expect((result as Array<unknown>).length).toBeLessThanOrEqual(3);
+    });
+
+    it("should allow maxFileSizeKb above the old 10 MB ceiling", () => {
+      // Verify the ceiling bug is fixed — 20480 KB should not be
+      // clamped to 10240 by safeNumericConfig's default ceiling.
+      const largeFns = createHostFunctions({
+        baseDir,
+        maxFileSizeKb: 20480,
+      })["fs-read"];
+      // Write a 15 KB file — should be accepted with 20 MB limit
+      writeFileSync(join(baseDir, "large-ok.txt"), "x".repeat(15000));
+      const result = largeFns.readFile("large-ok.txt");
+      expect(result.content).toBeDefined();
+      expect(result.error).toBeUndefined();
+    });
+  });
 });

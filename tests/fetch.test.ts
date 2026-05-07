@@ -2757,4 +2757,58 @@ describe("maxParallelFetches", () => {
     const results = await fns.fetch.fetchBinaryBatch([]);
     expect(results).toEqual([]);
   });
+
+  // ── configurable limits ──────────────────────────────────────
+
+  describe("configurable limits", () => {
+    it("should accept maxRedirects config without error", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxRedirects: 0,
+      });
+      expect(fns.fetch.get).toBeDefined();
+    });
+
+    it("should accept large maxRedirects config", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxRedirects: 100,
+      });
+      expect(fns.fetch.get).toBeDefined();
+    });
+
+    it("should accept maxJsonResponseBytes config", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxJsonResponseBytes: 50 * 1024 * 1024, // 50 MB
+      });
+      expect(fns.fetch.fetchJSON).toBeDefined();
+    });
+
+    it("should accept maxTextResponseBytes config", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxTextResponseBytes: 100 * 1024 * 1024, // 100 MB
+      });
+      expect(fns.fetch.fetchText).toBeDefined();
+    });
+
+    it("should accept very large maxDataReceivedKb for 2GB+ sessions", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxDataReceivedKb: 2 * 1024 * 1024, // 2 GB
+      });
+      expect(fns.fetch.get).toBeDefined();
+    });
+
+    it("should accept uncapped rate limit configs", () => {
+      const fns = createHostFunctions({
+        allowedDomains: ["example.com"],
+        maxRequestsPerMinute: 1000,
+        maxRequestsPerHour: 50000,
+        maxDomainsPerSession: 500,
+      });
+      expect(fns.fetch.get).toBeDefined();
+    });
+  });
 });
