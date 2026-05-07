@@ -243,7 +243,7 @@ export function createHostFunctions(
 
     if (contentBytes > maxWriteChunkBytes) {
       return {
-        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Split into multiple appendFile calls, or reconfigure fs-write with a larger maxWriteChunkKb.`,
+        error: `Content too large for single write: ${contentBytes} bytes exceeds per-call limit of ${maxWriteChunkBytes / 1024}KB. Write the first chunk with writeFile, then append remaining chunks with appendFile. Or reconfigure fs-write with a larger maxWriteChunkKb (ensure the sandbox output buffer is large enough to match).`,
       };
     }
     if (contentBytes > maxWriteBytes) {
@@ -432,10 +432,10 @@ export function createHostFunctions(
         filePath.toLowerCase().endsWith(".docx");
       const hint = isOffice
         ? ` For ${isPptx ? "PPTX" : "Office"} files, use exportToFile(pres, filename, fsWrite) from ha:pptx which handles chunking automatically.`
-        : " Split into multiple appendFileBinary calls.";
+        : " Write the first chunk with writeFileBinary, then append remaining chunks with appendFileBinary.";
       throw new Error(
         `Content too large for single write: ${contentBytes} bytes exceeds ` +
-          `per-call limit of ${maxWriteChunkBytes / 1024}KB.${hint} Or reconfigure fs-write with a larger maxWriteChunkKb.`,
+          `per-call limit of ${maxWriteChunkBytes / 1024}KB.${hint} Or reconfigure fs-write with a larger maxWriteChunkKb (ensure the sandbox output buffer is large enough to match).`,
       );
     }
     if (contentBytes > maxWriteBytes) {

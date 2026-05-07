@@ -277,7 +277,7 @@ export function createHostFunctions(
       }
       if (fileStat.size > maxReadChunkBytes) {
         return {
-          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${maxReadChunkBytes / 1024}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb.`,
+          error: `File too large for single read: ${fileStat.size} bytes exceeds per-call limit of ${maxReadChunkBytes / 1024}KB. Use readFileChunk(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb (ensure the sandbox input buffer is large enough to match).`,
         };
       }
 
@@ -491,7 +491,7 @@ export function createHostFunctions(
         throw new Error(
           `File too large for single read: ${fileStat.size} bytes exceeds ` +
             `per-call limit of ${maxReadChunkBytes / 1024}KB. ` +
-            `Use readFileChunkBinary(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb.`,
+            `Use readFileChunkBinary(path, offsetBytes, lengthBytes) to read in chunks, or reconfigure fs-read with a larger maxReadChunkKb (ensure the sandbox input buffer is large enough to match).`,
         );
       }
 
