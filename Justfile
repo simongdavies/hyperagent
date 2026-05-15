@@ -301,6 +301,65 @@ update-pdf-golden distro="":
 validate-pptx FILE:
     npx ooxml-validator {{FILE}}
 
+# ── Release Smoke Tests ──────────────────────────────────────────────
+
+# Run the Alpine (musl) smoke test against a published npm version.
+# Mirrors the post-publish job in .github/workflows/publish.yml — runs
+# `npm install -g <pkg>@<version>` inside node:22-alpine and exercises
+# `hyperagent --version` + `hyperagent --help`. The .node binaries get
+# dynamically loaded as part of starting the CLI, so a glibc-linked
+# musl artifact (the v0.6.0 footgun) fails here with
+#   "Error loading shared library ld-linux-x86-64.so.2: No such file"
+#
+# Usage:
+#   just smoke-musl              # latest dist-tag
+#   just smoke-musl 0.6.1        # specific version
+#   just smoke-musl beta         # any dist-tag
+#
+# Requires Docker.
+[linux]
+smoke-musl version="latest":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "❌ docker not found — install Docker to run the musl smoke test" >&2
+        exit 1
+    fi
+    echo "── Smoke-testing @hyperlight-dev/hyperagent@{{version}} on node:22-alpine ──"
+    docker run --rm \
+        -e VERSION="{{version}}" \
+        node:22-alpine \
+        sh -c '
+            set -u
+            echo "=== platform ==="
+            uname -a
+            cat /etc/os-release 2>/dev/null | head -3 || true
+
+            echo "=== install ==="
+            npm install -g --no-audit --no-fund "@hyperlight-dev/hyperagent@${VERSION}" \
+                || { echo "❌ install failed"; exit 1; }
+
+            echo "=== version check ==="
+            # Capture without set -e killing the assignment so we surface the
+            # actual error (e.g. "Error loading shared library
+            # ld-linux-x86-64.so.2") rather than just exiting silently.
+            if ! ACTUAL=$(hyperagent --version 2>&1); then
+                echo "❌ hyperagent --version failed:"
+                echo "$ACTUAL"
+                exit 1
+            fi
+            echo "got: $ACTUAL"
+
+            echo "=== help check ==="
+            if ! HELP=$(hyperagent --help 2>&1) || ! echo "$HELP" | grep -q "Usage:"; then
+                echo "❌ hyperagent --help did not produce expected output:"
+                echo "$HELP"
+                exit 1
+            fi
+
+            echo "✅ musl smoke passed on ${VERSION}"
+        '
+
 # ── Quality Gate ─────────────────────────────────────────────────────
 
 # Run ALL checks: format, types, tests (TS + Rust)
