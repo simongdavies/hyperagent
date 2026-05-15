@@ -68,20 +68,52 @@ jobs:
       - name: Setup debug build for tests
         run: just setup
 
-      - name: Install musl tools and rebuild for musl target
+      - name: Rebuild native addons for musl target (via cargo-zigbuild)
         if: matrix.build == 'linux-musl'
+        env:
+          # Pinned zig version so the toolchain is reproducible across runs.
+          # cargo-zigbuild tracks zig closely; bump together.
+          ZIG_VERSION: "0.13.0"
         run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
+          # ── Why this step uses cargo-zigbuild ─────────────────────────────
+          # Vanilla `napi build --target x86_64-unknown-linux-musl` on an
+          # Ubuntu runner silently links against glibc: Cargo defaults to
+          # `cc` (= glibc gcc) for the final link step, so the resulting
+          # `.linux-x64-musl.node` ends up with NEEDED entries for libc.so.6
+          # + ld-linux-x86-64.so.2 even though it is *labelled* musl. That is
+          # exactly what shipped in v0.6.0 and made `hyperagent --version`
+          # fail on Alpine with "Error loading shared library
+          # ld-linux-x86-64.so.2: No such file or directory".
+          #
+          # Switching to musl-gcc alone does not work either: musl-gcc's
+          # sysroot does not ship libgcc_s.so.1 so the link fails.
+          #
+          # `cargo-zigbuild` (invoked via `napi build --cross-compile`) uses
+          # zig as a self-contained musl cross-compiler. Zig ships a complete
+          # musl sysroot including compiler-rt as a drop-in replacement for
+          # libgcc, so the produced .node depends only on the musl libc that
+          # Alpine actually has.
+          # ──────────────────────────────────────────────────────────────────
+
+          # Install zig (official binary, repackaged on PyPI as `ziglang`).
+          pip3 install --quiet --user "ziglang==${ZIG_VERSION}"
+          ZIG_BIN="$(python3 -c 'import os, ziglang; print(os.path.join(os.path.dirname(ziglang.__file__),"zig"))')"
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$ZIG_BIN" "$HOME/.local/bin/zig"
+          export PATH="$HOME/.local/bin:$PATH"
+          zig version
+
+          cargo install --locked cargo-zigbuild
           rustup target add x86_64-unknown-linux-musl
 
           # Rebuild hyperlight-js NAPI addon targeting musl in release mode.
           hl_dir=$(just resolve-hyperlight-dir)
           cd "${hl_dir}/src/js-host-api"
-          npx napi build --platform --release --strip --target x86_64-unknown-linux-musl
+          npx napi build --platform --release --strip --cross-compile --target x86_64-unknown-linux-musl
 
           # Rebuild hyperlight-analysis NAPI addon targeting musl in release mode.
           cd "$GITHUB_WORKSPACE/src/code-validator/guest"
-          npx napi build --platform --release --strip --target x86_64-unknown-linux-musl --manifest-path host/Cargo.toml
+          npx napi build --platform --release --strip --cross-compile --target x86_64-unknown-linux-musl --manifest-path host/Cargo.toml
           node -e "require('fs').readdirSync('host').filter(f=>f.endsWith('.node')).forEach(f=>require('fs').copyFileSync('host/'+f,f))"
 
           # This matrix leg must upload only musl artifacts; the setup step also
@@ -93,6 +125,33 @@ jobs:
           # Verify musl .node files were actually produced
           ls -la "${hl_dir}/src/js-host-api/"*.linux-x64-musl.node
           ls -la "$GITHUB_WORKSPACE/src/code-validator/guest/"*linux-x64-musl* || ls -la "$GITHUB_WORKSPACE/src/code-validator/guest/host/"*linux-x64-musl*
+
+      - name: Verify musl .node files are not glibc-linked
+        if: matrix.build == 'linux-musl'
+        # Release-time regression check: every musl .node must NOT depend on
+        # glibc's libc.so.6 / ld-linux-x86-64.so.2 / libgcc_s.so.1. If the
+        # toolchain ever silently falls back to glibc again (as happened
+        # in v0.6.0), fail here in CI rather than in the post-publish Alpine
+        # smoke test, or worse, in end-users' hands.
+        run: |
+          hl_dir=$(just resolve-hyperlight-dir)
+          fail=0
+          for nf in \
+            "${hl_dir}/src/js-host-api/"*.linux-x64-musl.node \
+            "$GITHUB_WORKSPACE/src/code-validator/guest/host/"*.linux-x64-musl.node \
+            "$GITHUB_WORKSPACE/src/code-validator/guest/"*.linux-x64-musl.node; do
+            [ -f "$nf" ] || continue
+            echo "── $(basename "$nf") ──"
+            readelf -d "$nf" | grep -E 'NEEDED|RPATH|RUNPATH' || echo "  (no NEEDED entries — statically linked)"
+            if readelf -d "$nf" | grep -qE 'Shared library: \[(libc\.so\.6|ld-linux-x86-64\.so\.2|libgcc_s\.so\.1)\]'; then
+              echo "  ❌ depends on glibc — the rebuild step did not produce a musl-clean binary."
+              echo "     Expected toolchain: napi build --cross-compile (cargo-zigbuild + zig ${ZIG_VERSION:-unknown})."
+              fail=1
+            else
+              echo "  ✅ musl-clean"
+            fi
+          done
+          exit $fail
 
       - name: Build release binary
         if: matrix.run_tests
