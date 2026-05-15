@@ -1,0 +1,5 @@
+<cr><clear-line>
+  <magenta>🔧 execute_javascript</magenta>
+  <yellow>🚫 Tool denied by policy</yellow>
+
+<cr><clear-line>

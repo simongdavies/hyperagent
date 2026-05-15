@@ -1,0 +1,5 @@
+<cr><clear-line>
+  <magenta>🔧 execute_javascript</magenta>
+  <red>❌ ReferenceError: foo is not defined</red>
+
+<cr><clear-line>

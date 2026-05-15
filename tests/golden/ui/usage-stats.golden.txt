@@ -1,0 +1,2 @@
+<cr><clear-line>Done.
+  <dim>📊 100 in / 50 out · 1 req · 1.2s</dim>
