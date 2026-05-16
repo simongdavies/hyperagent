@@ -8,12 +8,14 @@
 import type {
   CopilotSession,
   AssistantMessageEvent,
+  MessageOptions,
 } from "@github/copilot-sdk";
 import type { AgentState } from "./state.js";
 import { looksLikeMarkdown } from "./markdown-renderer.js";
 import { buildBufferOverflowHint } from "./buffer-overflow.js";
 import type { createSandboxTool } from "../sandbox/tool.js";
 import type { AgentUI, ToolResultPayload } from "./ui/index.js";
+import type { SessionAttachment } from "./attachments.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -973,11 +975,19 @@ export function registerEventHandler(
 
 /**
  * Send a message and wait for session.idle, with keep-alive timeout.
+ *
+ * @param session     — Active session.
+ * @param prompt      — User message text.
+ * @param deps        — Handler deps (state + ui + sandbox + timeouts).
+ * @param attachments — Optional list of attachments to forward. When
+ *                      omitted or empty, the SDK receives just
+ *                      `{ prompt }` — byte-identical to today's call.
  */
 export function sendAndWaitWithKeepAlive(
   session: CopilotSession,
   prompt: string,
   deps: EventHandlerDeps,
+  attachments?: SessionAttachment[],
 ): Promise<AssistantMessageEvent | undefined> {
   const { state } = deps;
   return new Promise<AssistantMessageEvent | undefined>((resolve, reject) => {
@@ -985,7 +995,11 @@ export function sendAndWaitWithKeepAlive(
     state.pendingResolve = resolve;
     state.pendingReject = reject;
     resetKeepAliveTimer(deps);
-    session.send({ prompt }).catch((err: unknown) => {
+    const opts: MessageOptions = { prompt };
+    if (attachments && attachments.length > 0) {
+      opts.attachments = attachments;
+    }
+    session.send(opts).catch((err: unknown) => {
       clearKeepAliveState(deps);
       reject(err);
     });

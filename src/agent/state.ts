@@ -17,6 +17,7 @@ import type {
 } from "@github/copilot-sdk";
 import type { Interface as ReadlineInterface } from "node:readline/promises";
 import type { CliConfig } from "./cli-parser.js";
+import type { SessionAttachment } from "./attachments.js";
 
 // ── AgentState Interface ─────────────────────────────────────────────
 
@@ -145,6 +146,15 @@ export interface AgentState {
    * and `/open <n>` command. Each entry has a 1-based index.
    */
   producedFiles: Array<{ index: number; absPath: string; label: string }>;
+
+  /**
+   * Attachments queued for the next user message. Populated at
+   * startup from `--attach FILE` (repeatable) and, in future, from
+   * the `/attach` slash command. `processMessage` snapshots and
+   * clears this buffer before each `session.send`, so attachments
+   * fire exactly once.
+   */
+  pendingAttachments: SessionAttachment[];
 
   /** The Copilot client — spawns the CLI server process. */
   copilotClient: CopilotClient | null;
@@ -391,6 +401,7 @@ export function createAgentState(
     // Session management
     sessionNeedsRebuild: false,
     producedFiles: [],
+    pendingAttachments: [],
     copilotClient: null,
     activeSession: null,
     cachedModels: null,

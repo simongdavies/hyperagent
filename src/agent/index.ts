@@ -67,6 +67,10 @@ import { TerminalUI, type AgentUI } from "./ui/index.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
 import { createAgentState, type AgentState } from "./state.js";
 import {
+  resolveFileAttachments,
+  type SessionAttachment,
+} from "./attachments.js";
+import {
   enableAbortOnEsc,
   disableAbortOnEsc,
   createAuditAbortHandler,
@@ -1176,6 +1180,20 @@ if (cli.reasoningEffort) {
     | "high"
     | "xhigh";
   state.sessionNeedsRebuild = true;
+}
+
+// Wire CLI --attach <file> (repeatable) into the pending-attachments
+// buffer. Resolution happens once at startup so missing/invalid files
+// surface immediately rather than mid-conversation. The buffer is
+// drained on the next user message in processMessage().
+if (cli.attach.length > 0) {
+  try {
+    state.pendingAttachments = resolveFileAttachments(cli.attach);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(msg);
+    process.exit(1);
+  }
 }
 
 /**
@@ -6634,8 +6652,9 @@ function sendAndWaitWithKeepAlive(
   session: CopilotSession,
   prompt: string,
   _inactivityMs: number,
+  attachments?: SessionAttachment[],
 ): Promise<AssistantMessageEvent | undefined> {
-  return sendAndWaitImpl(session, prompt, getEventHandlerDeps());
+  return sendAndWaitImpl(session, prompt, getEventHandlerDeps(), attachments);
 }
 
 // ── Suggested Command Extraction ─────────────────────────────────────
@@ -6673,10 +6692,20 @@ async function processMessage(
   const fileCountBefore = state.producedFiles.length;
   try {
     const effectiveTimeout = state.sendTimeoutOverride ?? SEND_TIMEOUT_MS;
+    // Drain pending attachments atomically: snapshot + clear so any
+    // subsequent prompt (or a retry) doesn't replay them. Empty
+    // buffer → undefined so the SDK sees byte-identical input to a
+    // session that never had attachments.
+    let outgoingAttachments: SessionAttachment[] | undefined;
+    if (state.pendingAttachments.length > 0) {
+      outgoingAttachments = state.pendingAttachments;
+      state.pendingAttachments = [];
+    }
     const response = await sendAndWaitWithKeepAlive(
       session,
       userInput,
       effectiveTimeout,
+      outgoingAttachments,
     );
 
     const content = response?.data?.content;

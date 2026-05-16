@@ -52,6 +52,7 @@ const TEST_CLI: CliConfig = {
   showVersion: false,
   noColor: false,
   quiet: false,
+  attach: [],
 };
 
 /**

@@ -139,6 +139,13 @@ export interface CliConfig {
    */
   quiet: boolean;
   /**
+   * File path(s) to attach to the first user message. Repeatable
+   * (`--attach a.png --attach b.csv`) and order-preserving. Each path is
+   * resolved + validated at startup; the SDK reads, MIME-sniffs and
+   * uploads each file. Empty array = no attachments (the common case).
+   */
+  attach: string[];
+  /**
    * Standalone MCP setup/config command. Runs and exits before agent startup.
    */
   mcpSetupCommand?: MCPSetupCommand;
@@ -196,6 +203,7 @@ Options:
   --output-threshold <bytes>  Large output threshold (default: 20480 = 20KB)
   --no-color             Strip ANSI colour codes from terminal output
   --quiet                Suppress informational notifications
+  --attach <file>        Attach a file to the first user message (repeatable)
   --version, -v        Show version and exit
   --help, -h           Show this help message
 
@@ -291,6 +299,7 @@ export function parseCliArgs(
     showVersion: false,
     noColor: process.env.HYPERAGENT_NO_COLOR === "1",
     quiet: process.env.HYPERAGENT_QUIET === "1",
+    attach: [],
   };
 
   let i = 0;
@@ -476,6 +485,15 @@ export function parseCliArgs(
       case "--quiet":
         config.quiet = true;
         break;
+      case "--attach": {
+        const path = argv[++i] ?? "";
+        if (!path) {
+          console.error("--attach requires a file path");
+          process.exit(1);
+        }
+        config.attach.push(path);
+        break;
+      }
       case "--mcp-setup-everything":
         setMCPSetupCommand(config, { kind: "setup-everything" });
         break;
