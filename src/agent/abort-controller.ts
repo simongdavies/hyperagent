@@ -5,7 +5,7 @@
 // clean cancellation — no hack, no workaround.
 //
 // Lifecycle:
-//   1. enableAbortOnEsc(session, state, spinner) — enter raw mode,
+//   1. enableAbortOnEsc(session, state, ui) — enter raw mode,
 //      listen for bare ESC keypress
 //   2. On ESC → session.abort() → SDK sends abort RPC → abort event
 //      arrives → event handler resolves the pending promise
@@ -14,7 +14,7 @@
 
 import type { CopilotSession } from "@github/copilot-sdk";
 import type { AgentState } from "./state.js";
-import type { Spinner } from "./spinner.js";
+import type { AgentUI } from "./ui/index.js";
 import { C } from "./ansi.js";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -61,12 +61,12 @@ let didSetRawMode = false;
  *
  * @param session - The active CopilotSession (has .abort())
  * @param agentState  - AgentState (pendingResolve/Reject for fallback resolution)
- * @param spin    - Spinner instance (stopped on abort for clean UI)
+ * @param ui      - AgentUI port (activity indicator cleared on abort)
  */
 export function enableAbortOnEsc(
   session: CopilotSession,
   agentState: AgentState,
-  spin: Spinner,
+  ui: AgentUI,
   log?: (msg: string) => void,
 ): void {
   disableAbortOnEsc();
@@ -120,7 +120,7 @@ export function enableAbortOnEsc(
           `ESC: debounce fired — triggering abort (abortFired=${abortFired})`,
         );
         if (!abortFired) {
-          triggerAbort(session, agentState, spin);
+          triggerAbort(session, agentState, ui);
         }
       }, ESC_DEBOUNCE_MS);
       return;
@@ -182,11 +182,11 @@ export function isAbortOnEscEnabled(): boolean {
  *
  * Call `cleanup()` in a finally block to disarm the listener.
  *
- * @param spin - Spinner instance (stopped on abort for clean output)
+ * @param ui - AgentUI port (activity indicator cleared on abort)
  * @returns `{ controller, cleanup }` — pass controller.signal to
  *   deepAudit(), call cleanup() when audit completes or fails.
  */
-export function createAuditAbortHandler(spin: Spinner): {
+export function createAuditAbortHandler(ui: AgentUI): {
   controller: AbortController;
   cleanup: () => void;
 } {
@@ -221,7 +221,7 @@ export function createAuditAbortHandler(spin: Spinner): {
         timer = setTimeout(() => {
           timer = null;
           if (!controller.signal.aborted) {
-            spin.stop();
+            ui.setActivity(null);
             console.log(`\n  ${C.warn("⏹️  Audit cancelled.")}`);
             controller.abort();
           }
@@ -267,7 +267,7 @@ export function createAuditAbortHandler(spin: Spinner): {
 
 /**
  * Trigger the cancellation sequence:
- *   1. Stop the spinner (clean up the UI)
+ *   1. Clear the activity indicator (clean up the UI)
  *   2. Call session.abort() (SDK sends RPC to CLI server)
  *   3. The abort event will arrive via the event handler, which
  *      resolves the pending promise — but if abort() itself fails
@@ -276,11 +276,11 @@ export function createAuditAbortHandler(spin: Spinner): {
 function triggerAbort(
   session: CopilotSession,
   agentState: AgentState,
-  spin: Spinner,
+  ui: AgentUI,
 ): void {
   abortFired = true;
   agentState.lastResponseWasCancelled = true;
-  spin.stop();
+  ui.setActivity(null);
   console.log(`\n  ${C.warn("⏹️  Cancelled.")}`);
 
   /**

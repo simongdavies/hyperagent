@@ -96,6 +96,15 @@ export interface AgentUI {
   hasBufferedReasoning(): boolean;
 
   /**
+   * Propagate a verbose-reasoning toggle into the UI. Called by the
+   * `/verbose` slash-command after mutating the shared state flag.
+   * Implementations that do not render reasoning differently may
+   * ignore this entirely. The terminal UI forwards the new value
+   * into its internal `Spinner` so the next render tick picks it up.
+   */
+  setVerboseReasoning(value: boolean): void;
+
+  /**
    * Render a complete assistant message as markdown. Today only
    * called after streaming finishes when markdown mode is on.
    */

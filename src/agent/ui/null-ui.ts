@@ -41,6 +41,10 @@ export class NullUI implements AgentUI {
     return false;
   }
 
+  setVerboseReasoning(): void {
+    /* intentionally empty */
+  }
+
   renderMarkdown(): void {
     /* intentionally empty */
   }

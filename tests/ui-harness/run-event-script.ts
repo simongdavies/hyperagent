@@ -21,7 +21,6 @@ import { vi } from "vitest";
 import type { SessionEvent } from "@github/copilot-sdk";
 
 import { registerEventHandler } from "../../src/agent/event-handler.js";
-import { Spinner } from "../../src/agent/spinner.js";
 import { TerminalUI } from "../../src/agent/ui/index.js";
 import type { AgentState } from "../../src/agent/state.js";
 
@@ -107,19 +106,18 @@ export function runEventScript(
   events: SessionEvent[],
   options: RunEventScriptOptions = {},
 ): EventScriptResult {
-  // Freeze time and silence timers BEFORE the spinner is constructed —
-  // spinner.start() uses setInterval, which we want stubbed out.
+  // Freeze time and silence timers BEFORE TerminalUI is constructed —
+  // the spinner it owns uses setInterval, which we want stubbed out.
   vi.useFakeTimers();
 
   const capture = captureStdio();
   try {
     const state = makeTestState(options.state);
-    const spinner = new Spinner(state.verboseOutput);
     // TerminalUI receives a *live reference* to the state so the
     // `markdownEnabled` / `verboseOutput` toggles propagate without
     // re-construction. Tests can flip them in `options.state` and
     // see the matching display behaviour on the next event.
-    const ui = new TerminalUI(spinner, state);
+    const ui = new TerminalUI(state);
     const session = new FakeSession();
 
     registerEventHandler(session.asSession(), {
@@ -141,7 +139,7 @@ export function runEventScript(
 
     // Defensive — most flows end with session.idle which stops the
     // spinner, but a partial event stream should still clean up.
-    spinner.stop();
+    ui.setActivity(null);
 
     const stdoutRaw = capture.stdout();
     return {

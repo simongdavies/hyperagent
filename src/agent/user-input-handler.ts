@@ -12,6 +12,7 @@
 
 import type { Interface as ReadlineInterface } from "node:readline/promises";
 import { C } from "./ansi.js";
+import type { AgentUI } from "./ui/index.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 // Mirror the SDK's internal UserInputRequest/Response types which
@@ -42,20 +43,17 @@ interface UserInputResponse {
  * readline instance without import cycles or global state.
  *
  * @param getRl — Callback returning the active readline instance
- * @param getSpinner — Callback returning the Spinner instance (to stop it during input)
+ * @param getUi — Callback returning the AgentUI (to stop activity during input)
  */
 export function createUserInputHandler(
   getRl: () => ReadlineInterface | null,
-  getSpinner?: () => {
-    stop: () => void;
-    start: (label?: string) => void;
-  } | null,
+  getUi?: () => AgentUI | null,
   getAutoApprove?: () => boolean,
 ): (request: UserInputRequest) => Promise<UserInputResponse> {
   return async (request: UserInputRequest): Promise<UserInputResponse> => {
     const { question, choices, allowFreeform } = request;
     const rl = getRl();
-    const spin = getSpinner?.();
+    const ui = getUi?.();
     const autoApprove = getAutoApprove?.() ?? false;
 
     // Safety: if readline isn't available (shouldn't happen in
@@ -66,7 +64,7 @@ export function createUserInputHandler(
 
     // In auto-approve mode, auto-select first choice or confirm
     if (autoApprove) {
-      spin?.stop();
+      ui?.setActivity(null);
       console.log(`\n  ${C.info("❓")} ${question}`);
       if (choices && choices.length > 0) {
         console.log(`     ${C.dim(`(auto: ${choices[0]})`)}`);
@@ -77,7 +75,7 @@ export function createUserInputHandler(
     }
 
     // Stop the spinner so it doesn't overwrite the readline prompt
-    spin?.stop();
+    ui?.setActivity(null);
 
     // ── Multiple choice ────────────────────────────────────────
     if (choices && choices.length > 0) {

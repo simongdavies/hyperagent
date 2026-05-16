@@ -63,7 +63,6 @@ import {
 } from "./slash-commands.js";
 import { COMPLETION_STRINGS, renderHelp, renderTopicHelp } from "./commands.js";
 import { buildSystemMessage } from "./system-message.js";
-import { Spinner } from "./spinner.js";
 import { TerminalUI, type AgentUI } from "./ui/index.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
 import { createAgentState, type AgentState } from "./state.js";
@@ -1180,27 +1179,17 @@ if (cli.reasoningEffort) {
 }
 
 /**
- * Activity spinner — braille animation with reasoning preview.
- * Encapsulates spinnerIntervalId, spinnerFrame, spinnerLabel,
- * turnStartTime, currentReasoningText, spinnerHasSecondLine,
- * and verboseReasoningEnabled in a single class instance.
- */
-const spinner = new Spinner();
-// Sync verbose state from CLI flag to spinner
-spinner.verboseReasoning = cli.verbose;
-
-/**
- * Display port — every user-visible byte from the event handler
- * (and, increasingly, the rest of the agent) routes through here.
+ * Display port — every user-visible byte (text, reasoning, tool
+ * results, notifications, usage stats) and every spinner-state
+ * mutation routes through here.
  *
  * Constructed with a *live reference* to `state` so slash-command
  * toggles like `/markdown off` or `/verbose` take effect immediately
- * on the next emit, without any plumbing through the UI.
- *
- * Phase 4 will absorb the `spinner` into the UI; until then both
- * exist side-by-side and the UI delegates to the spinner internally.
+ * on the next emit, without any plumbing through the UI. The UI
+ * owns its internal `Spinner` outright — no external code constructs
+ * a spinner any more.
  */
-const ui: AgentUI = new TerminalUI(spinner, state);
+const ui: AgentUI = new TerminalUI(state);
 
 // ── Session Management State ─────────────────────────────────────────
 //
@@ -1244,7 +1233,6 @@ async function handleSlashCommand(
 ): Promise<boolean> {
   const slashDeps: SlashCommandDeps = {
     state,
-    spinner,
     ui,
     sandbox,
     pluginManager,
@@ -3107,7 +3095,7 @@ async function configureSandboxImpl(params: {
     }
 
     // Stop spinner before prompting (timer is paused by promptUser)
-    spinner.stop();
+    ui.setActivity(null);
 
     console.log(
       `\n  ${C.warn("🔧 Assistant wants to change sandbox configuration:")}`,
@@ -3245,7 +3233,7 @@ async function managePluginImpl(params: {
       : "";
 
     // Stop spinner before prompting (timer is paused by promptUser)
-    spinner.stop();
+    ui.setActivity(null);
 
     // ── Gate 1: Initial approval ─────────────────────────────
     // Before doing ANYTHING (audit, config), ask the user if they
@@ -3283,7 +3271,7 @@ async function managePluginImpl(params: {
     const syntheticInput = `/plugin enable ${params.name}${configStr}`;
     try {
       await handleSlashCommand(syntheticInput, rl);
-      spinner.stop(); // ensure spinner is off after
+      ui.setActivity(null); // ensure spinner is off after
 
       // CRITICAL: Sync plugins to sandbox immediately — the slash
       // command set the dirty flag but the REPL loop sync won't run
@@ -3315,7 +3303,7 @@ async function managePluginImpl(params: {
         };
       }
     } catch (err: unknown) {
-      spinner.stop();
+      ui.setActivity(null);
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, error: `Plugin enable failed: ${msg}` };
     }
@@ -3323,7 +3311,7 @@ async function managePluginImpl(params: {
     // Disable
     const approvalKey = `plugin:disable:${params.name}`;
     if (!state.sessionApprovals.has(approvalKey)) {
-      spinner.stop();
+      ui.setActivity(null);
       console.log(
         `\n  ${C.warn("🔌 Assistant wants to disable plugin:")} ${C.tool(params.name)}`,
       );
@@ -4289,7 +4277,7 @@ async function applyProfileImpl(
   const pluginNames = merged.plugins.map((p) => p.name);
 
   // Stop spinner before prompting (timer is paused by promptUser)
-  spinner.stop();
+  ui.setActivity(null);
 
   // Show what the profile will do
   const profileLabel =
@@ -4402,7 +4390,7 @@ async function applyProfileImpl(
     const syntheticInput = `/plugin enable ${plugin.name}${configStr}`;
     try {
       await handleSlashCommand(syntheticInput, rl);
-      spinner.stop(); // ensure spinner is off after
+      ui.setActivity(null); // ensure spinner is off after
 
       // Check if enable succeeded
       const after = pluginManager.getPlugin(plugin.name);
@@ -5189,7 +5177,7 @@ async function registerModuleImpl(params: {
   }
 
   // Stop spinner before prompting (timer is paused by promptUser)
-  spinner.stop();
+  ui.setActivity(null);
 
   // Show what's being registered
   console.log(`\n  ${C.warn("📦 Register module:")} ${C.tool(params.name)}`);
@@ -5648,7 +5636,7 @@ const deleteModuleTool = defineTool("delete_module", {
         };
       }
 
-      spinner.stop();
+      ui.setActivity(null);
 
       console.log(`\n  ${C.warn("🗑️  Delete module:")} ${C.tool(name)}`);
       await drainAndWarn(rl);
@@ -5847,7 +5835,7 @@ const generateSkillTool = defineTool("generate_skill", {
       };
 
       // Show the user what we're about to save and require approval.
-      spinner.stop();
+      ui.setActivity(null);
       const triggerPreview = params.triggers.slice(0, 5).join(", ");
       const triggerSuffix =
         params.triggers.length > 5
@@ -6207,7 +6195,7 @@ function buildSessionConfig() {
     // replace) our /command suggestion regex system.
     onUserInputRequest: createUserInputHandler(
       () => state.readlineInstance,
-      () => spinner,
+      () => ui,
       () => state.autoApprove,
     ),
     hooks: {
@@ -6646,11 +6634,11 @@ async function processMessage(
   tuneTurnNumber++;
   // Reset spinner elapsed timer so it counts from THIS message, not
   // a stale turn from a previous (possibly errored) cycle.
-  spinner.resetTurnStart();
-  spinner.start();
+  ui.beginTurn();
+  ui.setActivity({ kind: "thinking", label: "Thinking..." });
 
   // Arm ESC-key cancellation so the user can bail at any time.
-  enableAbortOnEsc(session, state, spinner, debugLog);
+  enableAbortOnEsc(session, state, ui, debugLog);
   const fileCountBefore = state.producedFiles.length;
   try {
     const effectiveTimeout = state.sendTimeoutOverride ?? SEND_TIMEOUT_MS;
@@ -6748,7 +6736,7 @@ async function processMessage(
     // Disarm ESC handler and restore readline control of stdin
     disableAbortOnEsc();
     // Safety net — ensure spinner is always killed, even on error
-    spinner.stop();
+    ui.setActivity(null);
   }
 }
 

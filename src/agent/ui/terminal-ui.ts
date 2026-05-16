@@ -17,8 +17,8 @@
 //     `llm-output.renderReasoningDelta`, identical to today's path.
 //   - Tool start / result lines: matches today's
 //     `console.log(\`  \${C.<icon>(\`<emoji> <msg>\`)}\`)` shape.
-//   - Status spinner: forwarded to the existing `Spinner` instance
-//     passed in via the constructor.
+//   - Status spinner: owned internally — `TerminalUI` constructs the
+//     `Spinner` at startup and is the sole driver of its lifecycle.
 //
 // What lives elsewhere
 // ────────────────────
@@ -26,9 +26,9 @@
 //     whether to call `emitText` (streaming) or to buffer and call
 //     `renderMarkdown` once at the end. The UI does not own that
 //     policy.
-//   - Spinner ownership today is shared with non-UI code paths
-//     (audit-progress, slash-commands). Phase 4 absorbs the spinner
-//     fully; for now we hold a reference.
+//   - Verbose-mode toggling is propagated by the slash-command
+//     handler via `setVerboseReasoning`; the UI keeps its internal
+//     spinner in sync.
 // ────────────────────────────────────────────────────────────────────
 
 import { ANSI, C } from "../ansi.js";
@@ -38,7 +38,7 @@ import {
   printUsageStats,
   renderReasoningDelta,
 } from "../llm-output.js";
-import type { Spinner } from "../spinner.js";
+import { Spinner } from "../spinner.js";
 import type { AgentUI } from "./port.js";
 import type {
   ActivityPayload,
@@ -119,13 +119,13 @@ export interface TerminalUIOptions {
  *   - `_opts` is a *live reference* to the configuration; the agent
  *     passes its `state` here and any mutation (e.g. slash-command
  *     toggles) takes effect immediately on the next emit.
- *   - All other state lives in the injected `Spinner` instance or
- *     downstream renderers — nothing else is kept here.
+ *   - `_spinner` is owned exclusively by this class — no external
+ *     code should construct a `Spinner` directly any more.
  */
 export class TerminalUI implements AgentUI {
   // ── Construction ───────────────────────────────────────────────
 
-  /** Shared spinner instance, currently owned by the caller. */
+  /** Internal spinner instance — sole owner of its lifecycle. */
   private readonly _spinner: Spinner;
   /**
    * Live reference to the configuration. Read on every emit, so
@@ -135,17 +135,16 @@ export class TerminalUI implements AgentUI {
   private readonly _opts: TerminalUIOptions;
 
   /**
-   * @param spinner - The spinner this UI drives. Phase 4 will absorb
-   *   spinner ownership into the UI; today it is shared with
-   *   audit-progress and slash-commands.
    * @param options - Live configuration reference. The object is
    *   *not* copied — the UI re-reads the fields on each emit so
    *   external mutations (e.g. toggles via slash-commands) take
-   *   effect immediately.
+   *   effect immediately. The spinner is constructed internally
+   *   using `options.verboseOutput` as the initial verbose flag;
+   *   subsequent updates flow via `setVerboseReasoning`.
    */
-  constructor(spinner: Spinner, options: TerminalUIOptions) {
-    this._spinner = spinner;
+  constructor(options: TerminalUIOptions) {
     this._opts = options;
+    this._spinner = new Spinner(options.verboseOutput);
   }
 
   // ── Streaming output ───────────────────────────────────────────
@@ -227,6 +226,14 @@ export class TerminalUI implements AgentUI {
     // compact-mode-only semantics this getter inherits from
     // `Spinner.reasoningLength`.
     return this._spinner.reasoningLength > 0;
+  }
+
+  setVerboseReasoning(value: boolean): void {
+    // The `/verbose` slash-command toggles `state.verboseOutput`;
+    // the spinner's verbose-reasoning flag is independent storage,
+    // so the caller forwards the new value through here. Subsequent
+    // render ticks honour the updated flag.
+    this._spinner.verboseReasoning = value;
   }
 
   renderMarkdown(payload: MarkdownPayload): void {

@@ -10,7 +10,7 @@
 // must reproduce the same bytes the handler currently emits.
 //
 // We assert that here, *before* any call site changes. Each test:
-//   1. Constructs `TerminalUI` with a fake spinner.
+//   1. Constructs `TerminalUI` (which owns its internal Spinner).
 //   2. Drives the same logical flow that the Phase 0 goldens
 //      exercise (text streaming, tool start/result, notifications…).
 //   3. Compares the captured stdout against the same golden files
@@ -25,24 +25,21 @@ import {
   captureStdio,
   type StdioCapture,
 } from "./ui-harness/index.js";
-import { Spinner } from "../src/agent/spinner.js";
 import { TerminalUI } from "../src/agent/ui/index.js";
 
 /**
- * Construct a TerminalUI plus the spinner it drives. We hand the
- * spinner back so individual tests can `spinner.stop()` at the end
- * to flush any pending clear sequences — mirrors the harness's
- * own teardown step.
+ * Construct a TerminalUI. The internal Spinner is now owned by
+ * TerminalUI itself — callers drive its lifecycle through
+ * `ui.setActivity(...)` / `ui.setActivity(null)`.
  */
 function makeUI(
   opts: { markdownEnabled?: boolean; verboseOutput?: boolean } = {},
-): { ui: TerminalUI; spinner: Spinner } {
-  const spinner = new Spinner(false);
-  const ui = new TerminalUI(spinner, {
+): { ui: TerminalUI } {
+  const ui = new TerminalUI({
     markdownEnabled: opts.markdownEnabled ?? false,
     verboseOutput: opts.verboseOutput ?? false,
   });
-  return { ui, spinner };
+  return { ui };
 }
 
 describe("TerminalUI — byte-for-byte parity with event-handler", () => {
@@ -86,9 +83,9 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
   });
 
   it("emitToolStart + emitToolResult success: matches the event-handler golden", async () => {
-    const { ui, spinner } = makeUI();
+    const { ui } = makeUI();
     // Mimic turn.start — spinner running before the tool fires.
-    spinner.start("Thinking...");
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
     ui.emitToolStart({ name: "execute_javascript", callId: "call-1" });
     ui.emitToolResult({
       name: "execute_javascript",
@@ -96,17 +93,17 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
       status: "success",
       message: "Done",
     });
-    // Final spinner.stop mirrors the harness teardown so the
-    // trailing `<cr><clear-line>` matches the existing golden.
-    spinner.stop();
+    // Final stop mirrors the harness teardown so the trailing
+    // `<cr><clear-line>` matches the existing golden.
+    ui.setActivity(null);
     await expect(ansiToSemantic(cap.stdout())).toMatchFileSnapshot(
       "./golden/ui/tool-success.golden.txt",
     );
   });
 
   it("emitToolResult error: matches the event-handler golden", async () => {
-    const { ui, spinner } = makeUI();
-    spinner.start("Thinking...");
+    const { ui } = makeUI();
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
     ui.emitToolStart({ name: "execute_javascript", callId: "call-1" });
     ui.emitToolResult({
       name: "execute_javascript",
@@ -114,15 +111,15 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
       status: "error",
       message: "ReferenceError: foo is not defined",
     });
-    spinner.stop();
+    ui.setActivity(null);
     await expect(ansiToSemantic(cap.stdout())).toMatchFileSnapshot(
       "./golden/ui/tool-error.golden.txt",
     );
   });
 
   it("emitToolResult denied: matches the event-handler golden", async () => {
-    const { ui, spinner } = makeUI();
-    spinner.start("Thinking...");
+    const { ui } = makeUI();
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
     ui.emitToolStart({ name: "execute_javascript", callId: "call-1" });
     ui.emitToolResult({
       name: "execute_javascript",
@@ -130,7 +127,7 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
       status: "denied",
       message: "Tool denied by policy",
     });
-    spinner.stop();
+    ui.setActivity(null);
     await expect(ansiToSemantic(cap.stdout())).toMatchFileSnapshot(
       "./golden/ui/tool-denied.golden.txt",
     );
@@ -150,11 +147,11 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
   });
 
   it("emitUsage after streamed text: prepends a newline and prints stats", async () => {
-    const { ui, spinner } = makeUI();
+    const { ui } = makeUI();
     // Mimic turn.start — spinner running, then first text delta
     // clears it. This matches the script that produced the original
     // event-handler golden.
-    spinner.start("Thinking...");
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
     ui.emitText({ content: "Done." });
     // The caller is currently responsible for prepending the \n —
     // matches event-handler.ts:484. Phase 2 will preserve this

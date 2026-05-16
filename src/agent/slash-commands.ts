@@ -13,7 +13,6 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { C } from "./ansi.js";
 import type { AgentState } from "./state.js";
-import type { Spinner } from "./spinner.js";
 import type { AgentUI } from "./ui/index.js";
 import { renderHelp, renderTopicHelp } from "./commands.js";
 import { deepAudit, formatAuditResult } from "../plugin-system/auditor.js";
@@ -92,7 +91,6 @@ function formatConfigTable(lines: string[]): string {
 /** Runtime dependencies injected from agent.ts */
 export interface SlashCommandDeps {
   state: AgentState;
-  spinner: Spinner;
   ui: AgentUI;
   sandbox: ReturnType<typeof createSandboxTool>;
   pluginManager: ReturnType<typeof createPluginManager>;
@@ -144,7 +142,6 @@ export async function handleSlashCommand(
   // by their original names — zero code changes in the switch block.
   const {
     state,
-    spinner,
     ui,
     sandbox,
     pluginManager,
@@ -315,7 +312,7 @@ export async function handleSlashCommand(
       // Toggle verbose output mode — affects reasoning display,
       // turn lifecycle events, and other detailed LLM output.
       state.verboseOutput = !state.verboseOutput;
-      spinner.verboseReasoning = state.verboseOutput;
+      ui.setVerboseReasoning(state.verboseOutput);
       console.log(
         `  💡 Verbose output: ${state.verboseOutput ? C.ok("ON") : C.err("OFF")}`,
       );
@@ -1604,9 +1601,12 @@ export async function handleSlashCommand(
               attemptAudit = false; // one shot unless the user retries
               const { callback: auditProgress, getTracePath } =
                 makeAuditProgressCallback(ui);
-              spinner.start(`Auditing "${pluginName}"...`);
+              ui.setActivity({
+                kind: "custom",
+                label: `Auditing "${pluginName}"...`,
+              });
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
-                createAuditAbortHandler(spinner);
+                createAuditAbortHandler(ui);
               try {
                 auditResult = await deepAudit(
                   state.copilotClient,
@@ -1621,7 +1621,7 @@ export async function handleSlashCommand(
                 auditAbortCleanup();
               } catch (err) {
                 auditAbortCleanup();
-                spinner.stop();
+                ui.setActivity(null);
                 console.log(
                   `  ⚠️  LLM audit failed: ${(err as Error).message}`,
                 );
@@ -1674,7 +1674,7 @@ export async function handleSlashCommand(
                   },
                 };
               } finally {
-                spinner.stop();
+                ui.setActivity(null);
               }
             }
             // User chose abort — bail out of the enable flow entirely
@@ -2057,9 +2057,12 @@ export async function handleSlashCommand(
               attemptAudit = false;
               const { callback: auditProgress, getTracePath } =
                 makeAuditProgressCallback(ui);
-              spinner.start(`Auditing "${auditPluginName}"...`);
+              ui.setActivity({
+                kind: "custom",
+                label: `Auditing "${auditPluginName}"...`,
+              });
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
-                createAuditAbortHandler(spinner);
+                createAuditAbortHandler(ui);
               try {
                 const result = await deepAudit(
                   state.copilotClient,
@@ -2072,7 +2075,7 @@ export async function handleSlashCommand(
                   state.auditReasoningEffort ?? undefined,
                 );
                 auditAbortCleanup();
-                spinner.stop();
+                ui.setActivity(null);
                 if (getTracePath()) {
                   console.log(`  📝 Trace log: ${getTracePath()}`);
                 }
@@ -2084,7 +2087,7 @@ export async function handleSlashCommand(
                 );
               } catch (err) {
                 auditAbortCleanup();
-                spinner.stop();
+                ui.setActivity(null);
                 const errObj = err as Error;
                 console.log(`  ${C.err("❌ Audit failed: " + errObj.message)}`);
                 // Always log the full stack to stderr for tracing.
