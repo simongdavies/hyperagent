@@ -124,14 +124,7 @@ import {
   shutdown as shutdownAnalysisGuest,
   type ValidationContext,
 } from "./analysis-guest.js";
-import {
-  formatUsageStats,
-  renderReasoningDelta,
-  renderReasoningTransition,
-  printUsageStats,
-  printExtendedReasoningNotice,
-  formatTokenSummary,
-} from "./llm-output.js";
+import { formatTokenSummary } from "./llm-output.js";
 import {
   renderMarkdown,
   looksLikeMarkdown,
