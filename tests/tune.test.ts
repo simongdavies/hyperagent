@@ -186,3 +186,60 @@ describe("MCP setup CLI flags", () => {
     ).toEqual({ kind: "m365-create-app", args: ["--client-id", "abc"] });
   });
 });
+
+describe("--no-color / --quiet CLI flags", () => {
+  const origEnv = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.HYPERAGENT_NO_COLOR;
+    delete process.env.HYPERAGENT_QUIET;
+  });
+
+  afterEach(() => {
+    process.env = { ...origEnv };
+  });
+
+  it("defaults both flags to false", () => {
+    const cfg = parseCliArgs([]);
+    expect(cfg.noColor).toBe(false);
+    expect(cfg.quiet).toBe(false);
+  });
+
+  it("parses --no-color (American spelling)", () => {
+    const cfg = parseCliArgs(["--no-color"]);
+    expect(cfg.noColor).toBe(true);
+    expect(cfg.quiet).toBe(false);
+  });
+
+  it("parses --no-colour (British spelling)", () => {
+    const cfg = parseCliArgs(["--no-colour"]);
+    expect(cfg.noColor).toBe(true);
+  });
+
+  it("parses --quiet", () => {
+    const cfg = parseCliArgs(["--quiet"]);
+    expect(cfg.quiet).toBe(true);
+    expect(cfg.noColor).toBe(false);
+  });
+
+  it("composes --no-color and --quiet together", () => {
+    const cfg = parseCliArgs(["--no-color", "--quiet"]);
+    expect(cfg.noColor).toBe(true);
+    expect(cfg.quiet).toBe(true);
+  });
+
+  it("honours HYPERAGENT_NO_COLOR=1", () => {
+    process.env.HYPERAGENT_NO_COLOR = "1";
+    expect(parseCliArgs([]).noColor).toBe(true);
+  });
+
+  it("honours HYPERAGENT_QUIET=1", () => {
+    process.env.HYPERAGENT_QUIET = "1";
+    expect(parseCliArgs([]).quiet).toBe(true);
+  });
+
+  it("CLI flag overrides env var that is unset", () => {
+    delete process.env.HYPERAGENT_NO_COLOR;
+    expect(parseCliArgs(["--no-color"]).noColor).toBe(true);
+  });
+});

@@ -128,6 +128,17 @@ export interface CliConfig {
    */
   showVersion: boolean;
   /**
+   * Strip ANSI colour/attribute codes from terminal output.
+   * Cursor-control codes (used by the spinner) are preserved so
+   * line-clearing still works.
+   */
+  noColor: boolean;
+  /**
+   * Suppress informational notifications (`level: "info"`).
+   * Warnings, errors and success messages still emit.
+   */
+  quiet: boolean;
+  /**
    * Standalone MCP setup/config command. Runs and exits before agent startup.
    */
   mcpSetupCommand?: MCPSetupCommand;
@@ -183,6 +194,8 @@ Options:
   --prompt-file <path>   Read prompt from a file (avoids shell quoting issues)
   --skill <name>         Invoke skill(s) before the prompt (e.g. --skill pptx-expert)
   --output-threshold <bytes>  Large output threshold (default: 20480 = 20KB)
+  --no-color             Strip ANSI colour codes from terminal output
+  --quiet                Suppress informational notifications
   --version, -v        Show version and exit
   --help, -h           Show this help message
 
@@ -223,6 +236,8 @@ Environment variables (overridden by CLI flags):
   HYPERAGENT_PROMPT_FILE     Path to file containing prompt text
   HYPERAGENT_SKILL           Skill name(s) to invoke before the prompt
   HYPERAGENT_OUTPUT_THRESHOLD_BYTES  Large output threshold (bytes)
+  HYPERAGENT_NO_COLOR        Set to '1' to strip ANSI colour codes
+  HYPERAGENT_QUIET           Set to '1' to suppress informational notifications
 `);
   process.exit(0);
 }
@@ -274,6 +289,8 @@ export function parseCliArgs(
     skipSuggest: process.env.HYPERAGENT_SKIP_SUGGEST === "1",
     outputThreshold: process.env.HYPERAGENT_OUTPUT_THRESHOLD_BYTES || "20480",
     showVersion: false,
+    noColor: process.env.HYPERAGENT_NO_COLOR === "1",
+    quiet: process.env.HYPERAGENT_QUIET === "1",
   };
 
   let i = 0;
@@ -451,6 +468,13 @@ export function parseCliArgs(
       case "--version":
       case "-v":
         config.showVersion = true;
+        break;
+      case "--no-color":
+      case "--no-colour":
+        config.noColor = true;
+        break;
+      case "--quiet":
+        config.quiet = true;
         break;
       case "--mcp-setup-everything":
         setMCPSetupCommand(config, { kind: "setup-everything" });

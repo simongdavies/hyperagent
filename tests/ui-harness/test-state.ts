@@ -50,6 +50,8 @@ const TEST_CLI: CliConfig = {
   skipSuggest: false,
   outputThreshold: "65536",
   showVersion: false,
+  noColor: false,
+  quiet: false,
 };
 
 /**

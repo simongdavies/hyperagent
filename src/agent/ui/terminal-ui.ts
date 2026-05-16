@@ -33,11 +33,7 @@
 
 import { ANSI, C } from "../ansi.js";
 import { renderMarkdown } from "../markdown-renderer.js";
-import {
-  formatUsageStats,
-  printUsageStats,
-  renderReasoningDelta,
-} from "../llm-output.js";
+import { formatUsageStats, renderReasoningDelta } from "../llm-output.js";
 import { Spinner } from "../spinner.js";
 import type { AgentUI } from "./port.js";
 import type {
@@ -109,7 +105,29 @@ export interface TerminalUIOptions {
    * Mirrors today's `state.verboseOutput`.
    */
   readonly verboseOutput: boolean;
+  /**
+   * When true, strip ANSI **colour / attribute** codes (SGR `\x1b[…m`)
+   * from every byte the UI emits. Cursor-control codes (`\r`,
+   * `\x1b[2K`, `\x1b[1A`) are preserved so the spinner still clears
+   * its lines correctly. Disabled by default.
+   */
+  readonly noColor?: boolean;
+  /**
+   * When true, suppress informational notifications (`level === "info"`).
+   * Warnings, errors, success and plain notifications still emit.
+   * Disabled by default.
+   */
+  readonly quiet?: boolean;
 }
+
+/**
+ * Regex matching ANSI SGR (Select Graphic Rendition) sequences —
+ * the colour and text-attribute escapes we want `--no-color` to strip.
+ * Deliberately narrow: it does **not** match cursor-control sequences
+ * (`\x1b[2K`, `\x1b[1A`, etc) so the spinner's line-clearing still
+ * works when the user has asked for plain output.
+ */
+const SGR_REGEX = /\x1b\[[0-9;]*m/g;
 
 /**
  * Terminal-targeted `AgentUI`. Produces the same bytes the existing
@@ -144,7 +162,31 @@ export class TerminalUI implements AgentUI {
    */
   constructor(options: TerminalUIOptions) {
     this._opts = options;
-    this._spinner = new Spinner(options.verboseOutput);
+    // The spinner's output routes through `this._write` so the same
+    // colour-stripping rules apply to both spinner frames and the
+    // rest of the UI's emissions.
+    this._spinner = new Spinner(options.verboseOutput, (s) => this._write(s));
+  }
+
+  // ── Output helpers ─────────────────────────────────────────────
+
+  /**
+   * Write a raw chunk to stdout. When `_opts.noColor` is true the
+   * SGR colour/attribute codes are stripped before the bytes hit
+   * the terminal; cursor-control codes survive so the spinner's
+   * line-clearing continues to work.
+   */
+  private _write(s: string): void {
+    process.stdout.write(this._opts.noColor ? s.replace(SGR_REGEX, "") : s);
+  }
+
+  /**
+   * `console.log`-equivalent that honours `noColor`. Mirrors
+   * `console.log`'s trailing-newline behaviour by writing
+   * `${line}\n` through `_write`.
+   */
+  private _log(line: string = ""): void {
+    this._write(`${line}\n`);
   }
 
   // ── Streaming output ───────────────────────────────────────────
@@ -162,7 +204,7 @@ export class TerminalUI implements AgentUI {
     // to avoid double-displaying.
     if (this._opts.markdownEnabled) return;
     if (payload.content.length === 0) return;
-    process.stdout.write(payload.content);
+    this._write(payload.content);
   }
 
   emitReasoning(payload: ReasoningDeltaPayload): void {
@@ -188,9 +230,9 @@ export class TerminalUI implements AgentUI {
     // verbose, indent)` helper from `llm-output.ts`.
     if (payload.showBanner) {
       if (this._opts.verboseOutput) {
-        process.stdout.write(`${ANSI.reset}\n`);
+        this._write(`${ANSI.reset}\n`);
       }
-      console.log(`${payload.indent ?? BLOCK_INDENT}✅ Reasoning complete`);
+      this._log(`${payload.indent ?? BLOCK_INDENT}✅ Reasoning complete`);
       this._spinner.resetTurnStart();
       if (payload.nextActivity) {
         this._spinner.start(payload.nextActivity);
@@ -206,7 +248,7 @@ export class TerminalUI implements AgentUI {
     // The caller is responsible for deciding *whether* to emit the
     // transition; here we only own the *how*.
     if (!this._opts.verboseOutput) return;
-    process.stdout.write(`${ANSI.reset}\n\n`);
+    this._write(`${ANSI.reset}\n\n`);
   }
 
   clearReasoningBuffer(): void {
@@ -238,7 +280,7 @@ export class TerminalUI implements AgentUI {
 
   renderMarkdown(payload: MarkdownPayload): void {
     if (payload.source.length === 0) return;
-    console.log(renderMarkdown(payload.source));
+    this._log(renderMarkdown(payload.source));
   }
 
   // ── Tool calls ─────────────────────────────────────────────────
@@ -248,7 +290,7 @@ export class TerminalUI implements AgentUI {
     // a single space so the user still sees a heartbeat while the
     // tool runs. Matches `event-handler.ts` "tool.execution_start".
     this._spinner.stop();
-    console.log(`\n${BLOCK_INDENT}${C.tool(`🔧 ${payload.name}`)}`);
+    this._log(`\n${BLOCK_INDENT}${C.tool(`🔧 ${payload.name}`)}`);
     this._spinner.start(" ");
   }
 
@@ -261,24 +303,24 @@ export class TerminalUI implements AgentUI {
     if (!payload.silent) {
       const icon = TOOL_STATUS_ICON[payload.status];
       const colour = TOOL_STATUS_COLOR[payload.status];
-      console.log(`${BLOCK_INDENT}${colour(`${icon} ${payload.message}`)}`);
+      this._log(`${BLOCK_INDENT}${colour(`${icon} ${payload.message}`)}`);
 
       // Optional structured body. Phase 2 will exercise the body
       // branches as the verbose-mode tool-result formatter migrates.
       if (payload.body) {
         if (payload.body.kind === "markdown") {
-          console.log(renderMarkdown(payload.body.content));
+          this._log(renderMarkdown(payload.body.content));
         } else {
           // Both "text" and "json" render dimmed; the caller already
           // pretty-prints JSON before handing it over.
-          console.log(C.dim(payload.body.content));
+          this._log(C.dim(payload.body.content));
         }
       }
 
       // Pre-formatted hint (e.g. buffer-overflow suggestion). The
       // caller has already applied colours; print verbatim.
       if (payload.hint) {
-        console.log(payload.hint);
+        this._log(payload.hint);
       }
     }
 
@@ -288,7 +330,7 @@ export class TerminalUI implements AgentUI {
     // only updates the label (no fresh interval). Runs even in the
     // `silent` branch so the spinner doesn't crash into already-
     // displayed text.
-    console.log();
+    this._log();
     this._spinner.start("Thinking...");
   }
 
@@ -318,19 +360,23 @@ export class TerminalUI implements AgentUI {
     // OSC escape — sets the terminal window title. The "HyperAgent:"
     // prefix is product branding owned by the terminal UI; other UI
     // implementations choose their own framing.
-    process.stdout.write(`\x1b]2;HyperAgent: ${payload.title}\x07`);
+    this._write(`\x1b]2;HyperAgent: ${payload.title}\x07`);
   }
 
   // ── Notifications ──────────────────────────────────────────────
 
   emitNotification(payload: NotificationPayload): void {
+    // `quiet` mode suppresses purely informational notifications.
+    // Warnings, errors, success and plain (audit phase) lines still
+    // emit so the user always sees something went wrong / finished.
+    if (this._opts.quiet && payload.level === "info") return;
     // Notifications never appear mid-stream — stop the spinner so
     // the line lands at column 0.
     this._spinner.stop();
     const colour = LEVEL_COLOR[payload.level];
     const prefix = payload.icon ? `${payload.icon} ` : "";
     const indent = payload.indent ?? BLOCK_INDENT;
-    console.log(`${indent}${colour(`${prefix}${payload.message}`)}`);
+    this._log(`${indent}${colour(`${prefix}${payload.message}`)}`);
   }
 
   // ── Usage stats ────────────────────────────────────────────────
@@ -353,7 +399,8 @@ export class TerminalUI implements AgentUI {
       duration: payload.durationMs,
     });
     if (statsStr) {
-      printUsageStats(statsStr, payload.indent ?? BLOCK_INDENT);
+      const indent = payload.indent ?? BLOCK_INDENT;
+      this._log(`${indent}${C.dim("📊 " + statsStr)}`);
     }
   }
 }

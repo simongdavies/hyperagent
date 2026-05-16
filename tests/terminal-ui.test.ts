@@ -178,6 +178,160 @@ describe("TerminalUI — byte-for-byte parity with event-handler", () => {
   });
 });
 
+// ── --no-color / --quiet flags (Phase 7) ─────────────────────────────
+//
+// Two TerminalUI options the CLI surfaces through `--no-color` and
+// `--quiet`. The first strips SGR colour/attribute escapes from
+// emitted bytes while leaving cursor-control codes intact; the
+// second suppresses notifications at `level: "info"`.
+
+describe("TerminalUI — --no-color flag", () => {
+  let cap: StdioCapture;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cap = captureStdio();
+  });
+
+  afterEach(() => {
+    cap.restore();
+    vi.useRealTimers();
+  });
+
+  it("strips SGR colour codes from emitted text", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      noColor: true,
+    });
+    // Manually inject an ANSI-coloured sequence to verify stripping.
+    ui.emitText({ content: "\x1b[31mred\x1b[0m plain" });
+    expect(cap.stdout()).toBe("red plain");
+  });
+
+  it("strips colours from emitNotification but preserves the message", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      noColor: true,
+    });
+    ui.emitNotification({
+      level: "warning",
+      kind: "sdk_warning",
+      message: "watch out",
+    });
+    // The notification body must be present without any SGR escapes.
+    const out = cap.stdout();
+    expect(out).toContain("watch out");
+    expect(out).not.toMatch(/\x1b\[[0-9;]*m/);
+  });
+
+  it("preserves cursor-control sequences (line clears, cursor moves)", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      noColor: true,
+    });
+    // Drive the internal spinner so it emits a clear-line sequence.
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
+    ui.setActivity(null);
+    // Cursor-control survives even with noColor.
+    expect(cap.stdout()).toMatch(/\x1b\[2K/);
+    // But no SGR (colour / attribute) codes leak through.
+    expect(cap.stdout()).not.toMatch(/\x1b\[[0-9;]*m/);
+  });
+
+  it("emits colour codes when noColor is false (regression guard)", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      noColor: false,
+    });
+    ui.emitNotification({
+      level: "warning",
+      kind: "sdk_warning",
+      message: "watch out",
+    });
+    // The warning notification must include at least one SGR escape.
+    expect(cap.stdout()).toMatch(/\x1b\[[0-9;]*m/);
+  });
+});
+
+describe("TerminalUI — --quiet flag", () => {
+  let cap: StdioCapture;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cap = captureStdio();
+  });
+
+  afterEach(() => {
+    cap.restore();
+    vi.useRealTimers();
+  });
+
+  it("suppresses info-level notifications", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      quiet: true,
+    });
+    ui.emitNotification({
+      level: "info",
+      kind: "generic",
+      message: "hush",
+    });
+    expect(cap.stdout()).toBe("");
+  });
+
+  it("still emits warning / error / success / plain notifications", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      quiet: true,
+    });
+    ui.emitNotification({
+      level: "warning",
+      kind: "sdk_warning",
+      message: "warn",
+    });
+    ui.emitNotification({
+      level: "error",
+      kind: "sdk_error",
+      message: "err",
+    });
+    ui.emitNotification({
+      level: "success",
+      kind: "task_complete",
+      message: "ok",
+    });
+    ui.emitNotification({
+      level: "plain",
+      kind: "audit_phase",
+      message: "phase",
+    });
+    const out = cap.stdout();
+    expect(out).toContain("warn");
+    expect(out).toContain("err");
+    expect(out).toContain("ok");
+    expect(out).toContain("phase");
+  });
+
+  it("emits info-level when quiet is false (regression guard)", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      quiet: false,
+    });
+    ui.emitNotification({
+      level: "info",
+      kind: "generic",
+      message: "hello",
+    });
+    expect(cap.stdout()).toContain("hello");
+  });
+});
+
 // ── NullUI ───────────────────────────────────────────────────────────
 //
 // The null implementation must satisfy the `AgentUI` interface at

@@ -62,15 +62,31 @@ export class Spinner {
    */
   private _verboseReasoning: boolean;
 
+  /**
+   * Output sink — every byte the spinner emits flows through this
+   * callback. Defaults to `process.stdout.write`. `TerminalUI` injects
+   * a wrapper that can strip ANSI colour codes (for `--no-color`) while
+   * preserving cursor-control sequences so the spinner still clears
+   * its lines correctly.
+   */
+  private readonly _write: (s: string) => void;
+
   // ── Constructor ────────────────────────────────────────────────
 
   /**
    * @param verboseReasoning - Initial verbose reasoning mode.
    *   When true, reasoning deltas scroll freely. When false (default),
    *   a single overwriting preview line shows beneath the spinner.
+   * @param write - Optional output sink. Defaults to writing directly
+   *   to `process.stdout`. Callers (notably `TerminalUI`) inject a
+   *   custom writer to apply colour-stripping or capture for tests.
    */
-  constructor(verboseReasoning = false) {
+  constructor(
+    verboseReasoning = false,
+    write: (s: string) => void = (s) => process.stdout.write(s),
+  ) {
     this._verboseReasoning = verboseReasoning;
+    this._write = write;
   }
 
   // ── Public API — verboseReasoning getter/setter ────────────────
@@ -164,7 +180,7 @@ export class Spinner {
 
     if (this.hasSecondLine) {
       // Clear line 2 (cursor is on it), move up, clear line 1
-      process.stdout.write(
+      this._write(
         `\r\x1b[2K` + // clear line 2
           `\x1b[1A` + // move up
           `\r\x1b[2K`, // clear line 1
@@ -172,7 +188,7 @@ export class Spinner {
       this.hasSecondLine = false;
     } else {
       // Single line mode — clear the one line
-      process.stdout.write("\r\x1b[2K");
+      this._write("\r\x1b[2K");
     }
 
     // Reset state for next cycle
@@ -230,7 +246,7 @@ export class Spinner {
 
       if (this.hasSecondLine) {
         // Already have two lines — move cursor up, clear both, rewrite
-        process.stdout.write(
+        this._write(
           `\x1b[1A` + // move up one line
             `\r\x1b[2K` + // clear line 1
             line1 +
@@ -240,7 +256,7 @@ export class Spinner {
         );
       } else {
         // First time showing line 2 — write line 1 + newline + line 2
-        process.stdout.write(`\r\x1b[2K${line1}\n${line2}`);
+        this._write(`\r\x1b[2K${line1}\n${line2}`);
         this.hasSecondLine = true;
       }
     } else {
@@ -248,7 +264,7 @@ export class Spinner {
       if (this.hasSecondLine) {
         // Transitioning from 2 lines to 1 — cursor is on line 2.
         // Clear line 2, move up, clear line 1, write new content.
-        process.stdout.write(
+        this._write(
           `\r\x1b[2K` + // clear line 2 (where cursor is)
             `\x1b[1A` + // move up to line 1
             `\r\x1b[2K` + // clear line 1
@@ -257,7 +273,7 @@ export class Spinner {
         this.hasSecondLine = false;
       } else {
         // Already single line — just overwrite
-        process.stdout.write(`\r\x1b[2K${line1}`);
+        this._write(`\r\x1b[2K${line1}`);
       }
     }
 

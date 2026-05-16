@@ -113,6 +113,20 @@ export interface AgentState {
   markdownEnabled: boolean;
 
   /**
+   * Strip ANSI colour/attribute codes from terminal output. Cursor-
+   * control sequences (used by the spinner) are preserved. Set via
+   * `--no-color` CLI flag.
+   */
+  noColor: boolean;
+
+  /**
+   * Suppress purely informational notifications. Warnings, errors,
+   * successes, and audit-phase lines still emit. Set via `--quiet`
+   * CLI flag.
+   */
+  quiet: boolean;
+
+  /**
    * Reasoning effort level for audit sessions, or null → "medium".
    * Minimum is "medium" — audits should never skimp on thinking.
    * Changed via `/reasoning audit <low|medium|high|xhigh>`.
@@ -370,6 +384,8 @@ export function createAgentState(
     verboseOutput: cli.verbose,
     veryVerboseOutput: cli.veryVerbose,
     markdownEnabled: cli.markdown ?? true,
+    noColor: cli.noColor,
+    quiet: cli.quiet,
     auditReasoningEffort: null,
 
     // Session management
