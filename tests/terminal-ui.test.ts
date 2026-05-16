@@ -332,6 +332,124 @@ describe("TerminalUI — --quiet flag", () => {
   });
 });
 
+// ── addOutputListener (transcript / secondary sinks) ────────────────
+//
+// `TerminalUI` exposes `addOutputListener` so the session transcript
+// (and any other passive observer) can mirror the user-visible byte
+// stream without monkey-patching `process.stdout.write`. These tests
+// guard the fan-out semantics: post-strip parity with the primary
+// write, isolation of listener errors, and clean unsubscribe.
+
+describe("TerminalUI — addOutputListener fan-out", () => {
+  let cap: StdioCapture;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cap = captureStdio();
+  });
+
+  afterEach(() => {
+    cap.restore();
+    vi.useRealTimers();
+  });
+
+  it("forwards each emitText chunk to every registered listener", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+    });
+    const seenA: string[] = [];
+    const seenB: string[] = [];
+    ui.addOutputListener({ write: (s) => seenA.push(s) });
+    ui.addOutputListener({ write: (s) => seenB.push(s) });
+
+    ui.emitText({ content: "hello " });
+    ui.emitText({ content: "world\n" });
+
+    expect(seenA.join("")).toBe("hello world\n");
+    expect(seenB.join("")).toBe("hello world\n");
+    expect(cap.stdout()).toBe("hello world\n");
+  });
+
+  it("delivers post-strip output to listeners when noColor is on", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+      noColor: true,
+    });
+    const seen: string[] = [];
+    ui.addOutputListener({ write: (s) => seen.push(s) });
+
+    ui.emitText({ content: "\x1b[31mred\x1b[0m plain" });
+
+    // Listener sees the same plain bytes the user did — no SGR codes.
+    expect(seen.join("")).toBe("red plain");
+    expect(seen.join("")).not.toMatch(/\x1b\[[0-9;]*m/);
+  });
+
+  it("captures spinner output via the same listener path", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+    });
+    const seen: string[] = [];
+    ui.addOutputListener({ write: (s) => seen.push(s) });
+
+    // setActivity drives the internal spinner; its write callback
+    // routes through `_write` so listeners receive its bytes too.
+    ui.setActivity({ kind: "thinking", label: "Thinking..." });
+    ui.setActivity(null);
+
+    const all = seen.join("");
+    // Spinner emitted at least one chunk through the listener.
+    expect(seen.length).toBeGreaterThan(0);
+    // And — for the stop frame — the line-clearing escape survives.
+    expect(all).toMatch(/\x1b\[2K/);
+  });
+
+  it("returns an unsubscribe that stops further delivery", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+    });
+    const seen: string[] = [];
+    const unsubscribe = ui.addOutputListener({
+      write: (s) => seen.push(s),
+    });
+
+    ui.emitText({ content: "before" });
+    unsubscribe();
+    ui.emitText({ content: "after" });
+
+    expect(seen.join("")).toBe("before");
+  });
+
+  it("isolates a throwing listener from the primary write and peers", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+    });
+    const goodA: string[] = [];
+    const goodB: string[] = [];
+    ui.addOutputListener({ write: (s) => goodA.push(s) });
+    ui.addOutputListener({
+      write: () => {
+        throw new Error("listener exploded");
+      },
+    });
+    ui.addOutputListener({ write: (s) => goodB.push(s) });
+
+    // Must not throw — the bad listener is contained.
+    expect(() => ui.emitText({ content: "survive" })).not.toThrow();
+
+    // Primary write reached stdout.
+    expect(cap.stdout()).toContain("survive");
+    // Good listeners on either side of the bad one still received the chunk.
+    expect(goodA.join("")).toBe("survive");
+    expect(goodB.join("")).toBe("survive");
+  });
+});
+
 // ── NullUI ───────────────────────────────────────────────────────────
 //
 // The null implementation must satisfy the `AgentUI` interface at

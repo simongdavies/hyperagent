@@ -17,6 +17,27 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import type { TerminalOutputListener } from "./ui/terminal-ui.js";
+
+// ── Transcript Host ─────────────────────────────────────────────────
+
+/**
+ * Anything the `Transcript` can subscribe to in order to capture
+ * the user-visible byte stream.
+ *
+ * `TerminalUI` is the canonical implementation; the indirection lets
+ * the transcript class stay decoupled from the concrete UI and lets
+ * tests inject a stub. Future ports (e.g. `JsonLinesUI`) can opt in
+ * by exposing the same shape if they want their output recorded.
+ */
+export interface TranscriptHost {
+  /**
+   * Register a listener that will receive every chunk the host
+   * writes to stdout. The returned function unsubscribes.
+   */
+  addOutputListener(listener: TerminalOutputListener): () => void;
+}
+
 // ── ANSI Stripping ──────────────────────────────────────────────────
 
 /**
@@ -122,21 +143,48 @@ export function buildFooter(startTime: Date): string {
 // ── Transcript Class ────────────────────────────────────────────────
 
 /**
- * Records all terminal output to a log file. Monkey-patches
- * process.stdout.write and process.stderr.write to intercept output
- * transparently — no changes needed at individual call sites.
+ * Records the user-visible terminal output to a log file.
+ *
+ * **Stdout capture** happens through a registered `TranscriptHost`
+ * (typically `TerminalUI`). Call `attachTo(host)` once after the UI
+ * is constructed and the transcript will subscribe to the host's
+ * `addOutputListener` channel on every `start()`. This replaces an
+ * earlier implementation that monkey-patched `process.stdout.write`
+ * globally — that approach interfered with the typed AgentUI port
+ * and made the recording capture stray writes from other agents'
+ * tests when run in-process.
+ *
+ * **Stderr capture** still uses a targeted monkey-patch on
+ * `process.stderr.write` (skipping `[DEBUG]` lines). Stderr is an
+ * orthogonal channel — none of the UI ports write to it — so the
+ * patch is safe and lets the transcript pick up startup console
+ * errors from MCP / plugin initialisation that don't flow through
+ * the UI.
  *
  * On stop, reads the raw .log and generates a clean .txt with all
  * ANSI escape codes stripped. Emojis, box-drawing, and other UTF-8
  * characters are preserved.
+ *
+ * Note: writes that bypass the host (direct `process.stdout.write`
+ * call sites in the agent that haven't yet migrated to the UI port)
+ * are not captured. Those leak sites are tracked in the ongoing
+ * Phase 2 UI-port migration.
  */
-export class Transcript {
+export class Transcript implements TerminalOutputListener {
   private stream: fs.WriteStream | null = null;
   private logPath = "";
   private startTime = new Date();
-  private origStdoutWrite: typeof process.stdout.write | null = null;
   private origStderrWrite: typeof process.stderr.write | null = null;
   private _active = false;
+  /**
+   * Host the transcript subscribes to on `start()`. Bound once via
+   * `attachTo` (typically at module init, immediately after the
+   * `TerminalUI` instance is created). Optional — without a host
+   * the transcript records only the header and footer.
+   */
+  private _host: TranscriptHost | null = null;
+  /** Cancellation function returned by `host.addOutputListener`. */
+  private _unsubscribe: (() => void) | null = null;
 
   /** Whether the transcript is actively recording. */
   get active(): boolean {
@@ -151,6 +199,41 @@ export class Transcript {
   /** Path to the clean (ANSI-stripped) text file. Empty if not started. */
   get cleanPath(): string {
     return this.logPath ? this.logPath.replace(/\.log$/, ".txt") : "";
+  }
+
+  /**
+   * Bind the transcript to a host whose stdout stream should be
+   * captured. Safe to call before or after `start()` — the
+   * subscription is (re-)established on the next `start()`. Call
+   * with `null` to detach.
+   *
+   * Typically invoked once at module init, immediately after the
+   * primary `TerminalUI` is constructed.
+   */
+  attachTo(host: TranscriptHost | null): void {
+    // If we're already recording and the host changes, swap the
+    // subscription atomically so we don't lose bytes from the new
+    // host or keep echoing from the old one.
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
+    this._host = host;
+    if (this._active && host) {
+      this._unsubscribe = host.addOutputListener(this);
+    }
+  }
+
+  // ── TerminalOutputListener interface ─────────────────────────
+
+  /**
+   * Receive a chunk from the attached host and append it to the
+   * raw log. No-op when the transcript is inactive — matches the
+   * old monkey-patch's behaviour of only intercepting between
+   * `start()` and `stop()`.
+   */
+  write(chunk: string): void {
+    this.writeRaw(chunk);
   }
 
   /**
@@ -192,27 +275,23 @@ export class Transcript {
     // Write transcript header
     this.writeRaw(buildHeader(this.startTime, config));
 
-    // ── Monkey-patch stdout ──────────────────────────────────
-    // Captures: console.log, process.stdout.write, readline echo
-    this.origStdoutWrite = process.stdout.write.bind(
-      process.stdout,
-    ) as typeof process.stdout.write;
-
-    process.stdout.write = ((
-      chunk: string | Uint8Array,
-      ...args: unknown[]
-    ): boolean => {
-      this.writeRaw(String(chunk));
-      return (this.origStdoutWrite as (...a: unknown[]) => boolean).call(
-        process.stdout,
-        chunk,
-        ...args,
-      );
-    }) as typeof process.stdout.write;
+    // ── Subscribe to the host (stdout-equivalent stream) ────
+    // Replaces the old `process.stdout.write` monkey-patch.
+    // If no host has been attached the transcript records only
+    // the header + footer; bytes the host emits between start and
+    // stop are forwarded via the `TerminalOutputListener.write`
+    // method this class implements.
+    if (this._host) {
+      this._unsubscribe = this._host.addOutputListener(this);
+    }
 
     // ── Monkey-patch stderr ──────────────────────────────────
     // Captures: timing display, code display (console.error).
     // Skips [DEBUG] lines — too noisy for the transcript.
+    //
+    // Stderr is the only remaining patched channel; the UI ports
+    // don't write here, so the patch is non-invasive and lets the
+    // transcript record startup messages from MCP/plugins.
     this.origStderrWrite = process.stderr.write.bind(
       process.stderr,
     ) as typeof process.stderr.write;
@@ -253,8 +332,13 @@ export class Transcript {
     // NOW mark as inactive — after the footer is written
     this._active = false;
 
-    // Restore original write functions BEFORE closing so
-    // post-stop console output goes to the real streams
+    // Unsubscribe from the host and restore stderr BEFORE
+    // closing so post-stop output goes to the real streams
+    // (and doesn't reach this dying transcript instance).
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
     this.restoreStreams();
 
     // Close the write stream and wait for flush
@@ -282,8 +366,13 @@ export class Transcript {
     // Build footer before we destroy the stream
     const footer = buildFooter(this.startTime);
 
-    // Restore streams FIRST so subsequent console output goes
-    // to the real stdout/stderr, not into the transcript
+    // Unsubscribe from the host and restore stderr FIRST so
+    // subsequent console output goes to the real stdout/stderr,
+    // not into this dying transcript instance.
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
     this.restoreStreams();
 
     // Destroy the write stream (don't wait for flush)
@@ -312,12 +401,8 @@ export class Transcript {
     }
   }
 
-  /** Restore the original stdout/stderr.write functions. */
+  /** Restore the original stderr.write function. */
   private restoreStreams(): void {
-    if (this.origStdoutWrite) {
-      process.stdout.write = this.origStdoutWrite;
-      this.origStdoutWrite = null;
-    }
     if (this.origStderrWrite) {
       process.stderr.write = this.origStderrWrite;
       this.origStderrWrite = null;

@@ -246,9 +246,12 @@ describe("Transcript", () => {
     const t = new Transcript();
     t.start();
 
-    // Write some ANSI-coded text directly to stdout (captured by monkey-patch)
-    // We use the low-level write to ensure it goes through our intercept
-    process.stdout.write("\x1b[32m🚀 Green rocket\x1b[0m\n");
+    // Drive content through the public `write` method (the same
+    // entry point a `TerminalUI` host would hit via the
+    // `TerminalOutputListener` subscription). This replaces an
+    // earlier flow that wrote directly to `process.stdout` and
+    // relied on a monkey-patch.
+    t.write("\x1b[32m🚀 Green rocket\x1b[0m\n");
 
     const { logPath, txtPath } = await t.stop();
 
@@ -268,19 +271,105 @@ describe("Transcript", () => {
     safeUnlink(txtPath);
   });
 
-  test("restores stdout/stderr after stop", async () => {
+  test("attachTo: subscribes on start, unsubscribes on stop", async () => {
+    const t = new Transcript();
+
+    // Minimal in-memory host that lets us verify subscribe / unsubscribe
+    // and feed bytes through the listener.
+    const listeners = new Set<{ write(s: string): void }>();
+    const host = {
+      addOutputListener(listener: { write(s: string): void }): () => void {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+
+    t.attachTo(host);
+    // No subscription until start (deferred so attach order doesn't matter).
+    expect(listeners.size).toBe(0);
+
+    t.start();
+    expect(listeners.size).toBe(1);
+
+    // Forward a chunk through the host's listener — the transcript
+    // should append it to the raw log.
+    for (const l of listeners) l.write("hello from host\n");
+
+    const { logPath, txtPath } = await t.stop();
+    expect(listeners.size).toBe(0); // unsubscribed on stop
+
+    const txt = fs.readFileSync(txtPath, "utf8");
+    expect(txt).toContain("hello from host");
+
+    safeUnlink(logPath);
+    safeUnlink(txtPath);
+  });
+
+  test("attachTo: re-attaching a new host swaps the subscription", async () => {
+    const t = new Transcript();
+    const a = new Set<{ write(s: string): void }>();
+    const b = new Set<{ write(s: string): void }>();
+    const hostA = {
+      addOutputListener(l: { write(s: string): void }): () => void {
+        a.add(l);
+        return () => a.delete(l);
+      },
+    };
+    const hostB = {
+      addOutputListener(l: { write(s: string): void }): () => void {
+        b.add(l);
+        return () => b.delete(l);
+      },
+    };
+
+    t.attachTo(hostA);
+    t.start();
+    expect(a.size).toBe(1);
+    expect(b.size).toBe(0);
+
+    // Mid-recording swap. The previous subscription must be released
+    // (no double-recording) and the new host must be wired up.
+    t.attachTo(hostB);
+    expect(a.size).toBe(0);
+    expect(b.size).toBe(1);
+
+    for (const l of b) l.write("from B\n");
+
+    const { logPath, txtPath } = await t.stop();
+    const txt = fs.readFileSync(txtPath, "utf8");
+    expect(txt).toContain("from B");
+
+    safeUnlink(logPath);
+    safeUnlink(txtPath);
+  });
+
+  test("write: silently dropped when transcript is inactive", () => {
+    const t = new Transcript();
+    // Should not throw — the listener interface is callable at any time.
+    t.write("orphaned\n");
+    expect(t.active).toBe(false);
+  });
+
+  test("never patches process.stdout.write across start / stop", async () => {
+    // The Phase 5 invariant: stdout monkey-patching is gone. The
+    // transcript now subscribes to a `TerminalUI` host as a
+    // `TerminalOutputListener` instead. We capture the reference
+    // outside the transcript lifecycle and assert it never moves.
+    const origStdoutWrite = process.stdout.write;
+
     const t = new Transcript();
     t.start();
-
-    // Transcript should be active
     expect(t.active).toBe(true);
+    // Critical: stdout reference must be untouched while recording.
+    expect(process.stdout.write).toBe(origStdoutWrite);
 
     await t.stop();
-
-    // Should be inactive — streams restored internally
     expect(t.active).toBe(false);
+    // And still untouched after stop — defensive check against
+    // an accidental late patch slipping in via restore-streams.
+    expect(process.stdout.write).toBe(origStdoutWrite);
 
-    // Verify stdout still works (writing doesn't throw)
+    // Verify stdout still works (writing doesn't throw).
     const written = process.stdout.write("test\n");
     expect(written).toBe(true);
 

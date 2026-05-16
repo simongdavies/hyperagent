@@ -1188,8 +1188,20 @@ if (cli.reasoningEffort) {
  * on the next emit, without any plumbing through the UI. The UI
  * owns its internal `Spinner` outright — no external code constructs
  * a spinner any more.
+ *
+ * `terminal` retains the concrete type so we can subscribe the
+ * transcript recorder (a `TranscriptHost` consumer) to the same
+ * output stream. Everywhere else uses the `ui: AgentUI` alias to
+ * keep the abstraction intact.
  */
-const ui: AgentUI = new TerminalUI(state);
+const terminal = new TerminalUI(state);
+const ui: AgentUI = terminal;
+
+// Subscribe the session transcript to the terminal's output stream.
+// `transcript.start()` (driven by the `--transcript` flag or the
+// `/transcript` slash command) attaches a listener that mirrors
+// every chunk into the .log file; `stop()` detaches cleanly.
+transcript.attachTo(terminal);
 
 // ── Session Management State ─────────────────────────────────────────
 //

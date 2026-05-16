@@ -130,6 +130,23 @@ export interface TerminalUIOptions {
 const SGR_REGEX = /\x1b\[[0-9;]*m/g;
 
 /**
+ * Secondary sink for everything the `TerminalUI` emits to stdout.
+ *
+ * Used by the session transcript (and, in future, by any other
+ * passive observer that needs to mirror the user-visible output —
+ * debug logs, network telemetry, etc.) to subscribe to the stream
+ * without monkey-patching `process.stdout.write`.
+ *
+ * Listeners receive the **post-stripping** bytes: when `--no-color`
+ * is active the chunk has already had SGR escapes removed, matching
+ * exactly what the user saw on screen.
+ */
+export interface TerminalOutputListener {
+  /** Called with every chunk `TerminalUI` writes to stdout. */
+  write(chunk: string): void;
+}
+
+/**
  * Terminal-targeted `AgentUI`. Produces the same bytes the existing
  * REPL emits today.
  *
@@ -151,6 +168,13 @@ export class TerminalUI implements AgentUI {
    * automatically — no `setMarkdownEnabled` plumbing required.
    */
   private readonly _opts: TerminalUIOptions;
+  /**
+   * Secondary sinks (transcript recorder, future debug taps) that
+   * receive a copy of every chunk written via `_write`. Iteration
+   * order is insertion order; failures inside a listener are
+   * isolated so the primary stdout write is never lost.
+   */
+  private readonly _outputListeners = new Set<TerminalOutputListener>();
 
   /**
    * @param options - Live configuration reference. The object is
@@ -175,9 +199,26 @@ export class TerminalUI implements AgentUI {
    * SGR colour/attribute codes are stripped before the bytes hit
    * the terminal; cursor-control codes survive so the spinner's
    * line-clearing continues to work.
+   *
+   * After the primary write, every registered `TerminalOutputListener`
+   * receives the same (post-stripping) chunk so the on-screen view
+   * and the captured transcript stay in sync. A listener that throws
+   * is logged via the debug stream — the remaining listeners and
+   * the primary write are unaffected.
    */
   private _write(s: string): void {
-    process.stdout.write(this._opts.noColor ? s.replace(SGR_REGEX, "") : s);
+    const out = this._opts.noColor ? s.replace(SGR_REGEX, "") : s;
+    process.stdout.write(out);
+    if (this._outputListeners.size === 0) return;
+    for (const listener of this._outputListeners) {
+      try {
+        listener.write(out);
+      } catch {
+        // A misbehaving listener must never break primary output.
+        // We deliberately swallow here — the listener is responsible
+        // for routing its own errors to a side-channel if needed.
+      }
+    }
   }
 
   /**
@@ -276,6 +317,27 @@ export class TerminalUI implements AgentUI {
     // so the caller forwards the new value through here. Subsequent
     // render ticks honour the updated flag.
     this._spinner.verboseReasoning = value;
+  }
+
+  // ── Secondary output sinks ─────────────────────────────────────
+
+  /**
+   * Subscribe a passive listener to the stdout stream.
+   *
+   * The listener receives every chunk written via the UI's internal
+   * `_write` path — `emitText`, `renderMarkdown`, tool lines,
+   * notifications, usage stats *and* the spinner frames. The chunk
+   * is delivered post-`--no-color` stripping so the listener sees
+   * exactly what the user did.
+   *
+   * @returns an unsubscribe function. Safe to call more than once
+   *   and after the UI is no longer in use.
+   */
+  addOutputListener(listener: TerminalOutputListener): () => void {
+    this._outputListeners.add(listener);
+    return () => {
+      this._outputListeners.delete(listener);
+    };
   }
 
   renderMarkdown(payload: MarkdownPayload): void {
