@@ -448,6 +448,65 @@ describe("TerminalUI — addOutputListener fan-out", () => {
     expect(goodA.join("")).toBe("survive");
     expect(goodB.join("")).toBe("survive");
   });
+
+  // ── Phase 2.5: verbose reasoning routes through `_write` ─────────
+  //
+  // Before Phase 2.5, `renderReasoningDelta` wrote ANSI dim/italic
+  // wrapped text via a raw `process.stdout.write` — bypassing the
+  // `--no-color` strip and the listener fan-out. The verbose-mode
+  // branch now lives inside `TerminalUI.emitReasoning` and uses
+  // `_write`, so listeners observe it and `noColor` strips it.
+
+  it("fans verbose reasoning output to listeners (Phase 2.5)", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: true,
+    });
+    const seen: string[] = [];
+    ui.addOutputListener({ write: (s) => seen.push(s) });
+
+    ui.emitReasoning({ content: "thinking about it" });
+
+    // Listener saw the reasoning text (with its ANSI wrapper).
+    const joined = seen.join("");
+    expect(joined).toContain("thinking about it");
+    // And the raw stdout received the same bytes.
+    expect(cap.stdout()).toContain("thinking about it");
+  });
+
+  it("strips ANSI from verbose reasoning when noColor is on", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: true,
+      noColor: true,
+    });
+    const seen: string[] = [];
+    ui.addOutputListener({ write: (s) => seen.push(s) });
+
+    ui.emitReasoning({ content: "private thought" });
+
+    // The dim/italic SGR wrappers are gone; the text survives.
+    const joined = seen.join("");
+    expect(joined).toContain("private thought");
+    expect(joined).not.toMatch(/\x1b\[[0-9;]*m/);
+    expect(cap.stdout()).not.toMatch(/\x1b\[[0-9;]*m/);
+  });
+
+  it("does NOT leak compact-mode reasoning content to listeners", () => {
+    const ui = new TerminalUI({
+      markdownEnabled: false,
+      verboseOutput: false,
+    });
+    const seen: string[] = [];
+    ui.addOutputListener({ write: (s) => seen.push(s) });
+
+    // Compact mode feeds the spinner preview only — the reasoning
+    // text itself never reaches stdout. Listeners may see spinner
+    // label bytes but must not see the model's reasoning content.
+    ui.emitReasoning({ content: "a secret model thought" });
+
+    expect(seen.join("")).not.toContain("a secret model thought");
+  });
 });
 
 // ── NullUI ───────────────────────────────────────────────────────────

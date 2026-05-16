@@ -13,8 +13,11 @@
 //     no-buffering live-typing effect; markdown mode is a no-op
 //     here — the caller renders the full message via
 //     `renderMarkdown()` once the turn ends).
-//   - Reasoning deltas / transition: delegated to
-//     `llm-output.renderReasoningDelta`, identical to today's path.
+//   - Reasoning deltas / transition: compact mode feeds the
+//     spinner's preview; verbose mode writes inline via `_write`
+//     so the bytes flow through `--no-color` stripping and the
+//     transcript listener fan-out.
+
 //   - Tool start / result lines: matches today's
 //     `console.log(\`  \${C.<icon>(\`<emoji> <msg>\`)}\`)` shape.
 //   - Status spinner: owned internally — `TerminalUI` constructs the
@@ -33,7 +36,7 @@
 
 import { ANSI, C } from "../ansi.js";
 import { renderMarkdown } from "../markdown-renderer.js";
-import { formatUsageStats, renderReasoningDelta } from "../llm-output.js";
+import { formatUsageStats } from "../llm-output.js";
 import { Spinner } from "../spinner.js";
 import type { AgentUI } from "./port.js";
 import type {
@@ -250,11 +253,20 @@ export class TerminalUI implements AgentUI {
 
   emitReasoning(payload: ReasoningDeltaPayload): void {
     if (payload.content.length === 0) return;
-    renderReasoningDelta(
-      this._spinner,
-      payload.content,
-      this._opts.verboseOutput,
-    );
+    if (this._opts.verboseOutput) {
+      // Verbose mode: stream reasoning inline through the same
+      // `_write` chokepoint as every other byte we emit. This way
+      // `--no-color` strips the ANSI dim/italic wrappers and any
+      // attached `TerminalOutputListener` (transcript, future
+      // recorders) sees the reasoning text alongside everything
+      // else. Compact mode feeds the spinner preview instead — no
+      // stdout write happens in that branch.
+      this._spinner.stop();
+      this._write(`${ANSI.dim}${ANSI.italic}${payload.content}${ANSI.reset}`);
+    } else {
+      this._spinner.start("Reasoning...");
+      this._spinner.appendReasoning(payload.content);
+    }
   }
 
   emitReasoningTransition(payload: ReasoningTransitionPayload): void {

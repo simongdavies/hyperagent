@@ -9,8 +9,7 @@
 // toggle, same dead-zone messaging.
 // ─────────────────────────────────────────────────────────────────────
 
-import type { Spinner } from "./spinner.js";
-import { ANSI, C } from "./ansi.js";
+import { C } from "./ansi.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -315,30 +314,4 @@ export function formatTokenSummary(state: {
   }
 
   return lines;
-}
-
-// ── Reasoning Rendering ──────────────────────────────────────────────
-
-/**
- * Render a reasoning delta to the terminal.
- *
- * Verbose mode: prints inline — text scrolls freely through the terminal.
- * Compact mode: feeds the spinner's second-line reasoning preview.
- *
- * @param spinner - The shared Spinner instance
- * @param delta - The reasoning text chunk from the model
- * @param verbose - Whether verbose output mode is enabled
- */
-export function renderReasoningDelta(
-  spinner: Spinner,
-  delta: string,
-  verbose: boolean,
-): void {
-  if (!verbose) {
-    spinner.start("Reasoning...");
-    spinner.appendReasoning(delta);
-  } else {
-    spinner.stop();
-    process.stdout.write(`${ANSI.dim}${ANSI.italic}${delta}${ANSI.reset}`);
-  }
 }
