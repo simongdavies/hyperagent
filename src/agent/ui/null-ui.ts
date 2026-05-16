@@ -33,6 +33,14 @@ export class NullUI implements AgentUI {
     /* intentionally empty */
   }
 
+  clearReasoningBuffer(): void {
+    /* intentionally empty */
+  }
+
+  hasBufferedReasoning(): boolean {
+    return false;
+  }
+
   renderMarkdown(): void {
     /* intentionally empty */
   }
@@ -42,6 +50,10 @@ export class NullUI implements AgentUI {
   }
 
   emitToolResult(): void {
+    /* intentionally empty */
+  }
+
+  beginTurn(): void {
     /* intentionally empty */
   }
 

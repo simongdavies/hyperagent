@@ -124,7 +124,6 @@ export function runEventScript(
 
     registerEventHandler(session.asSession(), {
       state,
-      spinner,
       ui,
       // `sandbox` is destructured but never used by registerEventHandler.
       // Cast through unknown to keep the structural contract loose.

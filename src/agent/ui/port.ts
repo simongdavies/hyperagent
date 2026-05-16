@@ -80,6 +80,22 @@ export interface AgentUI {
   emitReasoningTransition(payload: ReasoningTransitionPayload): void;
 
   /**
+   * Drop any buffered reasoning preview state held by the UI. Used
+   * by progress callbacks at phase transitions where no banner is
+   * needed but the next visible line must not be polluted by the
+   * dangling reasoning preview. No-op when there is no buffer.
+   */
+  clearReasoningBuffer(): void;
+
+  /**
+   * Whether the UI is currently holding a non-empty buffered
+   * reasoning preview. Callers use this to decide whether to emit a
+   * reasoning → response separator before the next visible chunk.
+   * Implementations without an internal preview return `false`.
+   */
+  hasBufferedReasoning(): boolean;
+
+  /**
    * Render a complete assistant message as markdown. Today only
    * called after streaming finishes when markdown mode is on.
    */
@@ -94,6 +110,14 @@ export interface AgentUI {
   emitToolResult(payload: ToolResultPayload): void;
 
   // ── Status / activity ──────────────────────────────────────────
+
+  /**
+   * Mark the start of an assistant turn. Implementations should
+   * reset any per-turn bookkeeping (turn-start timer, buffered
+   * reasoning preview, etc). Visible activity is set separately via
+   * `setActivity`.
+   */
+  beginTurn(): void;
 
   /**
    * Set or clear the current activity indicator. The terminal UI

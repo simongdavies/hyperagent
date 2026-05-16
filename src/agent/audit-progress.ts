@@ -1,18 +1,12 @@
 // ── Audit Progress ───────────────────────────────────────────────────
 //
 // Builds a progress callback for deepAudit() that drives the agent
-// UI port (phase notifications, reasoning, usage stats) and the
-// shared `Spinner` for activity labelling.
-//
-// Spinner is still passed in for now because it owns the audit-flow
-// turn-start clock and reasoning preview state. Phase 4 will absorb
-// the Spinner into TerminalUI; until then we keep it here so
-// `resetTurnStart` / `clearReasoning` / `updateLabel` paths work
-// unchanged.
+// UI port (phase notifications, reasoning, activity labels, usage
+// stats). All spinner-state mutations flow through the UI port —
+// the audit pipeline holds no direct spinner reference.
 //
 // ─────────────────────────────────────────────────────────────────────
 
-import type { Spinner } from "./spinner.js";
 import type { AuditProgressCallback } from "../plugin-system/auditor.js";
 import type { AgentUI } from "./ui/index.js";
 import { type UsageData } from "./llm-output.js";
@@ -38,22 +32,19 @@ const AUDIT_INDENT = "     ";
 
 /**
  * Build an audit progress callback that emits phase-completion lines
- * via the UI port and updates the spinner for streaming phases.
+ * and activity updates via the UI port.
  *
- * Resets the spinner's turn-start timestamp on each major phase so the
+ * Resets the UI's turn-start timer on the first progress event so the
  * elapsed counter tracks audit duration, not time since the last
  * conversation turn (which may be minutes or hours ago).
  *
- * @param spinner - The shared Spinner instance to drive.
- * @param ui - The agent UI port for all user-visible emissions.
+ * @param ui - The agent UI port for all user-visible emissions and
+ *   spinner-state mutations.
  * @returns `{ callback, getTracePath }` — the callback to pass to
  *   `deepAudit()`, and a getter for the trace file path captured
  *   during the `trace` phase.
  */
-export function makeAuditProgressCallback(
-  spinner: Spinner,
-  ui: AgentUI,
-): {
+export function makeAuditProgressCallback(ui: AgentUI): {
   callback: AuditProgressCallback;
   getTracePath: () => string;
 } {
@@ -95,7 +86,7 @@ export function makeAuditProgressCallback(
 
     // Reset the elapsed timer once on the first progress event.
     if (!timerReset) {
-      spinner.resetTurnStart();
+      ui.beginTurn();
       timerReset = true;
     }
 
@@ -129,7 +120,7 @@ export function makeAuditProgressCallback(
           });
         }
         currentPhase = "responding";
-        spinner.clearReasoning();
+        ui.clearReasoningBuffer();
         ui.emitNotification({
           level: "plain",
           kind: "audit_receiving",
@@ -140,7 +131,7 @@ export function makeAuditProgressCallback(
         ui.setActivity({ kind: "custom", label: detail });
       } else {
         // Already responding — just update the label
-        spinner.updateLabel(detail);
+        ui.setActivity({ kind: "custom", label: detail });
       }
       return;
     }
@@ -223,7 +214,7 @@ export function makeAuditProgressCallback(
         label: detail ?? `Auditing...`,
       });
     } else if (detail) {
-      spinner.updateLabel(detail);
+      ui.setActivity({ kind: "custom", label: detail });
     }
   };
 

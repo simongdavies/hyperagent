@@ -210,6 +210,25 @@ export class TerminalUI implements AgentUI {
     process.stdout.write(`${ANSI.reset}\n\n`);
   }
 
+  clearReasoningBuffer(): void {
+    // Drop any buffered reasoning preview without emitting visible
+    // bytes. Used by audit-progress at the reasoning → responding
+    // transition where the banner is conditional but the buffer
+    // must always be reset.
+    this._spinner.clearReasoning();
+  }
+
+  hasBufferedReasoning(): boolean {
+    // Mirrors the historical `spinner.reasoningLength > 0` check in
+    // event-handler.ts. The compact-mode reasoning renderer appends
+    // deltas to the spinner's preview buffer; verbose mode prints
+    // inline and does not append. Callers (notably the
+    // reasoning → response separator emission) rely on the
+    // compact-mode-only semantics this getter inherits from
+    // `Spinner.reasoningLength`.
+    return this._spinner.reasoningLength > 0;
+  }
+
   renderMarkdown(payload: MarkdownPayload): void {
     if (payload.source.length === 0) return;
     console.log(renderMarkdown(payload.source));
@@ -267,6 +286,15 @@ export class TerminalUI implements AgentUI {
   }
 
   // ── Status / activity ──────────────────────────────────────────
+
+  beginTurn(): void {
+    // Mark the start of a fresh assistant turn: reset the timer
+    // used to display "still working…" affordances and clear any
+    // lingering reasoning preview from the previous turn. Visible
+    // activity is set separately via `setActivity`.
+    this._spinner.resetTurnStart();
+    this._spinner.clearReasoning();
+  }
 
   setActivity(payload: ActivityPayload | null): void {
     if (payload === null) {

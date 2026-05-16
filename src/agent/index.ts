@@ -6595,7 +6595,6 @@ const MAX_INACTIVITY_RETRIES = 1;
 function getEventHandlerDeps(): EventHandlerDeps {
   return {
     state,
-    spinner,
     ui,
     sandbox,
     SEND_TIMEOUT_MS,

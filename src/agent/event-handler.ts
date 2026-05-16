@@ -10,7 +10,6 @@ import type {
   AssistantMessageEvent,
 } from "@github/copilot-sdk";
 import type { AgentState } from "./state.js";
-import type { Spinner } from "./spinner.js";
 import { looksLikeMarkdown } from "./markdown-renderer.js";
 import { buildBufferOverflowHint } from "./buffer-overflow.js";
 import type { createSandboxTool } from "../sandbox/tool.js";
@@ -21,13 +20,11 @@ import type { AgentUI, ToolResultPayload } from "./ui/index.js";
 /** Runtime dependencies for the event handler */
 export interface EventHandlerDeps {
   state: AgentState;
-  spinner: Spinner;
   /**
-   * Display port — every user-visible byte goes through here.
-   * Phase 4 will absorb the spinner into the UI; until then
-   * both deps are present and `spinner` is used for internal
-   * state (resetTurnStart, clearReasoning, reasoningLength,
-   * progress label updates) that the port does not yet cover.
+   * Display port — every user-visible byte and every spinner-state
+   * mutation flows through here. The event handler holds no direct
+   * spinner reference; turn-start bookkeeping, reasoning buffer
+   * resets, and activity labels are all expressed as AgentUI calls.
    */
   ui: AgentUI;
   sandbox: ReturnType<typeof createSandboxTool>;
@@ -212,7 +209,7 @@ export function registerEventHandler(
   session: CopilotSession,
   deps: EventHandlerDeps,
 ): void {
-  const { state, spinner, sandbox, debugLog } = deps;
+  const { state, ui, sandbox, debugLog } = deps;
 
   if (state.eventHandlerUnsub) {
     state.eventHandlerUnsub();
@@ -282,12 +279,10 @@ export function registerEventHandler(
 
     switch (event.type) {
       case "assistant.turn_start":
-        // New turn — record start time and reset reasoning state.
-        // Spinner-internal bookkeeping stays on the Spinner; the
-        // visible state transition uses the UI port. Phase 4 will
-        // absorb these direct spinner calls.
-        spinner.resetTurnStart();
-        spinner.clearReasoning();
+        // New turn — reset per-turn bookkeeping via the UI port. The
+        // implementation resets the spinner's turn-start clock and
+        // drops any buffered reasoning preview from the previous turn.
+        deps.ui.beginTurn();
         deps.ui.setActivity({ kind: "thinking", label: "Thinking..." });
         break;
 
@@ -323,8 +318,10 @@ export function registerEventHandler(
 
       case "assistant.message_delta": {
         // First delta kills the spinner — we have content flowing.
-        // Capture reasoning length BEFORE emitText clears it.
-        const hadReasoning = spinner.reasoningLength > 0;
+        // Capture reasoning flag BEFORE emitText clears it. The UI's
+        // buffer-presence signal mirrors the compact-mode preview
+        // state (verbose mode prints inline and reports `false`).
+        const hadReasoning = deps.ui.hasBufferedReasoning();
         // Skip whitespace-only deltas before real content — the model
         // can emit "\n\n" before reasoning starts (undocumented).
         // Once real content has started, all deltas pass through.

@@ -1603,7 +1603,7 @@ export async function handleSlashCommand(
             while (attemptAudit) {
               attemptAudit = false; // one shot unless the user retries
               const { callback: auditProgress, getTracePath } =
-                makeAuditProgressCallback(spinner, ui);
+                makeAuditProgressCallback(ui);
               spinner.start(`Auditing "${pluginName}"...`);
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
                 createAuditAbortHandler(spinner);
@@ -2056,7 +2056,7 @@ export async function handleSlashCommand(
             while (attemptAudit) {
               attemptAudit = false;
               const { callback: auditProgress, getTracePath } =
-                makeAuditProgressCallback(spinner, ui);
+                makeAuditProgressCallback(ui);
               spinner.start(`Auditing "${auditPluginName}"...`);
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
                 createAuditAbortHandler(spinner);
