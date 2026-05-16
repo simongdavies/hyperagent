@@ -23,9 +23,11 @@ function suggestedKbForBytes(requiredBytes: number): number {
  * return a formatted multi-line hint suitable for direct console
  * output. Returns `null` when the message does not match.
  *
- * Prefer this function in code that routes through the UI port —
- * pass the returned string as the `hint` field of a
- * `ToolResultPayload` to keep ordering consistent.
+ * Designed to be threaded through the UI port — the returned
+ * string carries its own colour wrappers and indent so the caller
+ * can pass it as the `message` field of a `NotificationPayload`
+ * with `level: "plain"`, `kind: "buffer_overflow_hint"`, and
+ * `indent: ""`.
  */
 export function buildBufferOverflowHint(msg: string): string | null {
   const m = BUFFER_OVERFLOW_RE.exec(msg);
@@ -38,17 +40,4 @@ export function buildBufferOverflowHint(msg: string): string | null {
     `       ${C.val("/buffer output " + suggestedKb)}  — if result data is too large\n` +
     `       ${C.val("/buffer input " + suggestedKb)}   — if code being sent is too large`
   );
-}
-
-/**
- * If `msg` matches the Hyperlight buffer overflow error pattern, print
- * a user-actionable suggestion to increase the relevant buffer.
- *
- * Legacy entry point — newer code should prefer
- * {@link buildBufferOverflowHint} so the hint string can be plumbed
- * through the UI port.
- */
-export function suggestBufferIncreaseIfNeeded(msg: string): void {
-  const hint = buildBufferOverflowHint(msg);
-  if (hint) console.log(hint);
 }

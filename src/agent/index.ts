@@ -55,7 +55,7 @@ import { ANSI, C } from "./ansi.js";
 import { type CliConfig, parseCliArgs } from "./cli-parser.js";
 import { getVersion, getVersionString } from "./version.js";
 import { closestMatch } from "./fuzzy-match.js";
-import { suggestBufferIncreaseIfNeeded } from "./buffer-overflow.js";
+import { buildBufferOverflowHint } from "./buffer-overflow.js";
 import { ALLOWED_TOOLS } from "./tool-gating.js";
 import {
   handleSlashCommand as handleSlashCommandImpl,
@@ -2365,8 +2365,27 @@ const executeJavascriptTool = defineTool("execute_javascript", {
         ...commonLlmFields,
       });
     } else {
-      console.log(`  ${C.err("❌ " + error)}`);
-      suggestBufferIncreaseIfNeeded(error ?? "");
+      ui.emitNotification({
+        level: "error",
+        kind: "generic",
+        icon: "❌",
+        message: error ?? "",
+      });
+      // Surface a buffer-overflow hint if the error matches the
+      // Hyperlight "not enough space" pattern. We render it as a
+      // plain block (the hint string already carries its own
+      // colour wrappers and indent), so `indent: ""` is
+      // deliberate — emitNotification would otherwise prepend
+      // BLOCK_INDENT and break the visual alignment.
+      const overflowHint = buildBufferOverflowHint(error ?? "");
+      if (overflowHint) {
+        ui.emitNotification({
+          level: "plain",
+          kind: "buffer_overflow_hint",
+          message: overflowHint,
+          indent: "",
+        });
+      }
       const llmError = llmInstruction
         ? `${error} ${llmInstruction}`
         : (error ?? "");
