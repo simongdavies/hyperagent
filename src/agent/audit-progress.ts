@@ -1,22 +1,21 @@
 // ── Audit Progress ───────────────────────────────────────────────────
 //
-// Builds a progress callback for deepAudit() that prints phase-
-// completion lines with icons and drives the spinner for streaming
-// phases. Accepts a Spinner instance rather than closing over
-// module-level spinner functions.
+// Builds a progress callback for deepAudit() that drives the agent
+// UI port (phase notifications, reasoning, usage stats) and the
+// shared `Spinner` for activity labelling.
+//
+// Spinner is still passed in for now because it owns the audit-flow
+// turn-start clock and reasoning preview state. Phase 4 will absorb
+// the Spinner into TerminalUI; until then we keep it here so
+// `resetTurnStart` / `clearReasoning` / `updateLabel` paths work
+// unchanged.
 //
 // ─────────────────────────────────────────────────────────────────────
 
 import type { Spinner } from "./spinner.js";
 import type { AuditProgressCallback } from "../plugin-system/auditor.js";
-import {
-  formatUsageStats,
-  printUsageStats,
-  renderReasoningDelta,
-  renderReasoningTransition,
-  printExtendedReasoningNotice,
-  type UsageData,
-} from "./llm-output.js";
+import type { AgentUI } from "./ui/index.js";
+import { type UsageData } from "./llm-output.js";
 
 /** Phase → icon map for the audit progress pipeline display. */
 const AUDIT_PHASE_ICONS: Record<string, string> = {
@@ -34,23 +33,26 @@ const AUDIT_PHASE_ICONS: Record<string, string> = {
   parse: "📋",
 };
 
+/** Indent used for nested audit-progress lines (matches legacy output). */
+const AUDIT_INDENT = "     ";
+
 /**
- * Build an audit progress callback that prints phase-completion lines
- * with icons and updates the spinner for streaming phases.
+ * Build an audit progress callback that emits phase-completion lines
+ * via the UI port and updates the spinner for streaming phases.
  *
  * Resets the spinner's turn-start timestamp on each major phase so the
  * elapsed counter tracks audit duration, not time since the last
  * conversation turn (which may be minutes or hours ago).
  *
  * @param spinner - The shared Spinner instance to drive.
- * @param verbose - Whether verbose output mode is enabled.
+ * @param ui - The agent UI port for all user-visible emissions.
  * @returns `{ callback, getTracePath }` — the callback to pass to
  *   `deepAudit()`, and a getter for the trace file path captured
  *   during the `trace` phase.
  */
 export function makeAuditProgressCallback(
   spinner: Spinner,
-  verbose: boolean,
+  ui: AgentUI,
 ): {
   callback: AuditProgressCallback;
   getTracePath: () => string;
@@ -104,7 +106,7 @@ export function makeAuditProgressCallback(
         currentPhase = "reasoning";
         currentTurnHasReasoning = true;
         silentTurnCount = 0;
-        renderReasoningDelta(spinner, detail, verbose);
+        ui.emitReasoning({ content: detail });
       } else {
         // In RESPONDING — just track for opaque detection, no display
         currentTurnHasReasoning = true;
@@ -119,13 +121,23 @@ export function makeAuditProgressCallback(
         // Transition to RESPONDING — this is the audit report.
         // Show reasoning-complete banner if we were reasoning.
         if (currentPhase === "reasoning") {
-          renderReasoningTransition(spinner, verbose, "     ");
+          ui.emitReasoningTransition({
+            showBanner: true,
+            indent: AUDIT_INDENT,
+            // Next activity is set below explicitly so the banner
+            // method only handles the verbose terminator + line.
+          });
         }
         currentPhase = "responding";
-        spinner.stop();
         spinner.clearReasoning();
-        console.log(`     📋 Receiving audit report...`);
-        spinner.start(detail);
+        ui.emitNotification({
+          level: "plain",
+          kind: "audit_receiving",
+          icon: "📋",
+          message: "Receiving audit report...",
+          indent: AUDIT_INDENT,
+        });
+        ui.setActivity({ kind: "custom", label: detail });
       } else {
         // Already responding — just update the label
         spinner.updateLabel(detail);
@@ -146,14 +158,23 @@ export function makeAuditProgressCallback(
       // Show opaque notice after 2+ consecutive silent turns
       if (!opaqueNoticeShown && silentTurnCount >= 2) {
         opaqueNoticeShown = true;
-        spinner.stop();
-        printExtendedReasoningNotice("     ");
+        ui.emitNotification({
+          level: "info",
+          kind: "extended_reasoning",
+          icon: "⏳",
+          message:
+            "Extended reasoning in progress (model is using opaque multi-step reasoning)",
+          indent: AUDIT_INDENT,
+        });
       }
 
       // Only update spinner label if we're NOT already receiving
       // the response — don't overwrite "Receiving audit report..."
       if (currentPhase !== "responding") {
-        spinner.start(`Analysis in progress (turn ${turnCount})...`);
+        ui.setActivity({
+          kind: "custom",
+          label: `Analysis in progress (turn ${turnCount})...`,
+        });
       }
       return;
     }
@@ -162,7 +183,7 @@ export function makeAuditProgressCallback(
     if (phase === "usage-tick" && detail) {
       // Only update spinner if not in responding phase
       if (currentPhase !== "responding") {
-        spinner.start(detail);
+        ui.setActivity({ kind: "custom", label: detail });
       }
       return;
     }
@@ -171,11 +192,16 @@ export function makeAuditProgressCallback(
     if (phase === "usage" && detail) {
       try {
         const d = JSON.parse(detail) as UsageData;
-        const statsStr = formatUsageStats(d);
-        if (statsStr) {
-          spinner.stop();
-          printUsageStats(statsStr, "     ");
-        }
+        ui.emitUsage({
+          model: d.model,
+          inputTokens: d.inputTokens,
+          outputTokens: d.outputTokens,
+          cacheReadTokens: d.cacheReadTokens,
+          cacheWriteTokens: d.cacheWriteTokens,
+          cost: d.cost,
+          durationMs: d.duration,
+          indent: AUDIT_INDENT,
+        });
       } catch {
         // Best-effort
       }
@@ -185,9 +211,17 @@ export function makeAuditProgressCallback(
     // ── All other phases (icons: static-scan, sanitize, etc.) ─
     const icon = AUDIT_PHASE_ICONS[phase];
     if (icon !== undefined && icon !== "") {
-      spinner.stop();
-      console.log(`     ${icon} ${detail ?? phase}`);
-      spinner.start(detail ?? `Auditing...`);
+      ui.emitNotification({
+        level: "plain",
+        kind: "audit_phase",
+        icon,
+        message: detail ?? phase,
+        indent: AUDIT_INDENT,
+      });
+      ui.setActivity({
+        kind: "custom",
+        label: detail ?? `Auditing...`,
+      });
     } else if (detail) {
       spinner.updateLabel(detail);
     }

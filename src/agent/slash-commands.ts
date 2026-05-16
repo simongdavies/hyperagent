@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { C } from "./ansi.js";
 import type { AgentState } from "./state.js";
 import type { Spinner } from "./spinner.js";
+import type { AgentUI } from "./ui/index.js";
 import { renderHelp, renderTopicHelp } from "./commands.js";
 import { deepAudit, formatAuditResult } from "../plugin-system/auditor.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
@@ -92,6 +93,7 @@ function formatConfigTable(lines: string[]): string {
 export interface SlashCommandDeps {
   state: AgentState;
   spinner: Spinner;
+  ui: AgentUI;
   sandbox: ReturnType<typeof createSandboxTool>;
   pluginManager: ReturnType<typeof createPluginManager>;
   transcript: Transcript;
@@ -143,6 +145,7 @@ export async function handleSlashCommand(
   const {
     state,
     spinner,
+    ui,
     sandbox,
     pluginManager,
     transcript,
@@ -1600,7 +1603,7 @@ export async function handleSlashCommand(
             while (attemptAudit) {
               attemptAudit = false; // one shot unless the user retries
               const { callback: auditProgress, getTracePath } =
-                makeAuditProgressCallback(spinner, state.verboseOutput);
+                makeAuditProgressCallback(spinner, ui);
               spinner.start(`Auditing "${pluginName}"...`);
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
                 createAuditAbortHandler(spinner);
@@ -2053,7 +2056,7 @@ export async function handleSlashCommand(
             while (attemptAudit) {
               attemptAudit = false;
               const { callback: auditProgress, getTracePath } =
-                makeAuditProgressCallback(spinner, state.verboseOutput);
+                makeAuditProgressCallback(spinner, ui);
               spinner.start(`Auditing "${auditPluginName}"...`);
               const { controller: auditAbort, cleanup: auditAbortCleanup } =
                 createAuditAbortHandler(spinner);

@@ -128,7 +128,12 @@ export interface ActivityPayload {
 // ── Notifications (info / warning / error / success) ────────────────
 
 /** Severity level for a one-shot notification line. */
-export type NotificationLevel = "info" | "warning" | "error" | "success";
+export type NotificationLevel =
+  | "info"
+  | "warning"
+  | "error"
+  | "success"
+  | "plain";
 
 /**
  * Semantic tag identifying *what kind* of notification this is.
@@ -152,7 +157,10 @@ export type NotificationKind =
   | "sdk_warning"
   | "sdk_info"
   | "sdk_error"
-  | "buffer_overflow_hint";
+  | "buffer_overflow_hint"
+  | "audit_phase"
+  | "audit_receiving"
+  | "extended_reasoning";
 
 /** Generic notification — covers info / warning / error / success lines. */
 export interface NotificationPayload {
@@ -168,6 +176,13 @@ export interface NotificationPayload {
   readonly icon?: string;
   /** The message text. */
   readonly message: string;
+  /**
+   * Optional leading indent override for terminal rendering. Most
+   * call sites use the default `BLOCK_INDENT` ("  "); the audit
+   * progress flow uses five spaces to visually nest under a header.
+   * Non-terminal UIs ignore this.
+   */
+  readonly indent?: string;
 }
 
 // ── Usage stats payload ──────────────────────────────────────────────
@@ -183,6 +198,11 @@ export interface UsagePayload {
   readonly cost?: number;
   /** Wall-clock duration of the API round-trip in ms. */
   readonly durationMs?: number;
+  /**
+   * Optional leading indent override for terminal rendering.
+   * Audit-progress uses five spaces to nest under its header.
+   */
+  readonly indent?: string;
 }
 
 // ── Markdown rendering payload ───────────────────────────────────────
@@ -210,8 +230,31 @@ export interface WindowTitlePayload {
 
 /**
  * Signals the end of the reasoning phase and the start of the visible
- * response. Today the terminal only acts on this when verbose
- * reasoning is enabled (it emits a blank-line separator). Other UIs
- * may use it to switch panels or close a "thinking" affordance.
+ * response. The event-handler emits this with no fields — the
+ * terminal UI only acts on it when verbose reasoning is enabled
+ * (emitting a blank-line separator).
+ *
+ * The audit-progress flow emits it with `showBanner: true` to print
+ * an explicit "✅ Reasoning complete" line plus optional follow-on
+ * activity. Other UIs may use this to switch panels or close a
+ * "thinking" affordance.
  */
-export type ReasoningTransitionPayload = Record<string, never>;
+export interface ReasoningTransitionPayload {
+  /**
+   * When true, terminal UI prints a "✅ Reasoning complete" banner
+   * and resets the spinner's turn-start clock. Used by the audit
+   * flow; event-handler omits it.
+   */
+  readonly showBanner?: boolean;
+  /**
+   * Optional indent for the banner line; defaults to BLOCK_INDENT.
+   * Only meaningful when `showBanner` is true.
+   */
+  readonly indent?: string;
+  /**
+   * Optional activity label to start immediately after the banner
+   * (e.g. "Generating response..."). Only meaningful when
+   * `showBanner` is true.
+   */
+  readonly nextActivity?: string;
+}

@@ -83,6 +83,8 @@ const LEVEL_COLOR: Readonly<Record<NotificationLevel, (s: string) => string>> =
     warning: C.warn,
     error: C.err,
     success: C.ok,
+    /** No colour — used for audit phase lines which historically print plain. */
+    plain: (s) => s,
   };
 
 /** Construction options for `TerminalUI`.
@@ -173,15 +175,33 @@ export class TerminalUI implements AgentUI {
     );
   }
 
-  emitReasoningTransition(_payload: ReasoningTransitionPayload): void {
+  emitReasoningTransition(payload: ReasoningTransitionPayload): void {
     // Always stop the spinner so the transition (or, in compact
     // mode, the following text) lands on a fresh line. Matches
     // `event-handler.ts`'s unconditional `spinner.stop()` at the
     // top of `assistant.message_delta`.
     this._spinner.stop();
-    // Only verbose mode produces visible bytes for the transition —
-    // compact mode keeps things silent and the next `emitText` carries
-    // the first response chunk inline. Matches `event-handler.ts`:
+
+    // Banner mode (used by audit-progress): emit the verbose
+    // line-terminator, print the "Reasoning complete" line, reset
+    // the spinner clock, and optionally re-start a new activity.
+    // Mirrors the original `renderReasoningTransition(spinner,
+    // verbose, indent)` helper from `llm-output.ts`.
+    if (payload.showBanner) {
+      if (this._opts.verboseOutput) {
+        process.stdout.write(`${ANSI.reset}\n`);
+      }
+      console.log(`${payload.indent ?? BLOCK_INDENT}✅ Reasoning complete`);
+      this._spinner.resetTurnStart();
+      if (payload.nextActivity) {
+        this._spinner.start(payload.nextActivity);
+      }
+      return;
+    }
+
+    // Compact (event-handler) mode: only verbose produces visible
+    // bytes — the next `emitText` carries the first response chunk
+    // inline. Matches:
     //   if (state.verboseOutput && hadReasoning && !state.streamedContent)
     //     process.stdout.write(`${ANSI.reset}\n\n`);
     // The caller is responsible for deciding *whether* to emit the
@@ -274,7 +294,8 @@ export class TerminalUI implements AgentUI {
     this._spinner.stop();
     const colour = LEVEL_COLOR[payload.level];
     const prefix = payload.icon ? `${payload.icon} ` : "";
-    console.log(`${BLOCK_INDENT}${colour(`${prefix}${payload.message}`)}`);
+    const indent = payload.indent ?? BLOCK_INDENT;
+    console.log(`${indent}${colour(`${prefix}${payload.message}`)}`);
   }
 
   // ── Usage stats ────────────────────────────────────────────────
@@ -297,7 +318,7 @@ export class TerminalUI implements AgentUI {
       duration: payload.durationMs,
     });
     if (statsStr) {
-      printUsageStats(statsStr, BLOCK_INDENT);
+      printUsageStats(statsStr, payload.indent ?? BLOCK_INDENT);
     }
   }
 }

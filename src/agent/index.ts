@@ -1252,6 +1252,7 @@ async function handleSlashCommand(
   const slashDeps: SlashCommandDeps = {
     state,
     spinner,
+    ui,
     sandbox,
     pluginManager,
     transcript,
