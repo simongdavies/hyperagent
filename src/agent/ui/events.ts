@@ -75,6 +75,23 @@ export interface ToolResultPayload {
    * here; non-sandbox tools usually omit it.
    */
   readonly body?: ToolResultBody;
+  /**
+   * Optional pre-formatted hint to print *after* the body but
+   * *before* the trailing housekeeping (blank line + spinner
+   * restart). Today's only producer is the buffer-overflow detector
+   * — see {@link buildBufferOverflowHint}. Pass already-coloured
+   * text; the UI prints it verbatim.
+   */
+  readonly hint?: string;
+  /**
+   * When true, suppress the visible status line and body — used when
+   * a tool handler has *already* displayed its own clean output
+   * (signalled by `_userDisplayed` on the parsed result). The UI
+   * still performs the trailing post-tool housekeeping (blank line
+   * + transition back to the thinking spinner) so the next event
+   * lands cleanly. Defaults to false.
+   */
+  readonly silent?: boolean;
 }
 
 // ── Activity / spinner payloads ──────────────────────────────────────

@@ -9,17 +9,12 @@ import type {
   CopilotSession,
   AssistantMessageEvent,
 } from "@github/copilot-sdk";
-import { C, ANSI } from "./ansi.js";
 import type { AgentState } from "./state.js";
 import type { Spinner } from "./spinner.js";
-import { renderMarkdown, looksLikeMarkdown } from "./markdown-renderer.js";
-import {
-  formatUsageStats,
-  printUsageStats,
-  renderReasoningDelta,
-} from "./llm-output.js";
-import { suggestBufferIncreaseIfNeeded } from "./buffer-overflow.js";
+import { looksLikeMarkdown } from "./markdown-renderer.js";
+import { buildBufferOverflowHint } from "./buffer-overflow.js";
 import type { createSandboxTool } from "../sandbox/tool.js";
+import type { AgentUI, ToolResultPayload } from "./ui/index.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -27,6 +22,14 @@ import type { createSandboxTool } from "../sandbox/tool.js";
 export interface EventHandlerDeps {
   state: AgentState;
   spinner: Spinner;
+  /**
+   * Display port — every user-visible byte goes through here.
+   * Phase 4 will absorb the spinner into the UI; until then
+   * both deps are present and `spinner` is used for internal
+   * state (resetTurnStart, clearReasoning, reasoningLength,
+   * progress label updates) that the port does not yet cover.
+   */
+  ui: AgentUI;
   sandbox: ReturnType<typeof createSandboxTool>;
   SEND_TIMEOUT_MS: number;
   MAX_INACTIVITY_RETRIES: number;
@@ -37,6 +40,98 @@ export interface EventHandlerDeps {
 
 /** Map toolCallId -> toolName for correlating start/complete events. */
 const pendingTools = new Map<string, string>();
+
+// ── Tool-result payload helpers ──────────────────────────────────────
+
+/**
+ * Threshold above which large JSON object results are rendered as a
+ * multi-line body instead of inline with the status message.
+ * Matches the original `tool.execution_complete` switch.
+ */
+const VERBOSE_RESULT_INLINE_LIMIT = 500;
+
+/**
+ * Build a `ToolResultPayload` for the verbose-mode "successful result
+ * with `parsed.result` present" branch.
+ *
+ * The branching mirrors the original switch faithfully:
+ *
+ *   - String containing `\n` → multi-line body (markdown if both
+ *     enabled and content looks like markdown, otherwise dimmed
+ *     text).
+ *   - String without `\n` → inline `"Result: <value>"` message.
+ *   - Object pretty-printed > 500 chars → multi-line body (markdown
+ *     `json` fence when markdown enabled, otherwise dimmed text).
+ *   - Object ≤ 500 chars → inline `"Result: <pretty>"` message (the
+ *     pretty JSON is included in the message; the colour wrap
+ *     extends to the value, a deliberate single-emit simplification
+ *     of the original two-colour split, since this branch is not
+ *     golden-tested).
+ *   - Anything else (booleans, numbers, etc.) → `"Result: <String(v)>"`.
+ *
+ * The caller is responsible for the surrounding tool-success header
+ * (icon) — `emitToolResult` adds it from the `status` field.
+ */
+function buildVerboseResultPayload(
+  toolName: string,
+  callId: string,
+  displayValue: unknown,
+  markdownEnabled: boolean,
+): ToolResultPayload {
+  if (typeof displayValue === "string") {
+    if (displayValue.includes("\n")) {
+      // Multi-line string: separate body line beneath the header.
+      const useMarkdown = markdownEnabled && looksLikeMarkdown(displayValue);
+      return {
+        name: toolName,
+        callId,
+        status: "success",
+        message: "Result:",
+        body: {
+          kind: useMarkdown ? "markdown" : "text",
+          content: displayValue,
+        },
+      };
+    }
+    return {
+      name: toolName,
+      callId,
+      status: "success",
+      message: `Result: ${displayValue}`,
+    };
+  }
+  if (displayValue !== null && typeof displayValue === "object") {
+    const pretty = JSON.stringify(displayValue, null, 2);
+    if (pretty.length > VERBOSE_RESULT_INLINE_LIMIT) {
+      // Large object: multi-line body. Wrap in a JSON code fence when
+      // markdown is enabled so the renderer can apply syntax colour;
+      // otherwise emit dimmed pretty-printed text.
+      return {
+        name: toolName,
+        callId,
+        status: "success",
+        message: "Result:",
+        body: markdownEnabled
+          ? { kind: "markdown", content: "```json\n" + pretty + "\n```" }
+          : { kind: "text", content: pretty },
+      };
+    }
+    // Small object: inline pretty-print on the header line.
+    return {
+      name: toolName,
+      callId,
+      status: "success",
+      message: `Result: ${pretty}`,
+    };
+  }
+  // Booleans, numbers, etc.
+  return {
+    name: toolName,
+    callId,
+    status: "success",
+    message: `Result: ${String(displayValue)}`,
+  };
+}
 
 /** Reset the keep-alive inactivity timer. Called on EVERY event. */
 export function resetKeepAliveTimer(deps: EventHandlerDeps): void {
@@ -61,11 +156,16 @@ export function resetKeepAliveTimer(deps: EventHandlerDeps): void {
         totalSecs >= 60
           ? `${Math.floor(totalSecs / 60)}m ${totalSecs % 60}s`
           : `${totalSecs}s`;
-      deps.spinner.stop();
-      console.log(
-        `\n  ${C.dim(`⏳ No activity for ${timeStr} — nudging model to continue...`)}`,
-      );
-      deps.spinner.start("Waiting for response...");
+      deps.ui.emitNotification({
+        level: "info",
+        kind: "keep_alive_nudge",
+        icon: "⏳",
+        message: `No activity for ${timeStr} — nudging model to continue...`,
+      });
+      deps.ui.setActivity({
+        kind: "waiting",
+        label: "Waiting for response...",
+      });
       state.activeSession
         .send({
           prompt:
@@ -182,10 +282,13 @@ export function registerEventHandler(
 
     switch (event.type) {
       case "assistant.turn_start":
-        // New turn — record start time and reset reasoning state
+        // New turn — record start time and reset reasoning state.
+        // Spinner-internal bookkeeping stays on the Spinner; the
+        // visible state transition uses the UI port. Phase 4 will
+        // absorb these direct spinner calls.
         spinner.resetTurnStart();
         spinner.clearReasoning();
-        spinner.start("Thinking...");
+        deps.ui.setActivity({ kind: "thinking", label: "Thinking..." });
         break;
 
       case "assistant.intent": {
@@ -198,27 +301,29 @@ export function registerEventHandler(
             intent.length > MAX_INTENT_LEN
               ? intent.slice(0, MAX_INTENT_LEN) + "…"
               : intent;
-          // start() not updateLabel() — spinner may have been
-          // stopped by a preceding message_delta in the same turn.
-          spinner.start(`Planning: ${truncated}`);
+          // `setActivity` is idempotent — when the spinner is already
+          // running it just updates the label (same behaviour as the
+          // original `spinner.start(label)` call).
+          deps.ui.setActivity({
+            kind: "planning",
+            label: `Planning: ${truncated}`,
+          });
         }
         break;
       }
 
       case "assistant.reasoning_delta":
-        // Model is actively reasoning — delegate to shared renderer.
+        // Model is actively reasoning — delegate to the UI port,
+        // which routes to the existing shared renderer for the
+        // terminal target.
         if (event.data?.deltaContent) {
-          renderReasoningDelta(
-            spinner,
-            event.data.deltaContent,
-            state.verboseOutput,
-          );
+          deps.ui.emitReasoning({ content: event.data.deltaContent });
         }
         break;
 
       case "assistant.message_delta": {
         // First delta kills the spinner — we have content flowing.
-        // Capture reasoning length BEFORE stop() clears it.
+        // Capture reasoning length BEFORE emitText clears it.
         const hadReasoning = spinner.reasoningLength > 0;
         // Skip whitespace-only deltas before real content — the model
         // can emit "\n\n" before reasoning starts (undocumented).
@@ -226,19 +331,18 @@ export function registerEventHandler(
         if (!state.streamedContent && event.data?.deltaContent?.trim() === "") {
           break;
         }
-        spinner.stop();
         // If verbose reasoning was scrolling, emit a visual
-        // separator before the response text starts.
-        if (state.verboseOutput && hadReasoning && !state.streamedContent) {
-          process.stdout.write(`${ANSI.reset}\n\n`);
+        // separator before the response text starts. The UI port
+        // owns whether to actually emit bytes (no-op in compact mode).
+        if (hadReasoning && !state.streamedContent) {
+          deps.ui.emitReasoningTransition({});
         }
-        // Stream response text token-by-token to stdout
-        // When markdown mode is enabled, buffer silently — the
-        // complete response is rendered at the end by processMessage.
+        // Stream response text token-by-token via the UI port.
+        // TerminalUI suppresses streaming when markdown mode is on;
+        // it always stops the spinner first so the eventual
+        // `renderMarkdown` lands cleanly.
         if (event.data?.deltaContent) {
-          if (!state.markdownEnabled) {
-            process.stdout.write(event.data.deltaContent);
-          }
+          deps.ui.emitText({ content: event.data.deltaContent });
           state.streamedContent = true;
           state.streamedText += event.data.deltaContent;
         }
@@ -254,8 +358,8 @@ export function registerEventHandler(
         break;
 
       case "session.idle":
-        // Agent finished — stop spinner and resolve
-        spinner.stop();
+        // Agent finished — clear status and resolve
+        deps.ui.setActivity(null);
         if (state.pendingResolve) {
           const resolve = state.pendingResolve;
           clearKeepAliveState(deps);
@@ -267,7 +371,7 @@ export function registerEventHandler(
         // User pressed ESC — session.abort() was called, SDK confirms.
         // Treat like session.idle: resolve the pending promise with
         // whatever partial content we captured.
-        spinner.stop();
+        deps.ui.setActivity(null);
         if (state.pendingResolve) {
           const resolve = state.pendingResolve;
           clearKeepAliveState(deps);
@@ -276,8 +380,8 @@ export function registerEventHandler(
         break;
 
       case "session.error": {
-        // Agent errored — stop spinner and reject
-        spinner.stop();
+        // Agent errored — clear status and reject
+        deps.ui.setActivity(null);
         if (state.pendingReject) {
           const reject = state.pendingReject;
           clearKeepAliveState(deps);
@@ -294,11 +398,10 @@ export function registerEventHandler(
         const toolName = event.data?.toolName ?? "unknown";
         const callId = event.data?.toolCallId;
         if (callId) pendingTools.set(callId, toolName);
-
-        spinner.stop();
-        console.log(`\n  ${C.tool(`🔧 ${toolName}`)}`);
-        // Restart spinner so the user sees activity while the tool runs
-        spinner.start(" ");
+        // The UI port owns the byte sequence: stop spinner, print
+        // the tool line, restart spinner with " " label for
+        // heartbeat visibility while the tool runs.
+        deps.ui.emitToolStart({ name: toolName, callId: callId ?? "" });
         break;
       }
 
@@ -328,113 +431,125 @@ export function registerEventHandler(
           debugLog(`${status} ${toolName} complete`);
         }
 
-        // Show result summary
+        // ── Build a ToolResultPayload from the SDK event ───────
+        // The branch tree below is intentionally cohesive: it
+        // mirrors the original switch's content-driven decisions
+        // (sandbox vs not, verbose vs not, parsed.error vs result,
+        // string vs object vs primitive, markdown-eligible vs raw)
+        // and assembles a single `ui.emitToolResult({...})` call
+        // per outcome. The UI port owns the byte sequence
+        // (icon line, body, hint, trailing blank, spinner restart).
+        //
+        // Gating: `showFullBody` is `state.verboseOutput && (isSandboxTool ||
+        // state.veryVerboseOutput)` — sandbox tools (execute_javascript /
+        // execute_bash) show full bodies under plain --verbose, but
+        // protocol tools require --very-verbose to dump their bodies.
+        const callIdStr = callId ?? "";
         if (event.data?.success) {
-          // In non-verbose mode, still show errors — but skip verbose
-          // result display since the LLM will summarise for the user.
+          const content = event.data?.result?.content ?? "";
+          let parsed;
+          try {
+            parsed = JSON.parse(content);
+          } catch {
+            // Not JSON — that's fine
+          }
+
           if (!showFullBody) {
-            const content = event.data?.result?.content ?? "";
-            let parsed;
-            try {
-              parsed = JSON.parse(content);
-            } catch {
-              // Not JSON — that's fine
-            }
+            // ── Body suppressed: show errors, otherwise terse success ──
             if (parsed?.error && !parsed._userDisplayed) {
-              // Always show errors, even in non-verbose mode
-              console.log(`  ${C.err("❌ " + parsed.error)}`);
-              suggestBufferIncreaseIfNeeded(parsed.error);
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "error",
+                message: parsed.error,
+                hint: buildBufferOverflowHint(parsed.error) ?? undefined,
+              });
             } else {
-              console.log(`  ${C.ok("✅ Done")}`);
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "success",
+                message: "Done",
+              });
+            }
+          } else if (parsed?.error) {
+            // ── Verbose, errored ──
+            if (parsed._userDisplayed) {
+              // Tool handler already printed the clean error — emit
+              // a silent result to trigger trailing housekeeping
+              // (blank line + spinner restart) without re-display.
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "error",
+                message: parsed.error,
+                silent: true,
+              });
+            } else {
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "error",
+                message: parsed.error,
+                hint: buildBufferOverflowHint(parsed.error) ?? undefined,
+              });
             }
           } else {
-            const content = event.data?.result?.content ?? "";
-            let parsed;
-            try {
-              parsed = JSON.parse(content);
-            } catch {
-              // Not JSON — show raw
-            }
+            // ── Verbose, successful — format the result body ──
+            const resultValue = parsed?.result;
+            const wasTruncated =
+              typeof resultValue === "string" &&
+              resultValue.endsWith("[TRUNCATED_FOR_LLM]");
 
-            if (parsed?.error) {
-              // If _userDisplayed is set, the tool handler already
-              // printed the clean error — don't re-display it.
-              if (!parsed._userDisplayed) {
-                console.log(`  ${C.err("❌ " + parsed.error)}`);
-                suggestBufferIncreaseIfNeeded(parsed.error);
+            if (wasTruncated) {
+              // Tool handler already displayed the full result; just
+              // emit a silent result to drive the trailing housekeeping.
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "success",
+                message: "",
+                silent: true,
+              });
+            } else if (resultValue !== undefined) {
+              let displayValue;
+              try {
+                displayValue = JSON.parse(resultValue);
+              } catch {
+                displayValue = resultValue;
               }
+
+              const payload = buildVerboseResultPayload(
+                toolName,
+                callIdStr,
+                displayValue,
+                state.markdownEnabled,
+              );
+              deps.ui.emitToolResult(payload);
+            } else if (content) {
+              const preview =
+                content.length > 300 ? content.slice(0, 300) + "…" : content;
+              // Don't render truncated content as markdown — truncation
+              // may break mid-token (code fence, table) producing garbled output.
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "success",
+                message: `Result: ${preview}`,
+              });
             } else {
-              const resultValue = parsed?.result;
-
-              // If the tool handler already displayed the full
-              // result (large output), skip re-display here.
-              const wasTruncated =
-                typeof resultValue === "string" &&
-                resultValue.endsWith("[TRUNCATED_FOR_LLM]");
-              if (wasTruncated) {
-                // Already displayed by the tool handler — nothing to do.
-              } else if (resultValue !== undefined) {
-                let displayValue;
-                try {
-                  displayValue = JSON.parse(resultValue);
-                } catch {
-                  displayValue = resultValue;
-                }
-
-                if (typeof displayValue === "string") {
-                  if (displayValue.includes("\n")) {
-                    console.log(`  ${C.ok("✅ Result:")}`);
-                    // Render markdown if enabled and text has markdown patterns;
-                    // otherwise dim the raw text for visual separation.
-                    if (
-                      state.markdownEnabled &&
-                      looksLikeMarkdown(displayValue)
-                    ) {
-                      console.log(renderMarkdown(displayValue));
-                    } else {
-                      console.log(C.dim(displayValue));
-                    }
-                  } else {
-                    console.log(`  ${C.ok("✅ Result:")} ${displayValue}`);
-                  }
-                } else if (
-                  displayValue !== null &&
-                  typeof displayValue === "object"
-                ) {
-                  const pretty = JSON.stringify(displayValue, null, 2);
-                  if (pretty.length > 500) {
-                    console.log(`  ${C.ok("✅ Result:")}`);
-                    // Wrap large JSON in a code block for markdown rendering
-                    if (state.markdownEnabled) {
-                      console.log(
-                        renderMarkdown("```json\n" + pretty + "\n```"),
-                      );
-                    } else {
-                      console.log(C.dim(pretty));
-                    }
-                  } else {
-                    console.log(`  ${C.ok("✅ Result:")} ${C.dim(pretty)}`);
-                  }
-                } else {
-                  console.log(
-                    `  ${C.ok("✅ Result:")} ${String(displayValue)}`,
-                  );
-                }
-              } else if (content) {
-                const preview =
-                  content.length > 300 ? content.slice(0, 300) + "…" : content;
-                // Don't render truncated content as markdown — truncation
-                // may break mid-token (code fence, table) producing garbled output.
-                console.log(`  ${C.ok("✅ Result:")} ${C.dim(preview)}`);
-              } else {
-                console.log(`  ${C.ok("✅ Tool complete")}`);
-              }
+              deps.ui.emitToolResult({
+                name: toolName,
+                callId: callIdStr,
+                status: "success",
+                message: "Tool complete",
+              });
             }
-          } // end verbose gate
+          }
         } else {
-          // Check if the tool handler already displayed the error to the user
-          // (indicated by _userDisplayed flag in the result content). If so,
-          // suppress the generic SDK error to avoid duplicate error messages.
+          // ── Tool reported failure (event.data.success === false) ──
+          // Check if the tool handler already displayed the error to
+          // the user (indicated by _userDisplayed on the result).
           let alreadyDisplayed = false;
           try {
             const content = event.data?.result?.content;
@@ -445,30 +560,46 @@ export function registerEventHandler(
           } catch {
             // Content isn't JSON or missing — that's fine
           }
-          if (!alreadyDisplayed) {
-            const errMsg = event.data?.error?.message ?? "unknown error";
-            const errCode = event.data?.error?.code;
-            if (errCode === "denied") {
-              console.log(`  ${C.warn("🚫 Tool denied by policy")}`);
-            } else {
-              console.log(`  ${C.err("❌ Error: " + errMsg)}`);
-              suggestBufferIncreaseIfNeeded(errMsg);
-            }
+          const errMsg = event.data?.error?.message ?? "unknown error";
+          const errCode = event.data?.error?.code;
+          if (alreadyDisplayed) {
+            // Silent — handler showed it; just run trailing housekeeping.
+            deps.ui.emitToolResult({
+              name: toolName,
+              callId: callIdStr,
+              status: "error",
+              message: errMsg,
+              silent: true,
+            });
+          } else if (errCode === "denied") {
+            deps.ui.emitToolResult({
+              name: toolName,
+              callId: callIdStr,
+              status: "denied",
+              message: "Tool denied by policy",
+            });
+          } else {
+            deps.ui.emitToolResult({
+              name: toolName,
+              callId: callIdStr,
+              status: "error",
+              message: `Error: ${errMsg}`,
+              hint: buildBufferOverflowHint(errMsg) ?? undefined,
+            });
           }
         }
-        console.log();
-
-        // After tool completes the model will process the result —
-        // restart spinner so the user sees continued activity.
-        spinner.start("Thinking...");
+        // Note: `emitToolResult` already prints a trailing blank line
+        // and restarts the spinner with "Thinking..." — the old
+        // inline `console.log(); spinner.start("Thinking...")` block
+        // is now owned by the UI port.
         break;
       }
 
       case "assistant.usage": {
-        // Token usage stats — use shared renderer for consistency.
-        // Stop spinner first to avoid ANSI cursor conflicts that break
-        // readline's up-arrow history recall.
-        spinner.stop();
+        // Token usage stats — route through the UI port. The port's
+        // `emitUsage` stops the spinner internally (matches the
+        // original `spinner.stop()` to avoid ANSI cursor conflicts
+        // with readline up-arrow history recall).
         const usageData = event.data as {
           model?: string;
           inputTokens?: number;
@@ -487,25 +618,38 @@ export function registerEventHandler(
         state.totalCacheWriteTokens += usageData.cacheWriteTokens ?? 0;
         state.totalRequests += 1;
 
-        // Ensure stats appear on a new line — streamed
-        // message_delta writes don't end with \n.
+        // Ensure stats appear on a new line — streamed message_delta
+        // writes don't end with \n. Routed through the UI port so
+        // alternative targets (e.g. JSON-lines) can decide whether a
+        // separator is meaningful.
         if (state.streamedContent) {
-          process.stdout.write("\n");
+          deps.ui.emitText({ content: "\n" });
         }
-        const statsStr = formatUsageStats(usageData);
-        if (statsStr) {
-          printUsageStats(statsStr, "  ");
-        }
+        // The port's payload uses `durationMs`; the SDK gives us
+        // `duration` — translate at the boundary.
+        deps.ui.emitUsage({
+          model: usageData.model,
+          inputTokens: usageData.inputTokens,
+          outputTokens: usageData.outputTokens,
+          cacheReadTokens: usageData.cacheReadTokens,
+          cacheWriteTokens: usageData.cacheWriteTokens,
+          cost: usageData.cost,
+          durationMs: usageData.duration,
+        });
         break;
       }
 
       case "tool.execution_progress": {
-        // Tool progress update — show progress in the spinner label.
-        // Data: { toolCallId, progressMessage }
+        // Tool progress update — update the spinner label via the UI
+        // port. Phase 4 will consider whether a dedicated activity
+        // payload (`kind: "tool"`) is a better fit; for now the
+        // existing spinner-internal `updateLabel` call is preserved
+        // verbatim via `setActivity`, which is byte-equivalent when
+        // the spinner is already running.
         const progressMsg = (event.data as { progressMessage?: string })
           ?.progressMessage;
         if (progressMsg) {
-          spinner.updateLabel(progressMsg);
+          deps.ui.setActivity({ kind: "tool", label: progressMsg });
         }
         break;
       }
@@ -534,8 +678,15 @@ export function registerEventHandler(
           message?: string;
         };
         if (warnData.message) {
-          spinner.stop();
-          console.log(`  ${C.warn("⚠️  " + warnData.message)}`);
+          deps.ui.emitNotification({
+            level: "warning",
+            kind: "sdk_warning",
+            // Two-space gap after the icon for VGA alignment —
+            // emitNotification adds one space, so we pre-pad with
+            // the second.
+            icon: "⚠️ ",
+            message: warnData.message,
+          });
         }
         break;
       }
@@ -559,8 +710,12 @@ export function registerEventHandler(
             }
             break;
           }
-          spinner.stop();
-          console.log(`  ${C.dim("ℹ️  " + infoData.message)}`);
+          deps.ui.emitNotification({
+            level: "info",
+            kind: "sdk_info",
+            icon: "ℹ️ ",
+            message: infoData.message,
+          });
         }
         break;
       }
@@ -568,13 +723,15 @@ export function registerEventHandler(
       case "session.compaction_start": {
         // Infinite sessions: context window is filling up, the SDK
         // is summarising old messages in the background.
-        spinner.start("Compacting context…");
+        deps.ui.setActivity({
+          kind: "compacting",
+          label: "Compacting context…",
+        });
         break;
       }
 
       case "session.compaction_complete": {
         // Compaction finished — show how much context was freed.
-        spinner.stop();
         const compData = event.data as {
           success?: boolean;
           error?: string;
@@ -586,13 +743,19 @@ export function registerEventHandler(
           const pre = compData.preCompactionTokens ?? 0;
           const post = compData.postCompactionTokens ?? 0;
           const freed = compData.tokensRemoved ?? pre - post;
-          console.log(
-            `  ${C.dim(`📦 Context compacted: ${pre.toLocaleString()} → ${post.toLocaleString()} tokens (${freed.toLocaleString()} freed)`)}`,
-          );
+          deps.ui.emitNotification({
+            level: "info",
+            kind: "context_compacted",
+            icon: "📦",
+            message: `Context compacted: ${pre.toLocaleString()} → ${post.toLocaleString()} tokens (${freed.toLocaleString()} freed)`,
+          });
         } else {
-          console.log(
-            `  ${C.warn("⚠️  Context compaction failed: " + (compData.error ?? "unknown error"))}`,
-          );
+          deps.ui.emitNotification({
+            level: "warning",
+            kind: "context_compaction_failed",
+            icon: "⚠️ ",
+            message: `Context compaction failed: ${compData.error ?? "unknown error"}`,
+          });
         }
         break;
       }
@@ -607,9 +770,12 @@ export function registerEventHandler(
         };
         const tokensFreed = truncData.tokensRemovedDuringTruncation ?? 0;
         const msgsRemoved = truncData.messagesRemovedDuringTruncation ?? 0;
-        console.log(
-          `  ${C.dim(`✂️  Context truncated: ${msgsRemoved} messages, ${tokensFreed.toLocaleString()} tokens freed`)}`,
-        );
+        deps.ui.emitNotification({
+          level: "info",
+          kind: "context_truncated",
+          icon: "✂️ ",
+          message: `Context truncated: ${msgsRemoved} messages, ${tokensFreed.toLocaleString()} tokens freed`,
+        });
         break;
       }
 
@@ -618,7 +784,12 @@ export function registerEventHandler(
         // Surface the summary if present.
         const taskData = event.data as { summary?: string };
         if (taskData.summary) {
-          console.log(`  ${C.ok("✅ Task complete:")} ${taskData.summary}`);
+          deps.ui.emitNotification({
+            level: "success",
+            kind: "task_complete",
+            icon: "✅",
+            message: `Task complete: ${taskData.summary}`,
+          });
         }
         break;
       }
@@ -627,6 +798,7 @@ export function registerEventHandler(
         // Context window health — token utilisation snapshot.
         // Only show when utilisation exceeds 60% to avoid noise.
         const USAGE_VISIBILITY_THRESHOLD = 0.6;
+        const HIGH_UTILISATION_THRESHOLD = 0.9;
         const usageData = event.data as {
           tokenLimit?: number;
           currentTokens?: number;
@@ -638,10 +810,14 @@ export function registerEventHandler(
           const pct = current / limit;
           if (pct >= USAGE_VISIBILITY_THRESHOLD) {
             const pctStr = (pct * 100).toFixed(0);
-            const color = pct >= 0.9 ? C.warn : C.dim;
-            console.log(
-              `  ${color(`📊 Context: ${current.toLocaleString()}/${limit.toLocaleString()} tokens (${pctStr}%)`)}`,
-            );
+            const level =
+              pct >= HIGH_UTILISATION_THRESHOLD ? "warning" : "info";
+            deps.ui.emitNotification({
+              level,
+              kind: "context_usage",
+              icon: "📊",
+              message: `Context: ${current.toLocaleString()}/${limit.toLocaleString()} tokens (${pctStr}%)`,
+            });
           }
         }
         break;
@@ -677,7 +853,12 @@ export function registerEventHandler(
           }
         }
         if (parts.length > 0) {
-          console.log(`  ${C.dim("📈 Session stats: " + parts.join(" · "))}`);
+          deps.ui.emitNotification({
+            level: "info",
+            kind: "session_stats",
+            icon: "📈",
+            message: `Session stats: ${parts.join(" · ")}`,
+          });
         }
         break;
       }
@@ -692,9 +873,12 @@ export function registerEventHandler(
           newModel?: string;
         };
         if (modelData.newModel) {
-          console.log(
-            `  ${C.dim(`🔄 Model: ${modelData.previousModel ?? "?"} → ${modelData.newModel}`)}`,
-          );
+          deps.ui.emitNotification({
+            level: "info",
+            kind: "model_change",
+            icon: "🔄",
+            message: `Model: ${modelData.previousModel ?? "?"} → ${modelData.newModel}`,
+          });
         }
         break;
       }
@@ -703,9 +887,12 @@ export function registerEventHandler(
         // Session was resumed — show how many history events loaded.
         const resumeData = event.data as { eventCount?: number };
         if (resumeData.eventCount !== undefined) {
-          console.log(
-            `  ${C.dim(`⏮️  Resumed with ${resumeData.eventCount} history events`)}`,
-          );
+          deps.ui.emitNotification({
+            level: "info",
+            kind: "session_resume",
+            icon: "⏮️ ",
+            message: `Resumed with ${resumeData.eventCount} history events`,
+          });
         }
         break;
       }
@@ -715,8 +902,7 @@ export function registerEventHandler(
         // title so tab/window management is easier.
         const titleData = event.data as { title?: string };
         if (titleData.title) {
-          // OSC escape: \x1b]2;TITLE\x07 sets the terminal title
-          process.stdout.write(`\x1b]2;HyperAgent: ${titleData.title}\x07`);
+          deps.ui.setWindowTitle({ title: titleData.title });
         }
         break;
       }

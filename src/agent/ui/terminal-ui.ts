@@ -85,7 +85,15 @@ const LEVEL_COLOR: Readonly<Record<NotificationLevel, (s: string) => string>> =
     success: C.ok,
   };
 
-/** Construction options for `TerminalUI`. */
+/** Construction options for `TerminalUI`.
+ *
+ * The interface is **read live** on every emit — the UI keeps a
+ * reference to the object and re-reads the flags on each call, so
+ * mutations performed elsewhere (e.g. when the user toggles
+ * `/markdown` or `/verbose`) propagate without re-construction.
+ *
+ * The agent passes its `state` here; tests pass a plain object.
+ */
 export interface TerminalUIOptions {
   /**
    * When true, streaming `emitText` is suppressed — the caller is
@@ -106,9 +114,9 @@ export interface TerminalUIOptions {
  * REPL emits today.
  *
  * State boundaries:
- *   - `_opts` is the *only* mutable display configuration. Update
- *     via `setMarkdownEnabled` / `setVerboseOutput` if the user
- *     toggles modes mid-session.
+ *   - `_opts` is a *live reference* to the configuration; the agent
+ *     passes its `state` here and any mutation (e.g. slash-command
+ *     toggles) takes effect immediately on the next emit.
  *   - All other state lives in the injected `Spinner` instance or
  *     downstream renderers — nothing else is kept here.
  */
@@ -117,45 +125,42 @@ export class TerminalUI implements AgentUI {
 
   /** Shared spinner instance, currently owned by the caller. */
   private readonly _spinner: Spinner;
-  /** Mutable copy of the construction options. */
-  private _opts: TerminalUIOptions;
+  /**
+   * Live reference to the configuration. Read on every emit, so
+   * mutations by slash-commands (e.g. `/markdown off`) propagate
+   * automatically — no `setMarkdownEnabled` plumbing required.
+   */
+  private readonly _opts: TerminalUIOptions;
 
   /**
    * @param spinner - The spinner this UI drives. Phase 4 will absorb
    *   spinner ownership into the UI; today it is shared with
    *   audit-progress and slash-commands.
-   * @param options - Display configuration. The values are copied —
-   *   later changes to the original object are not observed.
+   * @param options - Live configuration reference. The object is
+   *   *not* copied — the UI re-reads the fields on each emit so
+   *   external mutations (e.g. toggles via slash-commands) take
+   *   effect immediately.
    */
   constructor(spinner: Spinner, options: TerminalUIOptions) {
     this._spinner = spinner;
-    this._opts = { ...options };
-  }
-
-  // ── Configuration setters ──────────────────────────────────────
-
-  /** Toggle markdown-buffered mode at runtime. */
-  setMarkdownEnabled(enabled: boolean): void {
-    this._opts = { ...this._opts, markdownEnabled: enabled };
-  }
-
-  /** Toggle verbose output at runtime. */
-  setVerboseOutput(verbose: boolean): void {
-    this._opts = { ...this._opts, verboseOutput: verbose };
+    this._opts = options;
   }
 
   // ── Streaming output ───────────────────────────────────────────
 
   emitText(payload: TextDeltaPayload): void {
+    // Unconditionally stop the spinner — first text delta clears it,
+    // subsequent deltas are a no-op. Matches `event-handler.ts`'s
+    // unconditional `spinner.stop()` *before* the markdown-mode gate.
+    // Stopping must happen even when output is suppressed (markdown
+    // mode) so the spinner doesn't keep overwriting the (eventually
+    // rendered) markdown block when `renderMarkdown` fires later.
+    this._spinner.stop();
     // Markdown mode: caller buffers the full text and renders it via
     // `renderMarkdown` once the turn ends. Streaming is suppressed
     // to avoid double-displaying.
     if (this._opts.markdownEnabled) return;
     if (payload.content.length === 0) return;
-    // Idempotent — first text delta clears the spinner; subsequent
-    // deltas are a no-op. Matches `event-handler.ts`'s
-    // unconditional `spinner.stop()` before each delta write.
-    this._spinner.stop();
     process.stdout.write(payload.content);
   }
 
@@ -169,9 +174,14 @@ export class TerminalUI implements AgentUI {
   }
 
   emitReasoningTransition(_payload: ReasoningTransitionPayload): void {
+    // Always stop the spinner so the transition (or, in compact
+    // mode, the following text) lands on a fresh line. Matches
+    // `event-handler.ts`'s unconditional `spinner.stop()` at the
+    // top of `assistant.message_delta`.
+    this._spinner.stop();
     // Only verbose mode produces visible bytes for the transition —
-    // compact mode keeps the spinner alive and silently switches
-    // labels via `setActivity`. Matches `event-handler.ts`:
+    // compact mode keeps things silent and the next `emitText` carries
+    // the first response chunk inline. Matches `event-handler.ts`:
     //   if (state.verboseOutput && hadReasoning && !state.streamedContent)
     //     process.stdout.write(`${ANSI.reset}\n\n`);
     // The caller is responsible for deciding *whether* to emit the
@@ -202,26 +212,36 @@ export class TerminalUI implements AgentUI {
     // following `console.log` calls land on a fresh line below the
     // spinner; in a live terminal the spinner overwrites itself on
     // the next tick. Matches `event-handler.ts` "tool.execution_complete".
-    const icon = TOOL_STATUS_ICON[payload.status];
-    const colour = TOOL_STATUS_COLOR[payload.status];
-    console.log(`${BLOCK_INDENT}${colour(`${icon} ${payload.message}`)}`);
+    if (!payload.silent) {
+      const icon = TOOL_STATUS_ICON[payload.status];
+      const colour = TOOL_STATUS_COLOR[payload.status];
+      console.log(`${BLOCK_INDENT}${colour(`${icon} ${payload.message}`)}`);
 
-    // Optional structured body. Phase 2 will exercise the body
-    // branches as the verbose-mode tool-result formatter migrates.
-    if (payload.body) {
-      if (payload.body.kind === "markdown") {
-        console.log(renderMarkdown(payload.body.content));
-      } else {
-        // Both "text" and "json" render dimmed; the caller already
-        // pretty-prints JSON before handing it over.
-        console.log(C.dim(payload.body.content));
+      // Optional structured body. Phase 2 will exercise the body
+      // branches as the verbose-mode tool-result formatter migrates.
+      if (payload.body) {
+        if (payload.body.kind === "markdown") {
+          console.log(renderMarkdown(payload.body.content));
+        } else {
+          // Both "text" and "json" render dimmed; the caller already
+          // pretty-prints JSON before handing it over.
+          console.log(C.dim(payload.body.content));
+        }
+      }
+
+      // Pre-formatted hint (e.g. buffer-overflow suggestion). The
+      // caller has already applied colours; print verbatim.
+      if (payload.hint) {
+        console.log(payload.hint);
       }
     }
 
     // Trailing blank line then restart the spinner with the new
     // label — the model typically continues right after. If the
     // spinner is already active from `emitToolStart`, `start()`
-    // only updates the label (no fresh interval).
+    // only updates the label (no fresh interval). Runs even in the
+    // `silent` branch so the spinner doesn't crash into already-
+    // displayed text.
     console.log();
     this._spinner.start("Thinking...");
   }

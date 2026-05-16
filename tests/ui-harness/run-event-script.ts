@@ -22,6 +22,7 @@ import type { SessionEvent } from "@github/copilot-sdk";
 
 import { registerEventHandler } from "../../src/agent/event-handler.js";
 import { Spinner } from "../../src/agent/spinner.js";
+import { TerminalUI } from "../../src/agent/ui/index.js";
 import type { AgentState } from "../../src/agent/state.js";
 
 import { ansiToSemantic } from "./ansi-to-semantic.js";
@@ -114,11 +115,17 @@ export function runEventScript(
   try {
     const state = makeTestState(options.state);
     const spinner = new Spinner(state.verboseOutput);
+    // TerminalUI receives a *live reference* to the state so the
+    // `markdownEnabled` / `verboseOutput` toggles propagate without
+    // re-construction. Tests can flip them in `options.state` and
+    // see the matching display behaviour on the next event.
+    const ui = new TerminalUI(spinner, state);
     const session = new FakeSession();
 
     registerEventHandler(session.asSession(), {
       state,
       spinner,
+      ui,
       // `sandbox` is destructured but never used by registerEventHandler.
       // Cast through unknown to keep the structural contract loose.
       sandbox: {} as unknown as Parameters<

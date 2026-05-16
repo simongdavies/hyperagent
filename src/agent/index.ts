@@ -64,6 +64,7 @@ import {
 import { COMPLETION_STRINGS, renderHelp, renderTopicHelp } from "./commands.js";
 import { buildSystemMessage } from "./system-message.js";
 import { Spinner } from "./spinner.js";
+import { TerminalUI, type AgentUI } from "./ui/index.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
 import { createAgentState, type AgentState } from "./state.js";
 import {
@@ -1194,6 +1195,19 @@ if (cli.reasoningEffort) {
 const spinner = new Spinner();
 // Sync verbose state from CLI flag to spinner
 spinner.verboseReasoning = cli.verbose;
+
+/**
+ * Display port — every user-visible byte from the event handler
+ * (and, increasingly, the rest of the agent) routes through here.
+ *
+ * Constructed with a *live reference* to `state` so slash-command
+ * toggles like `/markdown off` or `/verbose` take effect immediately
+ * on the next emit, without any plumbing through the UI.
+ *
+ * Phase 4 will absorb the `spinner` into the UI; until then both
+ * exist side-by-side and the UI delegates to the spinner internally.
+ */
+const ui: AgentUI = new TerminalUI(spinner, state);
 
 // ── Session Management State ─────────────────────────────────────────
 //
@@ -6588,6 +6602,7 @@ function getEventHandlerDeps(): EventHandlerDeps {
   return {
     state,
     spinner,
+    ui,
     sandbox,
     SEND_TIMEOUT_MS,
     MAX_INACTIVITY_RETRIES,
