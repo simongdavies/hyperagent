@@ -426,6 +426,7 @@ Type `/help` in the REPL for the full list.
 | [Patterns](docs/PATTERNS.md)         | Workflow pattern system            |
 | [Modules](docs/MODULES.md)           | Built-in and user module system    |
 | [Profiles](docs/PROFILES.md)         | Resource and plugin profiles       |
+| [IPC Protocol](docs/IPC-PROTOCOL.md) | Headless `--ipc-stdio` wire format |
 | [Development](docs/DEVELOPMENT.md)   | Development environment setup      |
 | [Releasing](docs/RELEASING.md)       | Release process                    |
 

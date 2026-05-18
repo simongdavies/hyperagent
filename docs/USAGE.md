@@ -18,6 +18,10 @@ Complete reference for HyperAgent configuration, features, and commands.
 | `--base-dir <path>`           | Auto-enable fs-read + fs-write with this directory as their base                    |
 | `--prompt "<text>"`           | Non-interactive: send prompt, wait for completion, exit                             |
 | `--prompt-file <path>`        | Read the non-interactive prompt from a file                                         |
+| `--attach <file>`             | Attach a file to the first user message (repeatable)                                |
+| `--ipc-stdio`                 | Headless NDJSON mode for embedding hosts (Electron, IDE, …)                         |
+| `--no-color`                  | Strip ANSI colour codes from terminal output                                        |
+| `--quiet`                     | Suppress informational notifications                                                |
 | `--show-code`                 | Log generated JS to a timestamped file                                              |
 | `--show-timing`               | Log timing breakdown to a timestamped file                                          |
 | `--reasoning-effort [level]`  | Set reasoning effort (low\|medium\|high\|xhigh, default: high)                      |
