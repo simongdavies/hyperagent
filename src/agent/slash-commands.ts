@@ -60,6 +60,7 @@ import {
   extractSessionContext,
   renderSessionContext,
 } from "./session-context.js";
+import { resolveFileAttachment } from "./attachments.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -1002,6 +1003,82 @@ export async function handleSlashCommand(
         console.log(`  ${C.dim("Path:")} ${file.absPath}`);
       }
       console.log();
+      return true;
+    }
+
+    case "/attach": {
+      // Queue file(s) to be attached to the next user message.
+      // Subcommands:
+      //   /attach              → list the current pending queue
+      //   /attach clear        → drop everything currently queued
+      //   /attach <path> [ …]  → resolve each path and push onto the queue
+      //
+      // Any resolver failure aborts the whole call — partial state is
+      // confusing ("did /attach a b c add a, or a+b, or a+b+c?") and a
+      // failed call leaves the existing queue intact so the user can
+      // retry without losing prior entries.
+      const attachArgs = parts.slice(1);
+
+      // ── No args: show current queue ──────────────────────────────
+      if (attachArgs.length === 0) {
+        if (state.pendingAttachments.length === 0) {
+          ui.emitNotification({
+            level: "info",
+            kind: "pending_attachments",
+            message: "No pending attachments.",
+          });
+        } else {
+          const names = state.pendingAttachments
+            .map((a) => ("displayName" in a && a.displayName) || a.type)
+            .join(", ");
+          ui.emitNotification({
+            level: "info",
+            kind: "pending_attachments",
+            message: `Pending attachments (${state.pendingAttachments.length}): ${names}`,
+          });
+        }
+        return true;
+      }
+
+      // ── /attach clear: drop the queue ────────────────────────────
+      if (attachArgs.length === 1 && attachArgs[0] === "clear") {
+        const cleared = state.pendingAttachments.length;
+        state.pendingAttachments = [];
+        ui.emitNotification({
+          level: "success",
+          kind: "pending_attachments",
+          message:
+            cleared === 0
+              ? "No pending attachments to clear."
+              : `Cleared ${cleared} pending attachment${cleared === 1 ? "" : "s"}.`,
+        });
+        return true;
+      }
+
+      // ── /attach <path> [<path> …]: resolve and enqueue ───────────
+      const newAttachments = [];
+      for (const arg of attachArgs) {
+        try {
+          newAttachments.push(resolveFileAttachment(arg, "/attach"));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          ui.emitNotification({
+            level: "error",
+            kind: "pending_attachments",
+            message: msg,
+          });
+          return true;
+        }
+      }
+      state.pendingAttachments.push(...newAttachments);
+      const names = newAttachments
+        .map((a) => ("displayName" in a && a.displayName) || a.type)
+        .join(", ");
+      ui.emitNotification({
+        level: "success",
+        kind: "pending_attachments",
+        message: `Queued attachment${newAttachments.length === 1 ? "" : "s"}: ${names}`,
+      });
       return true;
     }
 

@@ -277,6 +277,22 @@ const COMMANDS: readonly CommandEntry[] = Object.freeze([
       "Example: /open 1",
   },
   {
+    completion: "/attach ",
+    help: "Attach a file to the next user message (/attach <path>)",
+    detail:
+      "Queues a file attachment that will be sent with the next\n" +
+      "user message. Repeatable — multiple /attach commands stack.\n" +
+      "\n" +
+      "  /attach <path> [<path> …]  — queue one or more files\n" +
+      "  /attach                    — list currently-pending files\n" +
+      "  /attach clear              — drop the pending queue\n" +
+      "\n" +
+      "Equivalent to the --attach CLI flag, but available\n" +
+      "interactively. Paths are resolved against the current\n" +
+      "working directory; directories are rejected.\n" +
+      "Example: /attach screenshot.png notes.txt",
+  },
+  {
     completion: "/history",
     help: "Show recent conversation messages (/history [n])",
     detail:

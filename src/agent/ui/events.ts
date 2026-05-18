@@ -160,7 +160,8 @@ export type NotificationKind =
   | "buffer_overflow_hint"
   | "audit_phase"
   | "audit_receiving"
-  | "extended_reasoning";
+  | "extended_reasoning"
+  | "pending_attachments";
 
 /** Generic notification — covers info / warning / error / success lines. */
 export interface NotificationPayload {

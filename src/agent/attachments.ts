@@ -40,27 +40,35 @@ export type SessionAttachment = NonNullable<
  *   `--attach` is scoped to files for v1; allowing a directory by
  *   accident would silently upload a whole tree).
  *
- * @param input — Path as provided by the user (relative or absolute).
+ * @param input  — Path as provided by the user (relative or absolute).
+ * @param source — Short label prefixed on every thrown error message
+ *                 (e.g. `"--attach"`, `"/attach"`) so the user sees a
+ *                 message that matches the surface they invoked. Defaults
+ *                 to `"--attach"` for backwards compatibility with the
+ *                 CLI-flag call sites.
  * @returns A typed `{ type: "file", path, displayName }` attachment.
- * @throws  An `Error` with a message prefixed by `--attach:` when the
- *          path cannot be resolved.
+ * @throws  An `Error` whose message is prefixed by `${source}:` when
+ *          the path cannot be resolved.
  */
-export function resolveFileAttachment(input: string): SessionAttachment {
+export function resolveFileAttachment(
+  input: string,
+  source: string = "--attach",
+): SessionAttachment {
   const absPath = resolvePath(input);
   let stat;
   try {
     stat = statSync(absPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`--attach: cannot stat ${input}: ${msg}`);
+    throw new Error(`${source}: cannot stat ${input}: ${msg}`);
   }
   if (stat.isDirectory()) {
     throw new Error(
-      `--attach: ${input} is a directory; only files are supported`,
+      `${source}: ${input} is a directory; only files are supported`,
     );
   }
   if (!stat.isFile()) {
-    throw new Error(`--attach: ${input} is not a regular file`);
+    throw new Error(`${source}: ${input} is not a regular file`);
   }
   return { type: "file", path: absPath, displayName: basename(absPath) };
 }
@@ -71,8 +79,13 @@ export function resolveFileAttachment(input: string): SessionAttachment {
  * and exit, or skip the bad entry.
  *
  * @param inputs — Paths as provided by the user.
+ * @param source — Forwarded to {@link resolveFileAttachment} for the
+ *                 error-message prefix.
  * @returns Attachments in input order.
  */
-export function resolveFileAttachments(inputs: string[]): SessionAttachment[] {
-  return inputs.map(resolveFileAttachment);
+export function resolveFileAttachments(
+  inputs: string[],
+  source: string = "--attach",
+): SessionAttachment[] {
+  return inputs.map((input) => resolveFileAttachment(input, source));
 }

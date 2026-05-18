@@ -7303,6 +7303,25 @@ async function main(): Promise<void> {
           `${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}${C.dim("(submitting queued prompt…)")}`,
         );
       } else {
+        // ── Pending-attachment indicator ──────────────────────────
+        // Show a dim hint above the prompt whenever there are queued
+        // attachments so the user knows the next message will carry
+        // them. Cheap and idempotent — re-emitted on every iteration
+        // because the queue is mutable (slash commands, drains).
+        // Uses `info` level so `--quiet` honours the user's choice to
+        // hide non-essential lines (the slash-command confirmation
+        // and the SDK-side echo of the attachment already cover the
+        // important visibility cases).
+        if (state.pendingAttachments.length > 0) {
+          const names = state.pendingAttachments
+            .map((a) => ("displayName" in a && a.displayName) || a.type)
+            .join(", ");
+          ui.emitNotification({
+            level: "info",
+            kind: "pending_attachments",
+            message: `[attached: ${names}]`,
+          });
+        }
         const userInput = await questionCapturingPaste(
           rl,
           `${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}`,
