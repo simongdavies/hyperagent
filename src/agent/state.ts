@@ -215,9 +215,10 @@ export interface AgentState {
 
   /**
    * Timestamp (ms) when the last user prompt was received.
-   * Used to skip drainAndWarn() if a tool prompt happens immediately
-   * after user input — those buffered lines are part of the paste,
-   * not stale content from a previous interaction.
+   * Read live by `TerminalUI.drainPasteBuffer()` to skip the drain
+   * when a tool prompt happens immediately after user input — those
+   * buffered lines are the tail of the current paste, not stale
+   * content from a previous interaction.
    */
   lastUserInputTime: number;
 

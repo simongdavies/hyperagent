@@ -197,4 +197,25 @@ export interface AgentUI {
    * string — callers decide how to handle "no input".
    */
   askText(payload: TextQuestion): Promise<string>;
+
+  // ── Paste-buffer drain ─────────────────────────────────────────
+
+  /**
+   * Drain any buffered paste lines that would otherwise race the
+   * next modal prompt, and surface a brief warning to the user if
+   * content was discarded. Callers invoke this immediately before
+   * a critical prompt so a stale paste tail cannot accidentally
+   * answer it.
+   *
+   * Implementations:
+   *   - `TerminalUI` reads its readline buffer and emits a
+   *     `⚠️  Discarded N buffered line(s)…` warning via the same
+   *     output pipeline as the rest of the UI.
+   *   - Non-interactive implementations (`NullUI`, future
+   *     `JsonLinesUI`) are no-ops — they own no readline buffer.
+   *
+   * Must never throw — paste drain is best-effort and a misbehaving
+   * implementation cannot be allowed to abort the host loop.
+   */
+  drainPasteBuffer(): Promise<void>;
 }

@@ -471,96 +471,6 @@ async function questionCapturingPaste(
 }
 
 /**
- * Drain any buffered lines from a paste before showing a critical prompt.
- * Returns the discarded content for warning display.
- *
- * We watch for 'line' events with a short timeout. If lines arrive quickly,
- * they're buffered paste content. Once the timeout expires without new lines,
- * we're done draining.
- *
- * Note: This works because readline processes buffered stdin data when
- * the event loop runs. The short wait gives buffered lines a chance to
- * be emitted.
- *
- * @param rl - readline interface
- * @param waitMs - time to wait for buffered lines (default 80ms)
- */
-async function drainBufferedLines(
-  rl: readline.Interface,
-  waitMs = 80,
-): Promise<string[]> {
-  const discarded: string[] = [];
-
-  // Check if readline has anything in its current line buffer
-  const internal = rl as unknown as { line: string; cursor: number };
-  if (internal.line && internal.line.trim()) {
-    discarded.push(internal.line);
-    internal.line = "";
-    internal.cursor = 0;
-  }
-
-  // Wait for any buffered lines to arrive via 'line' events
-  // Readline will emit these as it processes buffered stdin data
-  return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
-
-    const handler = (line: string) => {
-      if (line.trim()) {
-        discarded.push(line);
-      }
-      // Reset timer - wait for more lines
-      clearTimeout(timer);
-      timer = setTimeout(finish, waitMs);
-    };
-
-    const finish = () => {
-      rl.off("line", handler);
-      resolve(discarded);
-    };
-
-    // Start listening for line events
-    rl.on("line", handler);
-
-    // Set initial timeout
-    timer = setTimeout(finish, waitMs);
-  });
-}
-
-/**
- * Drain buffered lines and warn the user if content was discarded.
- * Use this before critical prompts (approval, config fields) to ensure
- * stale paste content doesn't accidentally answer them.
- *
- * IMPORTANT: If user input was received very recently (within 500ms),
- * we skip draining entirely. This prevents discarding the tail of a
- * multi-line paste when the model responds quickly with a tool call.
- */
-async function drainAndWarn(rl: readline.Interface): Promise<void> {
-  // Skip draining if we just received user input - those buffered lines
-  // are part of the current paste, not stale content from before.
-  const DRAIN_GRACE_MS = 500;
-  if (Date.now() - state.lastUserInputTime < DRAIN_GRACE_MS) {
-    return;
-  }
-
-  const discarded = await drainBufferedLines(rl);
-  if (discarded.length > 0) {
-    console.log(
-      C.warn(
-        "⚠️  Discarded " + discarded.length + " buffered line(s) from paste:",
-      ),
-    );
-    for (const line of discarded.slice(0, 2)) {
-      const truncated = line.length > 50 ? line.slice(0, 50) + "..." : line;
-      console.log(C.dim('     "' + truncated + '"'));
-    }
-    if (discarded.length > 2) {
-      console.log(C.dim("     ...and " + (discarded.length - 2) + " more"));
-    }
-  }
-}
-
-/**
  * Prompt the user for input during tool execution.
  *
  * Wraps rl.question() with proper keep-alive timer management:
@@ -1023,7 +933,7 @@ const mcpWriteSafetyGate: WriteSafetyGate = async (
     return false;
   }
 
-  await drainAndWarn(rl);
+  await ui.drainPasteBuffer();
   const answer = await promptUser(rl, `  Allow? [y/n] `);
   const normalised = answer.trim().toLowerCase();
   const allowed = normalised === "y" || normalised === "yes";
@@ -1277,7 +1187,6 @@ async function handleSlashCommand(
     formatModelList,
     buildSessionConfig,
     registerEventHandler,
-    drainAndWarn,
     mcpManager, // Real MCP manager (or null if no config)
     syncPlugins: syncPluginsToSandbox,
     submitToLLM: (prompt: string, options?: { skipAutoSuggest?: boolean }) => {
@@ -3173,7 +3082,7 @@ async function configureSandboxImpl(params: {
       );
     }
 
-    await drainAndWarn(rl);
+    await ui.drainPasteBuffer();
     const answer = state.autoApprove
       ? "y"
       : await promptUser(rl, `  ${C.dim("Allow? [y/n] ")}`);
@@ -3304,7 +3213,7 @@ async function managePluginImpl(params: {
       `  ${C.dim("This will run a security audit and prompt for configuration.")}`,
     );
 
-    await drainAndWarn(rl);
+    await ui.drainPasteBuffer();
     const preApproval = state.autoApprove
       ? "y"
       : await promptUser(rl, `  ${C.dim("Proceed? [y/n] ")}`);
@@ -3364,7 +3273,7 @@ async function managePluginImpl(params: {
       console.log(
         `\n  ${C.warn("🔌 Assistant wants to disable plugin:")} ${C.tool(params.name)}`,
       );
-      await drainAndWarn(rl);
+      await ui.drainPasteBuffer();
       const answer = state.autoApprove
         ? "y"
         : await promptUser(rl, `  ${C.dim("Allow? [y/n] ")}`);
@@ -4336,7 +4245,7 @@ async function applyProfileImpl(
 
   renderProfilePreview(profileLabel, limitChanges, pluginNames);
 
-  await drainAndWarn(rl);
+  await ui.drainPasteBuffer();
   const approval = state.autoApprove
     ? "y"
     : await promptUser(rl, `  ${C.dim("Apply? [y/n] ")}`);
@@ -4979,7 +4888,7 @@ const manageMCPTool = defineTool("manage_mcp", {
           if (state.autoApprove) {
             console.log(`  ${C.ok("Auto-approved")} (--auto-approve mode)`);
           } else if (process.stdin.isTTY && rl) {
-            await drainAndWarn(rl);
+            await ui.drainPasteBuffer();
             const answer = await promptUser(
               rl,
               `  Approve "${params.name}"? (y/n) `,
@@ -5237,7 +5146,7 @@ async function registerModuleImpl(params: {
     console.log(`  ${C.warn("⚠️  Overlap:")} ${overlapWarning}`);
   }
 
-  await drainAndWarn(rl);
+  await ui.drainPasteBuffer();
   const approval = state.autoApprove
     ? "y"
     : await promptUser(rl, `  ${C.dim("Register? [y/n] ")}`);
@@ -5688,7 +5597,7 @@ const deleteModuleTool = defineTool("delete_module", {
       ui.setActivity(null);
 
       console.log(`\n  ${C.warn("🗑️  Delete module:")} ${C.tool(name)}`);
-      await drainAndWarn(rl);
+      await ui.drainPasteBuffer();
       const approval = state.autoApprove
         ? "y"
         : await promptUser(rl, `  ${C.dim("Delete? [y/n] ")}`);
@@ -5932,7 +5841,7 @@ const generateSkillTool = defineTool("generate_skill", {
         );
       }
 
-      await drainAndWarn(rl);
+      await ui.drainPasteBuffer();
       const promptLabel = isShadowingBuiltin
         ? `  ${C.dim("Shadow built-in skill? [y/n] ")}`
         : isOverwrite
@@ -7455,7 +7364,7 @@ async function main(): Promise<void> {
         if (suggestions.length === 1) {
           // Single suggestion — quick Y/n approval
           const cmd = suggestions[0];
-          await drainAndWarn(rl);
+          await ui.drainPasteBuffer();
           const answer = await rl.question(
             `  ${C.warn("💡 Run suggested command?")} ${C.val(cmd)}\n` +
               `     ${C.dim("[Y]es / [n]o: ")}`,
@@ -7482,7 +7391,7 @@ async function main(): Promise<void> {
               `     ${C.info("[" + (i + 1) + "]")} ${C.val(suggestions[i])}`,
             );
           }
-          await drainAndWarn(rl);
+          await ui.drainPasteBuffer();
           const answer = await rl.question(
             `     ${C.dim("Pick [1-" + suggestions.length + "], [a]ll, or [n]one: ")}`,
           );

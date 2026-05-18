@@ -102,4 +102,14 @@ export class NullUI implements AgentUI {
       new Error("NullUI does not support askText — install an AgentUI"),
     );
   }
+
+  // ── Paste-buffer drain ─────────────────────────────────────────
+  //
+  // No readline → no paste buffer to drain. Resolve immediately so
+  // headless / test callers can safely invoke `drainPasteBuffer()`
+  // around modal prompts without branching on UI implementation.
+
+  async drainPasteBuffer(): Promise<void> {
+    /* intentionally empty — non-interactive UI has no paste buffer */
+  }
 }

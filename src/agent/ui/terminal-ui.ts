@@ -139,6 +139,18 @@ export interface TerminalUIOptions {
    * already carries this field.
    */
   readonly readlineInstance?: ReadlineInterface | null;
+  /**
+   * Wall-clock timestamp (ms since epoch) of the most recent user
+   * input event. Read **live** by `drainPasteBuffer()` so the grace
+   * window — "if a paste arrived within the last 500ms, don't drain,
+   * those lines are part of the same paste, not stale buffer" — is
+   * evaluated against the freshest value at call time.
+   *
+   * Optional with a sane default (treated as `0` when absent) so
+   * test sites that don't exercise the drain path can omit it. The
+   * production agent state carries this field at all times.
+   */
+  readonly lastUserInputTime?: number;
 }
 
 /**
@@ -580,5 +592,136 @@ export class TerminalUI implements AgentUI {
     }
     const raw = await rl.question(`     ${C.dim("> ")}`);
     return raw.trim();
+  }
+
+  // ── Paste-buffer drain ─────────────────────────────────────────
+
+  /**
+   * Drain any buffered paste lines and warn the user if content was
+   * discarded. Called immediately before critical prompts so a
+   * stale paste tail can't accidentally answer them.
+   *
+   * Honours a grace window driven by `_opts.lastUserInputTime`: if
+   * the user typed in the last `DRAIN_GRACE_MS`, the buffered
+   * content is assumed to be the tail of the *same* paste they just
+   * submitted — not stale content from a prior turn — so draining
+   * is skipped to avoid eating valid input.
+   *
+   * The warning bytes flow through `_write` so they share the
+   * SGR-stripping path that `--no-color` uses, and so the
+   * transcript recorder mirrors them like any other UI output.
+   */
+  async drainPasteBuffer(): Promise<void> {
+    const rl = this._opts.readlineInstance;
+    if (!rl) {
+      // No readline → nothing to drain. Treat as a successful no-op.
+      return;
+    }
+    // Skip if user input arrived too recently — those buffered lines
+    // are almost certainly the tail of the current paste, not stale.
+    const lastInput = this._opts.lastUserInputTime ?? 0;
+    if (Date.now() - lastInput < TerminalUI.DRAIN_GRACE_MS) {
+      return;
+    }
+
+    const discarded = await TerminalUI._drainBufferedLines(rl);
+    if (discarded.length === 0) return;
+
+    this._log(
+      C.warn(
+        "⚠️  Discarded " + discarded.length + " buffered line(s) from paste:",
+      ),
+    );
+    for (const line of discarded.slice(0, TerminalUI.DRAIN_PREVIEW_COUNT)) {
+      const truncated =
+        line.length > TerminalUI.DRAIN_PREVIEW_LEN
+          ? line.slice(0, TerminalUI.DRAIN_PREVIEW_LEN) + "..."
+          : line;
+      this._log(C.dim('     "' + truncated + '"'));
+    }
+    if (discarded.length > TerminalUI.DRAIN_PREVIEW_COUNT) {
+      this._log(
+        C.dim(
+          "     ...and " +
+            (discarded.length - TerminalUI.DRAIN_PREVIEW_COUNT) +
+            " more",
+        ),
+      );
+    }
+  }
+
+  /**
+   * Grace window: if user input was received within this many
+   * milliseconds, skip the drain entirely. The buffered lines are
+   * almost certainly the tail of the *current* paste, not stale
+   * content from a previous turn.
+   */
+  private static readonly DRAIN_GRACE_MS = 500;
+
+  /**
+   * Quiet period after the last buffered `line` event before we
+   * declare the drain complete. 80ms is empirically long enough to
+   * absorb a multi-line paste while not delaying the next prompt.
+   */
+  private static readonly DRAIN_QUIET_MS = 80;
+
+  /** How many discarded lines to preview in the warning. */
+  private static readonly DRAIN_PREVIEW_COUNT = 2;
+
+  /** Max characters from each previewed line. */
+  private static readonly DRAIN_PREVIEW_LEN = 50;
+
+  /**
+   * Drain any buffered lines from a paste. Returns the discarded
+   * content so the caller can surface it as a warning. Pure helper
+   * — no logging, no state mutation outside readline's own buffer.
+   *
+   * Mechanics:
+   *   1. Steal the partial line currently sitting in readline's
+   *      internal `.line` buffer (the not-yet-newline-terminated
+   *      tail of the paste).
+   *   2. Subscribe to `line` events for a short quiet period and
+   *      collect any further whole lines the buffer flushes.
+   *   3. Resolve once the buffer has been quiet for
+   *      `DRAIN_QUIET_MS` — readline emits buffered lines lazily
+   *      so we need at least one tick to see what's there.
+   */
+  private static async _drainBufferedLines(
+    rl: ReadlineInterface,
+  ): Promise<string[]> {
+    const discarded: string[] = [];
+
+    // (1) Steal any partial line — readline holds the not-yet-newline-
+    // terminated tail of the paste in its internal `line` buffer.
+    const internal = rl as unknown as { line: string; cursor: number };
+    if (internal.line && internal.line.trim()) {
+      discarded.push(internal.line);
+      internal.line = "";
+      internal.cursor = 0;
+    }
+
+    // (2) Subscribe to `line` events for a brief quiet period and
+    // collect any further buffered whole lines.
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+
+      const handler = (line: string) => {
+        if (line.trim()) {
+          discarded.push(line);
+        }
+        // Reset the quiet timer — more lines may still arrive.
+        clearTimeout(timer);
+        timer = setTimeout(finish, TerminalUI.DRAIN_QUIET_MS);
+      };
+
+      const finish = () => {
+        rl.off("line", handler);
+        resolve(discarded);
+      };
+
+      rl.on("line", handler);
+      // Initial timer — if no lines arrive at all we resolve cleanly.
+      timer = setTimeout(finish, TerminalUI.DRAIN_QUIET_MS);
+    });
   }
 }

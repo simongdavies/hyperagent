@@ -74,6 +74,11 @@ class SpyUI implements AgentUI {
     return Promise.reject(new Error("askText not expected in /attach"));
   }
 
+  // Paste-drain is a no-op for the headless test surface.
+  drainPasteBuffer(): Promise<void> {
+    return Promise.resolve();
+  }
+
   /** Convenience for "the last notification's level matched X". */
   lastLevel(): NotificationLevel | undefined {
     return this.notifications[this.notifications.length - 1]?.level;

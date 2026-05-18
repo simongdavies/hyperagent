@@ -87,6 +87,9 @@ class SpyUI implements AgentUI {
   setWindowTitle(): void {}
   emitNotification(): void {}
   emitUsage(): void {}
+  drainPasteBuffer(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

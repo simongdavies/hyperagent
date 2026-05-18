@@ -104,8 +104,6 @@ export interface SlashCommandDeps {
   formatModelList: (models: ModelInfo[], current?: string) => string;
   buildSessionConfig: () => Record<string, unknown>;
   registerEventHandler: (session: CopilotSession) => void;
-  /** Drain buffered paste lines and warn user before critical prompts. */
-  drainAndWarn: (rl: ReadlineInterface) => Promise<void>;
   /** MCP client manager (null if MCP plugin not enabled). */
   mcpManager: MCPClientManager | null;
   /** Callback to sync plugins to sandbox after MCP changes. */
@@ -150,7 +148,6 @@ export async function handleSlashCommand(
     SEND_TIMEOUT_MS,
     debugLog,
     LOGS_DIR,
-    drainAndWarn,
   } = deps;
   // Alias deps that shadow variables in agent.ts
   let { debugStream } = deps;
@@ -1567,7 +1564,7 @@ export async function handleSlashCommand(
                 }
               }
 
-              await drainAndWarn(rl);
+              await ui.drainPasteBuffer();
               const finalApprove: "yes" | "no" = state.autoApprove
                 ? "yes"
                 : await ui.askApproval({
@@ -1710,7 +1707,7 @@ export async function handleSlashCommand(
                 }
 
                 // Ask the operator what to do — don't silently produce garbage
-                await drainAndWarn(rl);
+                await ui.drainPasteBuffer();
                 // Order matters: empty/default picks "Retry" (matches the
                 // legacy [R]etry default); auto-approve picks "Static-only"
                 // so unattended runs don't get stuck waiting on an
@@ -1804,7 +1801,7 @@ export async function handleSlashCommand(
               : verdict === "approve-with-conditions"
                 ? "Auditor recommends APPROVE WITH CONDITIONS. Enable?"
                 : "Enable plugin based on audit?";
-          await drainAndWarn(rl);
+          await ui.drainPasteBuffer();
           const approveAnswer: "yes" | "no" = state.autoApprove
             ? "yes"
             : await ui.askApproval({
@@ -1910,7 +1907,7 @@ export async function handleSlashCommand(
               }
             }
 
-            await drainAndWarn(rl);
+            await ui.drainPasteBuffer();
             const finalApprove: "yes" | "no" = state.autoApprove
               ? "yes"
               : await ui.askApproval({
@@ -2187,7 +2184,7 @@ export async function handleSlashCommand(
                 console.error("[audit-trace] Full error:");
                 console.error(errObj.stack ?? errObj);
 
-                await drainAndWarn(rl);
+                await ui.drainPasteBuffer();
                 // Default "yes" so an empty answer retries — matches the
                 // legacy [Y]es / [n]o hint where uppercase signalled the
                 // Enter-pick. Auto-approve picks "no" to avoid an audit
@@ -2353,7 +2350,7 @@ export async function handleSlashCommand(
           return true;
         }
         // Confirm before deletion — destructive, no undo.
-        await drainAndWarn(rl);
+        await ui.drainPasteBuffer();
         const confirmed = state.autoApprove
           ? true
           : (await ui.askApproval({
@@ -3043,7 +3040,7 @@ export async function handleSlashCommand(
               if (deps.state.autoApprove) {
                 console.log(`  ${C.ok("Auto-approved")} (--auto-approve mode)`);
               } else {
-                await deps.drainAndWarn(rl);
+                await deps.ui.drainPasteBuffer();
                 const answer = await ui.askApproval({
                   question: `Approve "${mcpName}"?`,
                   kind: "mcp_server",

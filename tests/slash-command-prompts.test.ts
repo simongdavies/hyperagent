@@ -127,12 +127,14 @@ function makeSpyUI(
       typeof opts.choice === "function" ? opts.choice() : opts.choice;
     return reply ?? { answer: p.choices[0] ?? "", wasFreeform: false };
   });
+  const drainPasteBuffer = vi.fn(async (): Promise<void> => {});
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ui: any = {
     askApproval,
     askText,
     askChoice,
+    drainPasteBuffer,
     emitText() {},
     emitReasoning() {},
     emitReasoningTransition() {},
@@ -193,7 +195,6 @@ describe("/skills delete — destructive confirmation prompt", () => {
     return {
       state,
       ui,
-      drainAndWarn: vi.fn(async () => {}),
     } as unknown as SlashCommandDeps;
   }
 
@@ -248,7 +249,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
     expect(userSkillExists("demo")).toBe(false);
   });
 
-  it("calls drainAndWarn before the prompt to flush pasted input", async () => {
+  it("calls ui.drainPasteBuffer before the prompt to flush pasted input", async () => {
     const ui = makeSpyUI({ approval: "no" });
     const deps = makeDeps(ui);
 
@@ -258,7 +259,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
       deps,
     );
 
-    expect(deps.drainAndWarn).toHaveBeenCalledTimes(1);
+    expect((ui.drainPasteBuffer as Mock).mock.calls).toHaveLength(1);
   });
 });
 
@@ -298,7 +299,6 @@ describe("/resume — session picker text prompt", () => {
     return {
       state,
       ui,
-      drainAndWarn: vi.fn(async () => {}),
     } as unknown as SlashCommandDeps;
   }
 
