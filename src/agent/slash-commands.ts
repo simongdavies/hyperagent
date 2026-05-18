@@ -159,17 +159,70 @@ export async function handleSlashCommand(
   const parts = rawInput.split(/\s+/);
   const cmd = parts[0].toLowerCase();
 
+  // ── Local notification helpers ─────────────────────────────────────
+  //
+  // Convenience wrappers around `ui.emitNotification` so the dispatcher
+  // body stays readable. Each helper produces a structured payload that
+  // a JsonLines (or other non-terminal) UI can route on `kind` / `level`;
+  // the verbose call-site form is still available for one-off shapes.
+  //
+  //   - `note(message)`            \u2192 default block-indented "plain" line
+  //                                  (the most common slash-command output)
+  //   - `noteIcon(icon, message)`  \u2192 same, with a leading icon + space
+  //   - `noteRaw(message)`         \u2192 verbatim message, no indent injection
+  //   - `blank()`                  \u2192 single newline (legacy `console.log()`)
+  //   - `warn` / `err` / `ok`      \u2192 semantic level shortcuts whose color
+  //                                  wraps the whole rendered line
+  //
+  // `kind: "generic"` is used throughout; specific surfaces (plugin / mcp /
+  // skills / etc.) can carry their own `kind` via direct `ui.emitNotification`
+  // calls where the structural tag is useful for downstream routing.
+
+  /** Block-indented plain-level line. Equivalent to `console.log("  " + msg)` */
+  const note = (message: string): void => {
+    ui.emitNotification({ level: "plain", kind: "generic", message });
+  };
+  /** Block-indented line with an icon prefix. */
+  const noteIcon = (icon: string, message: string): void => {
+    ui.emitNotification({ level: "plain", kind: "generic", icon, message });
+  };
+  /** Verbatim line (no indent injection). Used for hand-formatted blocks. */
+  const noteRaw = (message: string): void => {
+    ui.emitNotification({
+      level: "plain",
+      kind: "generic",
+      indent: "",
+      message,
+    });
+  };
+  /** Single newline spacer. Equivalent to legacy `console.log()`. */
+  const blank = (): void => noteRaw("");
+  /** Warning-coloured line (whole line yellow) with default `\u26a0\ufe0f` icon. */
+  const warn = (message: string, icon: string = "\u26a0\ufe0f"): void => {
+    ui.emitNotification({ level: "warning", kind: "generic", icon, message });
+  };
+  /** Error-coloured line (whole line red) with default `\u274c` icon. */
+  const err = (message: string, icon: string = "\u274c"): void => {
+    ui.emitNotification({ level: "error", kind: "generic", icon, message });
+  };
+  /** Success-coloured line (whole line green) with default `\u2705` icon. */
+  const ok = (message: string, icon: string = "\u2705"): void => {
+    ui.emitNotification({ level: "success", kind: "generic", icon, message });
+  };
+
   switch (cmd) {
     case "/show-code":
       state.showCodeEnabled = !state.showCodeEnabled;
-      console.log(`  📝 Code display: ${C.onOff(state.showCodeEnabled)}`);
-      console.log();
+      noteIcon("📝", `Code display: ${C.onOff(state.showCodeEnabled)}`);
+      blank();
       return true;
 
     case "/show-timing":
       state.showTimingEnabled = !state.showTimingEnabled;
-      console.log(`  ⏱️  Timing display: ${C.onOff(state.showTimingEnabled)}`);
-      console.log();
+      // Variation-selector watch glyph aligns with an extra trailing
+      // space (folded into the icon arg so the rendered bytes match).
+      noteIcon("⏱️ ", `Timing display: ${C.onOff(state.showTimingEnabled)}`);
+      blank();
       return true;
 
     case "/debug":
@@ -185,21 +238,23 @@ export async function handleSlashCommand(
         // event handler still uses the old (null) stream.
         debugStream = newStream;
         deps.setDebugStream(newStream);
-        console.log(`  🔍 Debug mode: ${C.ok("ON")}`);
-        console.log(`  📝 Debug log: ${path}`);
+        noteIcon("🔍", `Debug mode: ${C.ok("ON")}`);
+        noteIcon("📝", `Debug log: ${path}`);
       } else {
-        console.log(`  🔍 Debug mode: ${C.onOff(state.debugEnabled)}`);
+        noteIcon("🔍", `Debug mode: ${C.onOff(state.debugEnabled)}`);
       }
-      console.log();
+      blank();
       return true;
 
     case "/tokens": {
       const { formatTokenSummary } = await import("./llm-output.js");
       const lines = formatTokenSummary(state);
       for (const line of lines) {
-        console.log(`  ${line}`);
+        // Pre-formatted lines from `formatTokenSummary` — emit
+        // verbatim with the canonical block indent.
+        note(line);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -221,37 +276,43 @@ export async function handleSlashCommand(
               (m) => m.id === state.currentModel,
             );
             if (model && !model.capabilities?.supports?.reasoningEffort) {
-              console.log(
-                `  ⚠️  ${C.val(state.currentModel)} doesn't support reasoning effort`,
+              // Original line was uncoloured outside of `C.val(...)`;
+              // emit through `note(...)` with the warning glyph embedded
+              // so the bytes match (no full-line yellow wrap).
+              note(
+                `⚠️  ${C.val(state.currentModel)} doesn't support reasoning effort`,
               );
-              console.log();
+              blank();
               return true;
             }
           }
           state.reasoningEffort = level as Effort;
           state.sessionNeedsRebuild = true;
-          console.log(
-            `  🧠 Conversation reasoning: ${C.val(level)} ${C.dim("(rebuild on next message)")}`,
+          noteIcon(
+            "🧠",
+            `Conversation reasoning: ${C.val(level)} ${C.dim("(rebuild on next message)")}`,
           );
         } else if (level === "reset" || level === "off") {
           state.reasoningEffort = null;
           state.sessionNeedsRebuild = true;
-          console.log(
-            `  🧠 Conversation reasoning: ${C.dim("model default (reset)")}`,
+          noteIcon(
+            "🧠",
+            `Conversation reasoning: ${C.dim("model default (reset)")}`,
           );
         } else {
-          console.log(
-            `  🧠 Conversation reasoning: ${
+          noteIcon(
+            "🧠",
+            `Conversation reasoning: ${
               state.reasoningEffort
                 ? C.val(state.reasoningEffort)
                 : C.dim("model default")
             }`,
           );
-          console.log(
-            `  Usage: /reasoning conversation <level>  ${C.dim("— low|medium|high|xhigh")}`,
+          note(
+            `Usage: /reasoning conversation <level>  ${C.dim("— low|medium|high|xhigh")}`,
           );
-          console.log(
-            `         /reasoning conversation reset    ${C.dim("— use model default")}`,
+          note(
+            `       /reasoning conversation reset    ${C.dim("— use model default")}`,
           );
         }
       } else if (subCmd === "audit") {
@@ -261,50 +322,53 @@ export async function handleSlashCommand(
 
         if (level && VALID_AUDIT.includes(level as AuditEffort)) {
           state.auditReasoningEffort = level as AuditEffort;
-          console.log(`  🔍 Audit reasoning: ${C.val(level)}`);
+          noteIcon("🔍", `Audit reasoning: ${C.val(level)}`);
         } else if (level === "reset" || level === "off") {
           state.auditReasoningEffort = null;
-          console.log(`  🔍 Audit reasoning: ${C.dim("medium (default)")}`);
+          noteIcon("🔍", `Audit reasoning: ${C.dim("medium (default)")}`);
         } else {
-          console.log(
-            `  🔍 Audit reasoning: ${
+          noteIcon(
+            "🔍",
+            `Audit reasoning: ${
               state.auditReasoningEffort
                 ? C.val(state.auditReasoningEffort)
                 : C.dim("medium (default)")
             }`,
           );
-          console.log(
-            `  Usage: /reasoning audit <level>  ${C.dim("— medium|high|xhigh (min: medium)")}`,
+          note(
+            `Usage: /reasoning audit <level>  ${C.dim("— medium|high|xhigh (min: medium)")}`,
           );
-          console.log(
-            `         /reasoning audit reset    ${C.dim("— reset to medium")}`,
+          note(
+            `       /reasoning audit reset    ${C.dim("— reset to medium")}`,
           );
         }
       } else {
         // No subcommand or unknown — show both settings + usage
-        console.log(
-          `  🧠 Conversation: ${
+        noteIcon(
+          "🧠",
+          `Conversation: ${
             state.reasoningEffort
               ? C.val(state.reasoningEffort)
               : C.dim("model default")
           }`,
         );
-        console.log(
-          `  🔍 Audit:        ${
+        noteIcon(
+          "🔍",
+          `Audit:        ${
             state.auditReasoningEffort
               ? C.val(state.auditReasoningEffort)
               : C.dim("medium (default)")
           }`,
         );
-        console.log();
-        console.log(
-          `  Usage: /reasoning conversation <level>  ${C.dim("— low|medium|high|xhigh")}`,
+        blank();
+        note(
+          `Usage: /reasoning conversation <level>  ${C.dim("— low|medium|high|xhigh")}`,
         );
-        console.log(
-          `         /reasoning audit <level>         ${C.dim("— medium|high|xhigh (min: medium)")}`,
+        note(
+          `       /reasoning audit <level>         ${C.dim("— medium|high|xhigh (min: medium)")}`,
         );
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -313,10 +377,11 @@ export async function handleSlashCommand(
       // turn lifecycle events, and other detailed LLM output.
       state.verboseOutput = !state.verboseOutput;
       ui.setVerboseReasoning(state.verboseOutput);
-      console.log(
-        `  💡 Verbose output: ${state.verboseOutput ? C.ok("ON") : C.err("OFF")}`,
+      noteIcon(
+        "💡",
+        `Verbose output: ${state.verboseOutput ? C.ok("ON") : C.err("OFF")}`,
       );
-      console.log();
+      blank();
       return true;
     }
 
@@ -344,8 +409,10 @@ export async function handleSlashCommand(
       }
 
       if (unknown) {
-        console.log(
-          `  ${C.warn("⚠️")}  Usage: ${C.tool("/markdown [on|off|toggle|status]")} ${C.dim("(bare = status, never mutates)")}`,
+        // Inline `C.warn("⚠️")` + double-space matches the legacy
+        // `console.log("  ${C.warn("⚠️")}  Usage: …")` formatting.
+        note(
+          `${C.warn("⚠️")}  Usage: ${C.tool("/markdown [on|off|toggle|status]")} ${C.dim("(bare = status, never mutates)")}`,
         );
       } else {
         if (next !== prev) {
@@ -358,9 +425,9 @@ export async function handleSlashCommand(
         const detail = state.markdownEnabled
           ? C.ok("ON") + C.dim(" (output buffered, not streamed)")
           : C.err("OFF") + C.dim(" (raw streaming)");
-        console.log(`  📝 Markdown rendering: ${detail}`);
+        noteIcon("📝", `Markdown rendering: ${detail}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -373,43 +440,44 @@ export async function handleSlashCommand(
         const effectiveWall =
           state.wallTimeoutOverride ?? sandbox.config.wallClockTimeoutMs;
         if (ms > effectiveWall) {
-          console.log(
-            `  ⚠️  CPU timeout (${ms}ms) > wall-clock (${effectiveWall}ms) — ` +
+          note(
+            `⚠️  CPU timeout (${ms}ms) > wall-clock (${effectiveWall}ms) — ` +
               `wall-clock will fire first, making CPU limit unreachable.`,
           );
         }
         state.cpuTimeoutOverride = ms;
-        console.log(`  ⏱️  CPU timeout set to ${C.val(ms + "ms")}`);
+        noteIcon("⏱️ ", `CPU timeout set to ${C.val(ms + "ms")}`);
       } else if (kind === "wall" && Number.isFinite(ms) && ms > 0) {
         // Validate: wall-clock should be ≥ CPU (wall is the backstop)
         const effectiveCpu =
           state.cpuTimeoutOverride ?? sandbox.config.cpuTimeoutMs;
         if (ms < effectiveCpu) {
-          console.log(
-            `  ⚠️  Wall-clock (${ms}ms) < CPU timeout (${effectiveCpu}ms) — ` +
+          note(
+            `⚠️  Wall-clock (${ms}ms) < CPU timeout (${effectiveCpu}ms) — ` +
               `wall-clock will fire first, making CPU limit unreachable.`,
           );
         }
         state.wallTimeoutOverride = ms;
-        console.log(`  ⏱️  Wall-clock timeout set to ${C.val(ms + "ms")}`);
+        noteIcon("⏱️ ", `Wall-clock timeout set to ${C.val(ms + "ms")}`);
       } else if (kind === "send" && Number.isFinite(ms) && ms > 0) {
         // Send timeout — how long to wait for the agent to finish
         state.sendTimeoutOverride = ms;
-        console.log(`  ⏱️  Send timeout set to ${C.val(ms + "ms")}`);
+        noteIcon("⏱️ ", `Send timeout set to ${C.val(ms + "ms")}`);
       } else if (kind === "reset") {
         state.cpuTimeoutOverride = null;
         state.wallTimeoutOverride = null;
         state.sendTimeoutOverride = null;
-        console.log(
-          `  ⏱️  Timeouts reset to defaults ` +
+        noteIcon(
+          "⏱️ ",
+          `Timeouts reset to defaults ` +
             `(CPU: ${sandbox.config.cpuTimeoutMs}ms, ` +
             `Wall: ${sandbox.config.wallClockTimeoutMs}ms, ` +
             `Send: ${SEND_TIMEOUT_MS}ms)`,
         );
       } else {
-        console.log("  Usage: /timeout cpu|wall|send <ms>  or  /timeout reset");
+        note("Usage: /timeout cpu|wall|send <ms>  or  /timeout reset");
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -421,30 +489,33 @@ export async function handleSlashCommand(
         state.inputBufferOverride = kb;
         await sandbox.setBufferSizes(kb, undefined);
         state.sessionNeedsRebuild = true;
-        console.log(
-          `  📦 Input buffer set to ${C.val(kb + "KB")} ${C.dim("(rebuild on next message)")}`,
+        noteIcon(
+          "📦",
+          `Input buffer set to ${C.val(kb + "KB")} ${C.dim("(rebuild on next message)")}`,
         );
       } else if (kind === "output" && Number.isFinite(kb) && kb > 0) {
         state.outputBufferOverride = kb;
         await sandbox.setBufferSizes(undefined, kb);
         state.sessionNeedsRebuild = true;
-        console.log(
-          `  📦 Output buffer set to ${C.val(kb + "KB")} ${C.dim("(rebuild on next message)")}`,
+        noteIcon(
+          "📦",
+          `Output buffer set to ${C.val(kb + "KB")} ${C.dim("(rebuild on next message)")}`,
         );
       } else if (kind === "reset") {
         state.inputBufferOverride = null;
         state.outputBufferOverride = null;
         await sandbox.resetBufferSizes();
         state.sessionNeedsRebuild = true;
-        console.log(
-          `  📦 Buffers reset to defaults ` +
+        noteIcon(
+          "📦",
+          `Buffers reset to defaults ` +
             `(input: ${sandbox.config.inputBufferKb}KB, ` +
             `output: ${sandbox.config.outputBufferKb}KB)`,
         );
       } else {
-        console.log("  Usage: /buffer input|output <kb>  or  /buffer reset");
+        note("Usage: /buffer input|output <kb>  or  /buffer reset");
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -457,45 +528,48 @@ export async function handleSlashCommand(
           state.heapOverride = setVal;
           await sandbox.setMemorySizes(setVal, undefined);
           state.sessionNeedsRebuild = true;
-          console.log(
-            `  🧠 Heap set to ${C.val(setVal + "MB")} ${C.dim("(rebuild on next message)")}`,
+          noteIcon(
+            "🧠",
+            `Heap set to ${C.val(setVal + "MB")} ${C.dim("(rebuild on next message)")}`,
           );
         } else {
           const current = sandbox.getEffectiveMemorySizes();
-          console.log(
-            `  Current heap: ${C.val(current.heapMb + "MB")}${state.heapOverride !== null ? C.warn(" (overridden)") : ""}`,
+          note(
+            `Current heap: ${C.val(current.heapMb + "MB")}${state.heapOverride !== null ? C.warn(" (overridden)") : ""}`,
           );
-          console.log("  Usage: /set heap <mb>  — e.g. /set heap 32");
+          note("Usage: /set heap <mb>  — e.g. /set heap 32");
         }
       } else if (setSub === "scratch") {
         if (Number.isFinite(setVal) && setVal > 0) {
           state.scratchOverride = setVal;
           await sandbox.setMemorySizes(undefined, setVal);
           state.sessionNeedsRebuild = true;
-          console.log(
-            `  📚 Scratch set to ${C.val(setVal + "MB")} ${C.dim("(rebuild on next message)")}`,
+          noteIcon(
+            "📚",
+            `Scratch set to ${C.val(setVal + "MB")} ${C.dim("(rebuild on next message)")}`,
           );
         } else {
           const current = sandbox.getEffectiveMemorySizes();
-          console.log(
-            `  Current scratch: ${C.val(current.scratchMb + "MB")}${state.scratchOverride !== null ? C.warn(" (overridden)") : ""}`,
+          note(
+            `Current scratch: ${C.val(current.scratchMb + "MB")}${state.scratchOverride !== null ? C.warn(" (overridden)") : ""}`,
           );
-          console.log("  Usage: /set scratch <mb>  — e.g. /set scratch 4");
+          note("Usage: /set scratch <mb>  — e.g. /set scratch 4");
         }
       } else if (setSub === "reset") {
         state.heapOverride = null;
         state.scratchOverride = null;
         await sandbox.resetMemorySizes();
         state.sessionNeedsRebuild = true;
-        console.log(
-          `  🧠 Memory reset to defaults ` +
+        noteIcon(
+          "🧠",
+          `Memory reset to defaults ` +
             `(heap: ${sandbox.config.heapSizeMb}MB, ` +
             `scratch: ${sandbox.config.scratchSizeMb}MB)`,
         );
       } else {
-        console.log("  Usage: /set heap|scratch <mb>  or  /set reset");
+        note("Usage: /set heap|scratch <mb>  or  /set reset");
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -503,9 +577,11 @@ export async function handleSlashCommand(
       // Toggle transcript recording on/off.
       if (transcript.active) {
         const paths = await transcript.stop();
-        console.log("  📄 Transcript stopped.");
-        console.log(`     ANSI log:  ${paths.logPath}`);
-        console.log(`     Clean text: ${paths.txtPath}`);
+        noteIcon("📄", "Transcript stopped.");
+        // Indented sub-lines under the stop notice. The legacy lines
+        // were uncoloured 5-space indents — emit verbatim via `noteRaw`.
+        noteRaw(`     ANSI log:  ${paths.logPath}`);
+        noteRaw(`     Clean text: ${paths.txtPath}`);
       } else {
         const buffers = sandbox.getEffectiveBufferSizes();
         const logPath = transcript.start({
@@ -517,28 +593,31 @@ export async function handleSlashCommand(
           inputBufferKb: buffers.inputKb,
           outputBufferKb: buffers.outputKb,
         });
-        console.log(`  📄 Transcript started: ${logPath}`);
+        noteIcon("📄", `Transcript started: ${logPath}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
     case "/models": {
       // List available models from the Copilot API.
       if (!state.copilotClient) {
-        console.log(`  ${C.err("❌ Client not connected.")}`);
-        console.log();
+        note(`${C.err("❌ Client not connected.")}`);
+        blank();
         return true;
       }
       try {
         const models = await state.copilotClient.listModels();
         state.cachedModels = models;
-        console.log(formatModelList(models, state.currentModel));
+        // `formatModelList` returns a pre-rendered block including its
+        // own embedded indents and blank lines — emit it whole via the
+        // raw (zero-indent) helper.
+        noteRaw(formatModelList(models, state.currentModel));
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to list models: " + msg)}`);
+        note(`${C.err("❌ Failed to list models: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -547,14 +626,14 @@ export async function handleSlashCommand(
       // handles everything server-side, no session rebuild needed.
       const newModel = parts[1];
       if (!newModel) {
-        console.log(`  🤖 Current model: ${C.val(state.currentModel)}`);
-        console.log("  Usage: /model <name>  (use /models to list available)");
-        console.log();
+        noteIcon("🤖", `Current model: ${C.val(state.currentModel)}`);
+        note("Usage: /model <name>  (use /models to list available)");
+        blank();
         return true;
       }
       if (!state.copilotClient || !state.activeSession) {
-        console.log(`  ${C.err("❌ No active session.")}`);
-        console.log();
+        note(`${C.err("❌ No active session.")}`);
+        blank();
         return true;
       }
       // Validate model name against available models
@@ -564,20 +643,20 @@ export async function handleSlashCommand(
         }
         const valid = state.cachedModels.some((m) => m.id === newModel);
         if (!valid) {
-          console.log(`  ${C.err("❌ Unknown model:")} "${newModel}"`);
-          console.log("     Use /models to see available models.");
-          console.log();
+          note(`${C.err("❌ Unknown model:")} "${newModel}"`);
+          note("   Use /models to see available models.");
+          blank();
           return true;
         }
         const disabled = state.cachedModels.find((m) => m.id === newModel);
         if (disabled?.policy?.state === "disabled") {
-          console.log(
-            `  ${C.warn("⚠️  Model")} "${newModel}" ${C.warn("is disabled by policy.")}`,
+          note(
+            `${C.warn("⚠️  Model")} "${newModel}" ${C.warn("is disabled by policy.")}`,
           );
         }
       } catch {
         // Validation failed — proceed anyway, server will reject if invalid
-        console.log("  ⚠️  Could not validate model name — proceeding anyway.");
+        note("⚠️  Could not validate model name — proceeding anyway.");
       }
       try {
         // Use session.setModel() — the SDK switches the model
@@ -586,23 +665,23 @@ export async function handleSlashCommand(
         const oldModel = state.currentModel;
         await state.activeSession.setModel(newModel);
         state.currentModel = newModel;
-        console.log(
-          `  ${C.ok("🔄 Model switched:")} ${C.dim(oldModel)} → ${C.val(state.currentModel)}`,
+        note(
+          `${C.ok("🔄 Model switched:")} ${C.dim(oldModel)} → ${C.val(state.currentModel)}`,
         );
-        console.log("     Conversation history preserved.");
+        note("   Conversation history preserved.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to switch model: " + msg)}`);
+        note(`${C.err("❌ Failed to switch model: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
     case "/new": {
       // Start a fresh session — blank slate, same model.
       if (!state.copilotClient || !state.activeSession) {
-        console.log(`  ${C.err("❌ No active session.")}`);
-        console.log();
+        note(`${C.err("❌ No active session.")}`);
+        blank();
         return true;
       }
       try {
@@ -622,23 +701,23 @@ export async function handleSlashCommand(
         state.modulesRegistered = [];
         state.currentUserPrompt = "";
         state.lastGuidance = null;
-        console.log(
-          `  ${C.ok("🆕 New session started.")} Conversation history cleared.`,
+        note(
+          `${C.ok("🆕 New session started.")} Conversation history cleared.`,
         );
-        console.log(`     Model: ${C.val(state.currentModel)}`);
+        note(`   Model: ${C.val(state.currentModel)}`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to create new session: " + msg)}`);
+        note(`${C.err("❌ Failed to create new session: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
     case "/sessions": {
       // List saved hyperagent sessions (filtered by prefix, paginated).
       if (!state.copilotClient) {
-        console.log(`  ${C.err("❌ Client not connected.")}`);
-        console.log();
+        note(`${C.err("❌ Client not connected.")}`);
+        blank();
         return true;
       }
       const showAll =
@@ -652,10 +731,10 @@ export async function handleSlashCommand(
           s.sessionId.startsWith(SESSION_ID_PREFIX),
         );
         if (sessions.length === 0) {
-          console.log("  📋 No saved hyperagent sessions found.");
+          note("📋 No saved hyperagent sessions found.");
           if (allSessions.length > 0) {
-            console.log(
-              `     ${C.dim(`(${allSessions.length} session${allSessions.length === 1 ? "" : "s"} from other Copilot clients hidden)`)}`,
+            note(
+              `   ${C.dim(`(${allSessions.length} session${allSessions.length === 1 ? "" : "s"} from other Copilot clients hidden)`)}`,
             );
           }
         } else {
@@ -671,7 +750,7 @@ export async function handleSlashCommand(
             : Math.min(sessions.length, SESSIONS_PAGE_SIZE);
           const hidden = sessions.length - displayCount;
 
-          console.log(`  ${C.label("📋 Sessions")} (${sessions.length}):`);
+          note(`${C.label("📋 Sessions")} (${sessions.length}):`);
           for (let i = 0; i < displayCount; i++) {
             const s = sessions[i];
             const current =
@@ -688,28 +767,28 @@ export async function handleSlashCommand(
             // Show the full UUID part after the prefix so users can
             // paste it into /resume (partial matching works too).
             const uuidPart = s.sessionId.slice(SESSION_ID_PREFIX.length);
-            console.log(`     ${C.val(uuidPart)}${current}`);
-            console.log(`       ${C.dim("Modified:")} ${modified}${summary}`);
+            note(`   ${C.val(uuidPart)}${current}`);
+            note(`     ${C.dim("Modified:")} ${modified}${summary}`);
           }
           if (hidden > 0) {
-            console.log(
-              `     ${C.dim(`… ${hidden} more — use /sessions --all to show all`)}`,
+            note(
+              `   ${C.dim(`… ${hidden} more — use /sessions --all to show all`)}`,
             );
           }
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to list sessions: " + msg)}`);
+        note(`${C.err("❌ Failed to list sessions: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
     case "/resume": {
       // Resume a previous session.
       if (!state.copilotClient) {
-        console.log(`  ${C.err("❌ Client not connected.")}`);
-        console.log();
+        note(`${C.err("❌ Client not connected.")}`);
+        blank();
         return true;
       }
       try {
@@ -729,17 +808,15 @@ export async function handleSlashCommand(
               return tb - ta;
             });
           if (ours.length === 0) {
-            console.log(
-              `  ${C.err("❌ No previous hyperagent sessions found.")}`,
-            );
-            console.log();
+            note(`${C.err("❌ No previous hyperagent sessions found.")}`);
+            blank();
             return true;
           }
 
           // Show numbered list (max 20 most recent)
           const pickCount = Math.min(ours.length, 20);
-          console.log(
-            `  ${C.label("📋 Pick a session to resume")} (${ours.length} total):`,
+          note(
+            `${C.label("📋 Pick a session to resume")} (${ours.length} total):`,
           );
           for (let i = 0; i < pickCount; i++) {
             const s = ours[i];
@@ -755,16 +832,14 @@ export async function handleSlashCommand(
               ? ` — ${s.summary.slice(0, 50)}${s.summary.length > 50 ? "…" : ""}`
               : "";
             const num = String(i + 1).padStart(2);
-            console.log(
-              `     ${C.warn(num)}) ${C.dim(modified)}${summary}${current}`,
-            );
+            note(`   ${C.warn(num)}) ${C.dim(modified)}${summary}${current}`);
           }
           if (ours.length > pickCount) {
-            console.log(
-              `     ${C.dim(`… ${ours.length - pickCount} older sessions not shown`)}`,
+            note(
+              `   ${C.dim(`… ${ours.length - pickCount} older sessions not shown`)}`,
             );
           }
-          console.log();
+          blank();
 
           // Prompt for selection — routes through AgentUI so non-terminal
           // ports can render their own picker.
@@ -773,8 +848,8 @@ export async function handleSlashCommand(
             kind: "resume_session",
           });
           if (!trimmed) {
-            console.log(`  ${C.dim("Cancelled.")}`);
-            console.log();
+            note(`${C.dim("Cancelled.")}`);
+            blank();
             return true;
           }
 
@@ -829,15 +904,15 @@ export async function handleSlashCommand(
         state.modulesRegistered = [];
         state.currentUserPrompt = "";
         state.lastGuidance = null;
-        console.log(
-          `  ${C.ok("⏮️  Resumed session:")} ${C.val(targetId.slice(0, 12) + "…")}`,
+        note(
+          `${C.ok("⏮️  Resumed session:")} ${C.val(targetId.slice(0, 12) + "…")}`,
         );
-        console.log(`     Model: ${C.val(state.currentModel)}`);
+        note(`   Model: ${C.val(state.currentModel)}`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to resume session: " + msg)}`);
+        note(`${C.err("❌ Failed to resume session: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -915,45 +990,48 @@ export async function handleSlashCommand(
         // Use C.label() rather than literal markdown bold — console.log
         // does not pass through the markdown renderer, so `**foo**` would
         // print raw asterisks.
-        console.log(`  ${C.label("⚙️  Configuration:")}`);
-        console.log(renderMarkdown(table));
+        note(`${C.label("⚙️  Configuration:")}`);
+        // The rendered markdown block already includes its own line
+        // breaks and table formatting — emit with no indent prefix.
+        noteRaw(renderMarkdown(table));
       } else {
-        console.log(`  ${C.label("⚙️  Configuration:")}`);
+        note(`${C.label("⚙️  Configuration:")}`);
         for (const [label, value, isOvr] of cfgRows) {
           const ovrSuffix = isOvr ? ovr : "";
-          console.log(`     ${label.padEnd(15)} ${C.val(value)}${ovrSuffix}`);
+          note(`   ${label.padEnd(15)} ${C.val(value)}${ovrSuffix}`);
         }
         // Show enabled plugin details in plain mode
         for (const p of enabledPlugins) {
           const risk = p.audit?.riskLevel ?? "?";
-          console.log(
-            `       ${C.ok("✅")} ${C.tool(p.manifest.name)} v${p.manifest.version} ${C.dim("[" + risk + "]")}`,
+          note(
+            `     ${C.ok("✅")} ${C.tool(p.manifest.name)} v${p.manifest.version} ${C.dim("[" + risk + "]")}`,
           );
         }
       }
-      console.log(
-        `     Risk policy:  ${C.val("max " + operatorConfig.maxRiskLevel)} ${C.dim("(via ~/.hyperagent/config.json)")}`,
+      note(
+        `   Risk policy:  ${C.val("max " + operatorConfig.maxRiskLevel)} ${C.dim("(via ~/.hyperagent/config.json)")}`,
       );
-      console.log();
+      blank();
       return true;
     }
 
     case "/files": {
       // List all files produced during this session
       if (state.producedFiles.length === 0) {
-        console.log(`  ${C.dim("No files produced yet in this session.")}`);
+        note(`${C.dim("No files produced yet in this session.")}`);
       } else {
-        console.log(`  ${C.label("📂 Files produced this session:")}`);
+        note(`${C.label("📂 Files produced this session:")}`);
         for (const f of state.producedFiles) {
-          console.log(
-            `    ${C.val(`[${f.index}]`)} ${f.absPath} ${C.dim(`(${f.label})`)}`,
+          note(
+            `  ${C.val(`[${f.index}]`)} ${f.absPath} ${C.dim(`(${f.label})`)}`,
           );
         }
-        console.log(
-          `\n  ${C.dim("Use /open <n> to open a file, e.g. /open 1")}`,
-        );
+        // Preserve the leading blank produced by the original
+        // `\n  ${...}` template literal.
+        blank();
+        note(`${C.dim("Use /open <n> to open a file, e.g. /open 1")}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -962,19 +1040,17 @@ export async function handleSlashCommand(
       const rawNum = parts[1] ?? "";
       const fileNum = /^\d+$/.test(rawNum) ? parseInt(rawNum, 10) : NaN;
       if (!rawNum || !Number.isFinite(fileNum) || fileNum < 1) {
-        console.log(
-          `  ${C.err("Usage: /open <n>")} — open a produced file by number.`,
-        );
-        console.log(`  ${C.dim("Run /files to see available files.")}`);
-        console.log();
+        note(`${C.err("Usage: /open <n>")} — open a produced file by number.`);
+        note(`${C.dim("Run /files to see available files.")}`);
+        blank();
         return true;
       }
       const file = state.producedFiles.find((f) => f.index === fileNum);
       if (!file) {
-        console.log(
-          `  ${C.err(`File [${fileNum}] not found.`)} Run /files to see available files.`,
+        note(
+          `${C.err(`File [${fileNum}] not found.`)} Run /files to see available files.`,
         );
-        console.log();
+        blank();
         return true;
       }
       // Open file using platform-appropriate command.
@@ -995,14 +1071,12 @@ export async function handleSlashCommand(
         } else {
           spawnSync("xdg-open", [file.absPath], { stdio: "ignore" });
         }
-        console.log(`  ${C.ok("✅")} Opened [${fileNum}] ${file.label}`);
+        note(`${C.ok("✅")} Opened [${fileNum}] ${file.label}`);
       } catch (err) {
-        console.log(
-          `  ${C.err("❌")} Failed to open: ${(err as Error).message}`,
-        );
-        console.log(`  ${C.dim("Path:")} ${file.absPath}`);
+        note(`${C.err("❌")} Failed to open: ${(err as Error).message}`);
+        note(`${C.dim("Path:")} ${file.absPath}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
@@ -1087,8 +1161,8 @@ export async function handleSlashCommand(
       // Uses the SDK's session.getMessages() to retrieve the full
       // event log, then filters for user & assistant messages.
       if (!state.activeSession) {
-        console.log(`  ${C.err("❌ No active session.")}`);
-        console.log();
+        note(`${C.err("❌ No active session.")}`);
+        blank();
         return true;
       }
       const histCount = parseInt(parts[1] ?? "10", 10);
@@ -1105,10 +1179,10 @@ export async function handleSlashCommand(
           .slice(-showCount);
 
         if (messages.length === 0) {
-          console.log(`  ${C.dim("No messages in this session yet.")}`);
+          note(`${C.dim("No messages in this session yet.")}`);
         } else {
           const MAX_PREVIEW_LEN = 200;
-          console.log(`  ${C.label("📜 Last ${messages.length} message(s):")}`);
+          note(`${C.label(`📜 Last ${messages.length} message(s):`)}`);
           for (const msg of messages) {
             const isUser = msg.type === "user.message";
             const role = isUser ? "You" : "Agent";
@@ -1120,16 +1194,16 @@ export async function handleSlashCommand(
                 : content;
             // Show first line only to keep it compact
             const firstLine = preview.split("\n")[0];
-            console.log(
-              `     ${C.label(role + ":")} ${isUser ? C.val(firstLine) : firstLine}`,
+            note(
+              `   ${C.label(role + ":")} ${isUser ? C.val(firstLine) : firstLine}`,
             );
           }
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ${C.err("❌ Failed to retrieve history: " + msg)}`);
+        note(`${C.err("❌ Failed to retrieve history: " + msg)}`);
       }
-      console.log();
+      blank();
       return true;
     }
 
