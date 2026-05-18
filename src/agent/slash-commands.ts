@@ -2640,29 +2640,25 @@ export async function handleSlashCommand(
       if (subCmd === "" || subCmd === "list") {
         // /profile or /profile list — show all profiles
         const { formatAllProfiles } = await import("./profiles.js");
-        console.log(`\n  📋 Available profiles:\n`);
-        console.log(
+        blank();
+        note(`📋 Available profiles:\n`);
+        noteRaw(
           formatAllProfiles()
             .split("\n")
             .map((l) => `  ${l}`)
             .join("\n"),
         );
-        console.log(
-          `\n  ${C.dim("Use /profile apply <name> [name2 ...] to apply.")}`,
-        );
-        console.log(
-          `  ${C.dim("The LLM can also call apply_profile() directly.")}`,
-        );
-        console.log();
+        blank();
+        note(`${C.dim("Use /profile apply <name> [name2 ...] to apply.")}`);
+        note(`${C.dim("The LLM can also call apply_profile() directly.")}`);
+        blank();
       } else if (subCmd === "apply") {
         if (!profileArg) {
-          console.log(
-            `  ${C.warn("Usage:")} /profile apply <name> [name2 ...]`,
+          note(`${C.warn("Usage:")} /profile apply <name> [name2 ...]`);
+          note(
+            `${C.dim("Stack multiple: /profile apply web-research heavy-compute")}`,
           );
-          console.log(
-            `  ${C.dim("Stack multiple: /profile apply web-research heavy-compute")}`,
-          );
-          console.log();
+          blank();
           return true;
         }
         // Parse profile names (space-separated)
@@ -2671,8 +2667,8 @@ export async function handleSlashCommand(
           await import("./profiles.js");
         const merged = mergeProfiles(names);
         if (merged.error) {
-          console.log(`  ${C.err("❌ " + merged.error)}`);
-          console.log();
+          err(merged.error);
+          blank();
           return true;
         }
 
@@ -2721,18 +2717,16 @@ export async function handleSlashCommand(
             limitsToApply,
           );
           if (configResult.success) {
-            console.log(
-              `  ${C.ok("✅ Limits applied:")} ${configResult.message}`,
-            );
+            note(`${C.ok("✅ Limits applied:")} ${configResult.message}`);
             if (configResult.sandboxRebuilt) {
               deps.state.sessionNeedsRebuild = true;
             }
           } else {
-            console.log(`  ${C.err("❌ " + configResult.error)}`);
+            err(String(configResult.error));
           }
         } else {
-          console.log(
-            `  ${C.dim("Limits: current values already meet or exceed profile.")}`,
+          note(
+            `${C.dim("Limits: current values already meet or exceed profile.")}`,
           );
         }
 
@@ -2740,7 +2734,7 @@ export async function handleSlashCommand(
         for (const plugin of merged.plugins) {
           const existing = deps.pluginManager.getPlugin(plugin.name);
           if (existing?.state === "enabled") {
-            console.log(`  ${C.dim(`Plugin ${plugin.name}: already enabled`)}`);
+            note(`${C.dim(`Plugin ${plugin.name}: already enabled`)}`);
             continue;
           }
           // Delegate to /plugin enable
@@ -2760,44 +2754,41 @@ export async function handleSlashCommand(
         }
 
         const profileLabel = merged.appliedProfiles.join(" + ");
-        console.log(`  ${C.ok("📋 Profile applied:")} ${profileLabel}`);
-        console.log();
+        note(`${C.ok("📋 Profile applied:")} ${profileLabel}`);
+        blank();
       } else if (subCmd === "show") {
         // /profile show — show current effective config
         const { getEffectiveConfig } = await import("./config-actions.js");
         const config = getEffectiveConfig(deps.sandbox, deps.state);
-        console.log(`\n  📋 Current effective configuration:`);
-        console.log(`     CPU timeout:    ${config.cpuTimeoutMs}ms`);
-        console.log(`     Wall timeout:   ${config.wallTimeoutMs}ms`);
-        console.log(`     Heap:           ${config.heapMb}MB`);
-        console.log(`     Scratch:        ${config.scratchMb}MB`);
-        console.log(`     Input buffer:   ${config.inputBufferKb}KB`);
-        console.log(`     Output buffer:  ${config.outputBufferKb}KB`);
+        blank();
+        note(`📋 Current effective configuration:`);
+        note(`   CPU timeout:    ${config.cpuTimeoutMs}ms`);
+        note(`   Wall timeout:   ${config.wallTimeoutMs}ms`);
+        note(`   Heap:           ${config.heapMb}MB`);
+        note(`   Scratch:        ${config.scratchMb}MB`);
+        note(`   Input buffer:   ${config.inputBufferKb}KB`);
+        note(`   Output buffer:  ${config.outputBufferKb}KB`);
 
         // Show enabled plugins
         const enabled = deps.pluginManager
           .listPlugins()
           .filter((p) => p.state === "enabled");
         if (enabled.length > 0) {
-          console.log(
-            `     Plugins:        ${enabled.map((p) => p.manifest.name).join(", ")}`,
+          note(
+            `   Plugins:        ${enabled.map((p) => p.manifest.name).join(", ")}`,
           );
         } else {
-          console.log(`     Plugins:        none`);
+          note(`   Plugins:        none`);
         }
-        console.log();
+        blank();
       } else {
-        console.log(`  ${C.warn("Usage:")} /profile [list|apply|show]`);
-        console.log(
-          `  ${C.dim("/profile list              — show available profiles")}`,
+        note(`${C.warn("Usage:")} /profile [list|apply|show]`);
+        note(
+          `${C.dim("/profile list              — show available profiles")}`,
         );
-        console.log(
-          `  ${C.dim("/profile apply <name> ...  — apply profile(s)")}`,
-        );
-        console.log(
-          `  ${C.dim("/profile show              — show current config")}`,
-        );
-        console.log();
+        note(`${C.dim("/profile apply <name> ...  — apply profile(s)")}`);
+        note(`${C.dim("/profile show              — show current config")}`);
+        blank();
       }
       return true;
     }
@@ -2812,146 +2803,136 @@ export async function handleSlashCommand(
         const { formatExports } = await import("./format-exports.js");
         const modules = listModules();
         if (modules.length === 0) {
-          console.log(`\n  ${C.dim("No modules registered.")}`);
+          blank();
+          note(`${C.dim("No modules registered.")}`);
         } else {
-          console.log(`\n  📦 Modules (${modules.length}):\n`);
+          blank();
+          note(`📦 Modules (${modules.length}):\n`);
           for (const m of modules) {
             const badge = m.author === "system" ? C.dim("[system]") : "[user]";
             const lock = m.mutable ? "" : " 🔒";
-            console.log(
-              `  ${C.tool(m.name)} ${badge}${lock} — ${m.description}`,
-            );
+            note(`${C.tool(m.name)} ${badge}${lock} — ${m.description}`);
             const exStr = formatExports(m.exports);
             if (exStr !== "(no exports found)") {
               for (const line of exStr.split("\n")) {
-                console.log(`    ${C.dim(line)}`);
+                note(`  ${C.dim(line)}`);
               }
             }
           }
         }
-        console.log(
-          `\n  ${C.dim('Import in handlers: import { fn } from "ha:<name>"')}`,
-        );
-        console.log();
+        blank();
+        note(`${C.dim('Import in handlers: import { fn } from "ha:<name>"')}`);
+        blank();
       } else if (subCmd === "info") {
         if (!moduleArg) {
-          console.log(`  ${C.warn("Usage:")} /module info <name>`);
-          console.log();
+          note(`${C.warn("Usage:")} /module info <name>`);
+          blank();
           return true;
         }
         const { loadModule } = await import("./module-store.js");
         const { formatExports } = await import("./format-exports.js");
         const info = loadModule(moduleArg);
         if (!info) {
-          console.log(`  ${C.err("❌ Module not found: " + moduleArg)}`);
-          console.log();
+          err(`Module not found: ${moduleArg}`);
+          blank();
           return true;
         }
         const badge = info.author === "system" ? "[system]" : "[user]";
-        console.log(`\n  📦 ${C.tool(info.name)} ${badge}`);
-        console.log(`     ${info.description}`);
-        console.log(`     Author: ${info.author}`);
-        console.log(`     Mutable: ${info.mutable}`);
-        console.log(`     Created: ${info.created}`);
-        console.log(`     Modified: ${info.modified}`);
-        console.log(`     Size: ${info.sizeBytes} bytes`);
-        console.log(`     Import: import { ... } from "ha:${info.name}"`);
-        console.log(`\n     Exports:`);
+        blank();
+        note(`📦 ${C.tool(info.name)} ${badge}`);
+        note(`   ${info.description}`);
+        note(`   Author: ${info.author}`);
+        note(`   Mutable: ${info.mutable}`);
+        note(`   Created: ${info.created}`);
+        note(`   Modified: ${info.modified}`);
+        note(`   Size: ${info.sizeBytes} bytes`);
+        note(`   Import: import { ... } from "ha:${info.name}"`);
+        blank();
+        note(`   Exports:`);
         const exStr = formatExports(info.exports);
         for (const line of exStr.split("\n")) {
-          console.log(`       ${line}`);
+          note(`     ${line}`);
         }
-        console.log(`\n     Source:`);
+        blank();
+        note(`   Source:`);
         for (const line of info.source.split("\n").slice(0, 30)) {
-          console.log(`       ${C.dim(line)}`);
+          note(`     ${C.dim(line)}`);
         }
         if (info.source.split("\n").length > 30) {
-          console.log(
-            `       ${C.dim(`... (${info.source.split("\n").length - 30} more lines)`)}`,
+          note(
+            `     ${C.dim(`... (${info.source.split("\n").length - 30} more lines)`)}`,
           );
         }
-        console.log();
+        blank();
       } else if (subCmd === "delete") {
         if (!moduleArg) {
-          console.log(`  ${C.warn("Usage:")} /module delete <name>`);
-          console.log();
+          note(`${C.warn("Usage:")} /module delete <name>`);
+          blank();
           return true;
         }
         const { loadModule, deleteModuleFromDisk } =
           await import("./module-store.js");
         const info = loadModule(moduleArg);
         if (!info) {
-          console.log(`  ${C.err("❌ Module not found: " + moduleArg)}`);
-          console.log();
+          err(`Module not found: ${moduleArg}`);
+          blank();
           return true;
         }
         if (info.author === "system") {
-          console.log(
-            `  ${C.err("❌ Cannot delete system module: " + moduleArg)}`,
-          );
-          console.log();
+          err(`Cannot delete system module: ${moduleArg}`);
+          blank();
           return true;
         }
         try {
           deleteModuleFromDisk(moduleArg);
           // Also remove from sandbox cache so it's no longer importable
           await deps.sandbox.deleteModule(moduleArg);
-          console.log(`  ${C.ok("🗑️  Module deleted:")} ${moduleArg}`);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.log(`  ${C.err("❌ " + msg)}`);
+          note(`${C.ok("🗑️  Module deleted:")} ${moduleArg}`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          err(msg);
         }
-        console.log();
+        blank();
       } else if (subCmd === "lock") {
         if (!moduleArg) {
-          console.log(`  ${C.warn("Usage:")} /module lock <name>`);
-          console.log();
+          note(`${C.warn("Usage:")} /module lock <name>`);
+          blank();
           return true;
         }
         const { setModuleMutable } = await import("./module-store.js");
         try {
           setModuleMutable(moduleArg, false);
-          console.log(`  ${C.ok("🔒 Module locked:")} ${moduleArg}`);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.log(`  ${C.err("❌ " + msg)}`);
+          note(`${C.ok("🔒 Module locked:")} ${moduleArg}`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          err(msg);
         }
-        console.log();
+        blank();
       } else if (subCmd === "unlock") {
         if (!moduleArg) {
-          console.log(`  ${C.warn("Usage:")} /module unlock <name>`);
-          console.log();
+          note(`${C.warn("Usage:")} /module unlock <name>`);
+          blank();
           return true;
         }
         const { setModuleMutable } = await import("./module-store.js");
         try {
           setModuleMutable(moduleArg, true);
-          console.log(`  ${C.ok("🔓 Module unlocked:")} ${moduleArg}`);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.log(`  ${C.err("❌ " + msg)}`);
+          note(`${C.ok("🔓 Module unlocked:")} ${moduleArg}`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          err(msg);
         }
-        console.log();
+        blank();
       } else {
-        console.log(
-          `  ${C.warn("Usage:")} /module [list|info|delete|lock|unlock]`,
+        note(`${C.warn("Usage:")} /module [list|info|delete|lock|unlock]`);
+        note(`${C.dim("/module list              — show all modules")}`);
+        note(`${C.dim("/module info <name>       — detailed module info")}`);
+        note(`${C.dim("/module delete <name>     — delete user module")}`);
+        note(
+          `${C.dim("/module lock <name>       — protect from modification")}`,
         );
-        console.log(
-          `  ${C.dim("/module list              — show all modules")}`,
-        );
-        console.log(
-          `  ${C.dim("/module info <name>       — detailed module info")}`,
-        );
-        console.log(
-          `  ${C.dim("/module delete <name>     — delete user module")}`,
-        );
-        console.log(
-          `  ${C.dim("/module lock <name>       — protect from modification")}`,
-        );
-        console.log(
-          `  ${C.dim("/module unlock <name>     — allow modification")}`,
-        );
-        console.log();
+        note(`${C.dim("/module unlock <name>     — allow modification")}`);
+        blank();
       }
       return true;
     }
@@ -2964,16 +2945,16 @@ export async function handleSlashCommand(
       // Gate: MCP plugin must be enabled
       const mcpPlugin = deps.pluginManager.getPlugin("mcp");
       if (!mcpPlugin || mcpPlugin.state !== "enabled") {
-        console.log(
-          `  ${C.err("MCP plugin not enabled.")} Run ${C.info("/plugin enable mcp")} first.`,
+        note(
+          `${C.err("MCP plugin not enabled.")} Run ${C.info("/plugin enable mcp")} first.`,
         );
-        console.log();
+        blank();
         return true;
       }
 
       if (!deps.mcpManager) {
-        console.log(`  ${C.err("MCP manager not initialised.")}`);
-        console.log();
+        err("MCP manager not initialised.", "");
+        blank();
         return true;
       }
 
@@ -2985,11 +2966,11 @@ export async function handleSlashCommand(
         case "list": {
           const servers = deps.mcpManager.listServers();
           if (servers.length === 0) {
-            console.log(
-              `  No MCP servers configured. Add servers to ${C.dim("~/.hyperagent/config.json")}`,
+            note(
+              `No MCP servers configured. Add servers to ${C.dim("~/.hyperagent/config.json")}`,
             );
           } else {
-            console.log(`  ${C.label("MCP Servers")} (${servers.length}):\n`);
+            note(`${C.label("MCP Servers")} (${servers.length}):\n`);
             for (const s of servers) {
               const stateColor =
                 s.state === "connected"
@@ -2999,34 +2980,34 @@ export async function handleSlashCommand(
                     : C.dim(s.state);
               const tools =
                 s.state === "connected" ? ` — ${s.tools.length} tool(s)` : "";
-              console.log(`  ${C.label(s.name)}  [${stateColor}]${tools}`);
-              console.log(`    ${C.dim(mcpConfigDisplayString(s.config))}`);
+              note(`${C.label(s.name)}  [${stateColor}]${tools}`);
+              note(`  ${C.dim(mcpConfigDisplayString(s.config))}`);
             }
           }
-          console.log();
+          blank();
           return true;
         }
 
         // ── /mcp enable <name> ───────────────────────────
         case "enable": {
           if (!mcpName) {
-            console.log(`  Usage: ${C.info("/mcp enable <server-name>")}`);
-            console.log();
+            note(`Usage: ${C.info("/mcp enable <server-name>")}`);
+            blank();
             return true;
           }
 
           const conn = deps.mcpManager.getConnection(mcpName);
           if (!conn) {
-            console.log(
-              `  ${C.err(`Unknown MCP server: "${mcpName}"`)}. Check ~/.hyperagent/config.json`,
+            note(
+              `${C.err(`Unknown MCP server: "${mcpName}"`)}. Check ~/.hyperagent/config.json`,
             );
-            console.log();
+            blank();
             return true;
           }
 
           if (conn.state === "connected") {
-            console.log(`  ${C.ok(`"${mcpName}" is already connected.`)}`);
-            console.log();
+            ok(`"${mcpName}" is already connected.`, "");
+            blank();
             return true;
           }
 
@@ -3045,19 +3026,20 @@ export async function handleSlashCommand(
                 conn.config.auth,
               );
               if (!canSilent) {
-                console.log(
-                  `  ${C.err(`"${mcpName}" requires interactive authentication but running in auto-approve mode.`)}`,
+                err(
+                  `"${mcpName}" requires interactive authentication but running in auto-approve mode.`,
+                  "",
                 );
-                console.log(
-                  `  ${C.dim("Run without --auto-approve first to authenticate, then tokens will be cached for future runs.")}`,
+                note(
+                  `${C.dim("Run without --auto-approve first to authenticate, then tokens will be cached for future runs.")}`,
                 );
-                console.log();
+                blank();
                 return true;
               }
             }
 
             // Connect and discover tools
-            console.log(`  Connecting to ${C.label(mcpName)}...`);
+            note(`Connecting to ${C.label(mcpName)}...`);
             const connected = await deps.mcpManager.connect(mcpName);
 
             // Audit tool descriptions
@@ -3069,47 +3051,48 @@ export async function handleSlashCommand(
 
             if (!approved) {
               // Show approval prompt
-              console.log();
-              console.log(`  ${C.label("MCP Server Approval Required")}`);
-              console.log();
-              console.log(`  Server:  ${C.label(mcpName)}`);
-              console.log(
-                `  ${isMCPStdioConfig(conn.config) ? "Command" : "URL"}:    ${C.dim(mcpConfigDisplayString(conn.config))}`,
+              blank();
+              note(`${C.label("MCP Server Approval Required")}`);
+              blank();
+              note(`Server:  ${C.label(mcpName)}`);
+              note(
+                `${isMCPStdioConfig(conn.config) ? "Command" : "URL"}:    ${C.dim(mcpConfigDisplayString(conn.config))}`,
               );
 
               if (isMCPStdioConfig(conn.config) && conn.config.env) {
-                console.log(`  Env vars:`);
+                note(`Env vars:`);
                 for (const [k, v] of Object.entries(conn.config.env)) {
-                  console.log(`    ${k}=${C.dim(maskEnvValue(v))}`);
+                  note(`  ${k}=${C.dim(maskEnvValue(v))}`);
                 }
               }
 
-              console.log();
-              console.log(`  Tools (${connected.tools.length}):`);
+              blank();
+              note(`Tools (${connected.tools.length}):`);
               for (const tool of connected.tools) {
-                console.log(
-                  `    ${C.label(tool.name)} — ${tool.description.slice(0, 80)}`,
+                note(
+                  `  ${C.label(tool.name)} — ${tool.description.slice(0, 80)}`,
                 );
               }
 
               if (warnings.length > 0) {
-                console.log();
-                console.log(`  ${C.err("⚠️  Audit Warnings:")}`);
+                blank();
+                err("Audit Warnings:", "⚠️ ");
                 for (const w of warnings) {
-                  console.log(`    ${C.err("• " + w)}`);
+                  note(`  ${C.err("• " + w)}`);
                 }
               }
 
-              console.log();
-              console.log(
-                `  ${C.err("⚠️  This MCP server runs as a full OS process with YOUR permissions.")}`,
+              blank();
+              err(
+                "This MCP server runs as a full OS process with YOUR permissions.",
+                "⚠️ ",
               );
-              console.log(`  ${C.err("   It is NOT sandboxed.")}`);
-              console.log();
+              err("   It is NOT sandboxed.", "");
+              blank();
 
               // Auto-approve in auto-approve mode
               if (deps.state.autoApprove) {
-                console.log(`  ${C.ok("Auto-approved")} (--auto-approve mode)`);
+                note(`${C.ok("Auto-approved")} (--auto-approve mode)`);
               } else {
                 await deps.ui.drainPasteBuffer();
                 const answer = await ui.askApproval({
@@ -3118,9 +3101,9 @@ export async function handleSlashCommand(
                   defaultChoice: "no",
                 });
                 if (answer !== "yes") {
-                  console.log(`  ${C.dim("Cancelled.")}`);
+                  note(`${C.dim("Cancelled.")}`);
                   await deps.mcpManager.disconnect(mcpName);
-                  console.log();
+                  blank();
                   return true;
                 }
               }
@@ -3138,131 +3121,123 @@ export async function handleSlashCommand(
             // Sync to sandbox
             await deps.syncPlugins();
 
-            console.log(
-              `  ${C.ok(`✓ "${mcpName}" enabled`)} — ${connected.tools.length} tool(s) available as ${C.dim(`host:mcp-${mcpName}`)}`,
+            note(
+              `${C.ok(`✓ "${mcpName}" enabled`)} — ${connected.tools.length} tool(s) available as ${C.dim(`host:mcp-${mcpName}`)}`,
             );
-          } catch (err) {
-            console.log(
-              `  ${C.err(`Failed to enable "${mcpName}": ${(err as Error).message}`)}`,
-            );
+          } catch (e) {
+            err(`Failed to enable "${mcpName}": ${(e as Error).message}`, "");
           }
-          console.log();
+          blank();
           return true;
         }
 
         // ── /mcp disable <name> ──────────────────────────
         case "disable": {
           if (!mcpName) {
-            console.log(`  Usage: ${C.info("/mcp disable <server-name>")}`);
-            console.log();
+            note(`Usage: ${C.info("/mcp disable <server-name>")}`);
+            blank();
             return true;
           }
 
           await deps.mcpManager.disconnect(mcpName);
           await deps.syncPlugins();
-          console.log(`  ${C.ok(`"${mcpName}" disconnected.`)}`);
-          console.log();
+          ok(`"${mcpName}" disconnected.`, "");
+          blank();
           return true;
         }
 
         // ── /mcp info <name> ─────────────────────────────
         case "info": {
           if (!mcpName) {
-            console.log(`  Usage: ${C.info("/mcp info <server-name>")}`);
-            console.log();
+            note(`Usage: ${C.info("/mcp info <server-name>")}`);
+            blank();
             return true;
           }
 
           const info = deps.mcpManager.getConnection(mcpName);
           if (!info) {
-            console.log(`  ${C.err(`Unknown MCP server: "${mcpName}"`)}`);
-            console.log();
+            err(`Unknown MCP server: "${mcpName}"`, "");
+            blank();
             return true;
           }
 
-          console.log(`  ${C.label(mcpName)}`);
-          console.log(`  State:   ${info.state}`);
-          console.log(
-            `  ${isMCPStdioConfig(info.config) ? "Command" : "URL"}:    ${mcpConfigDisplayString(info.config)}`,
+          note(`${C.label(mcpName)}`);
+          note(`State:   ${info.state}`);
+          note(
+            `${isMCPStdioConfig(info.config) ? "Command" : "URL"}:    ${mcpConfigDisplayString(info.config)}`,
           );
           if (info.config.allowTools) {
-            console.log(`  Allow:   ${info.config.allowTools.join(", ")}`);
+            note(`Allow:   ${info.config.allowTools.join(", ")}`);
           }
           if (info.config.denyTools) {
-            console.log(`  Deny:    ${info.config.denyTools.join(", ")}`);
+            note(`Deny:    ${info.config.denyTools.join(", ")}`);
           }
 
           if (info.tools.length > 0) {
-            console.log();
-            console.log(`  Tools (${info.tools.length}):`);
+            blank();
+            note(`Tools (${info.tools.length}):`);
             for (const tool of info.tools) {
-              console.log(`    ${C.label(tool.name)}`);
-              console.log(`      ${C.dim(tool.description.slice(0, 120))}`);
+              note(`  ${C.label(tool.name)}`);
+              note(`    ${C.dim(tool.description.slice(0, 120))}`);
             }
 
-            console.log();
-            console.log(`  ${C.dim("TypeScript declarations:")}`);
-            console.log(C.dim(generateMCPDeclarations(mcpName, info.tools)));
+            blank();
+            note(`${C.dim("TypeScript declarations:")}`);
+            noteRaw(C.dim(generateMCPDeclarations(mcpName, info.tools)));
           }
-          console.log();
+          blank();
           return true;
         }
 
         // ── /mcp approve <name> ──────────────────────────
         case "approve": {
           if (!mcpName) {
-            console.log(`  Usage: ${C.info("/mcp approve <server-name>")}`);
-            console.log();
+            note(`Usage: ${C.info("/mcp approve <server-name>")}`);
+            blank();
             return true;
           }
 
           const conn2 = deps.mcpManager.getConnection(mcpName);
           if (!conn2) {
-            console.log(`  ${C.err(`Unknown MCP server: "${mcpName}"`)}`);
-            console.log();
+            err(`Unknown MCP server: "${mcpName}"`, "");
+            blank();
             return true;
           }
 
           const store = loadMCPApprovalStore();
           approveMCPServer(mcpName, conn2.config, [], [], store);
-          console.log(`  ${C.ok(`"${mcpName}" pre-approved.`)}`);
-          console.log();
+          ok(`"${mcpName}" pre-approved.`, "");
+          blank();
           return true;
         }
 
         // ── /mcp revoke <name> ───────────────────────────
         case "revoke": {
           if (!mcpName) {
-            console.log(`  Usage: ${C.info("/mcp revoke <server-name>")}`);
-            console.log();
+            note(`Usage: ${C.info("/mcp revoke <server-name>")}`);
+            blank();
             return true;
           }
 
           const store2 = loadMCPApprovalStore();
           if (revokeMCPApproval(mcpName, store2)) {
-            console.log(`  ${C.ok(`Approval revoked for "${mcpName}".`)}`);
+            ok(`Approval revoked for "${mcpName}".`, "");
           } else {
-            console.log(`  ${C.dim(`"${mcpName}" was not approved.`)}`);
+            note(`${C.dim(`"${mcpName}" was not approved.`)}`);
           }
-          console.log();
+          blank();
           return true;
         }
 
         default: {
-          console.log(`  ${C.label("MCP Commands:")}`);
-          console.log(
-            `  ${C.dim("/mcp list              — show configured servers")}`,
-          );
-          console.log(
-            `  ${C.dim("/mcp enable <name>     — approve and connect")}`,
-          );
-          console.log(`  ${C.dim("/mcp disable <name>    — disconnect")}`);
-          console.log(
-            `  ${C.dim("/mcp info <name>       — show tools and details")}`,
-          );
-          console.log(`  ${C.dim("/mcp approve <name>    — pre-approve")}`);
-          console.log(`  ${C.dim("/mcp revoke <name>     — remove approval")}`);
-          console.log();
+          note(`${C.label("MCP Commands:")}`);
+          note(`${C.dim("/mcp list              — show configured servers")}`);
+          note(`${C.dim("/mcp enable <name>     — approve and connect")}`);
+          note(`${C.dim("/mcp disable <name>    — disconnect")}`);
+          note(`${C.dim("/mcp info <name>       — show tools and details")}`);
+          note(`${C.dim("/mcp approve <name>    — pre-approve")}`);
+          note(`${C.dim("/mcp revoke <name>     — remove approval")}`);
+          blank();
           return true;
         }
       }
