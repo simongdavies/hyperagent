@@ -53,6 +53,7 @@ const TEST_CLI: CliConfig = {
   noColor: false,
   quiet: false,
   attach: [],
+  ipcStdio: false,
 };
 
 /**

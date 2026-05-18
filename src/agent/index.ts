@@ -63,7 +63,7 @@ import {
 } from "./slash-commands.js";
 import { COMPLETION_STRINGS, renderHelp, renderTopicHelp } from "./commands.js";
 import { buildSystemMessage } from "./system-message.js";
-import { TerminalUI, type AgentUI } from "./ui/index.js";
+import { TerminalUI, JsonLinesUI, type AgentUI } from "./ui/index.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
 import { createAgentState, type AgentState } from "./state.js";
 import {
@@ -74,10 +74,12 @@ import {
   enableAbortOnEsc,
   disableAbortOnEsc,
   createAuditAbortHandler,
+  triggerAbort,
 } from "./abort-controller.js";
 import { createErrorHandler } from "./error-handler.js";
 import { createUserInputHandler } from "./user-input-handler.js";
 import { setupCtrlRHandler } from "./reverse-search.js";
+import { runIpcStdioLoop } from "./ipc-stdio-loop.js";
 import { applySandboxConfig, getEffectiveConfig } from "./config-actions.js";
 import {
   mergeProfiles,
@@ -1121,15 +1123,29 @@ if (cli.attach.length > 0) {
  * transcript recorder (a `TranscriptHost` consumer) to the same
  * output stream. Everywhere else uses the `ui: AgentUI` alias to
  * keep the abstraction intact.
+ *
+ * `--ipc-stdio` forks the construction: the headless `JsonLinesUI`
+ * replaces the terminal output and the transcript recorder is left
+ * detached (any byte written to stdout outside of NDJSON would
+ * corrupt the wire). `terminal` is still constructed so the broader
+ * code (slash commands, transcript file rotation) keeps compiling,
+ * but no consumer ever writes through it in IPC mode.
  */
 const terminal = new TerminalUI(state);
-const ui: AgentUI = terminal;
+const jsonLinesUI: JsonLinesUI | null = cli.ipcStdio ? new JsonLinesUI() : null;
+const ui: AgentUI = jsonLinesUI ?? terminal;
 
 // Subscribe the session transcript to the terminal's output stream.
 // `transcript.start()` (driven by the `--transcript` flag or the
 // `/transcript` slash command) attaches a listener that mirrors
 // every chunk into the .log file; `stop()` detaches cleanly.
-transcript.attachTo(terminal);
+//
+// In `--ipc-stdio` mode we deliberately skip this — the terminal
+// stream is unused (every visible byte is a JSON frame on stdout
+// via `jsonLinesUI`) so tee-ing it would write empty files.
+if (!cli.ipcStdio) {
+  transcript.attachTo(terminal);
+}
 
 // ── Session Management State ─────────────────────────────────────────
 //
@@ -7128,6 +7144,37 @@ async function main(): Promise<void> {
       await syncPluginsToSandbox();
       console.log(`  ${C.ok("MCP gateway auto-enabled")} (servers configured)`);
     }
+  }
+
+  // ── IPC stdio mode ───────────────────────────────────────────
+  //
+  // When `--ipc-stdio` is passed the agent runs as an NDJSON
+  // server: every visible byte is a JSON frame on stdout, every
+  // host command is a JSON frame on stdin. We skip the readline
+  // REPL entirely and hand control to `runIpcStdioLoop`.
+  //
+  // See `docs/IPC-PROTOCOL.md` for the wire format.
+  if (cli.ipcStdio) {
+    // `jsonLinesUI` is non-null here by construction (set when
+    // `cli.ipcStdio` is true) — assert so the rest of the loop
+    // has the narrower type.
+    if (!jsonLinesUI) {
+      throw new Error(
+        "internal: cli.ipcStdio set but jsonLinesUI not constructed",
+      );
+    }
+    state.activeSession = session;
+    await runIpcStdioLoop(
+      {
+        ui: jsonLinesUI,
+        state,
+        processMessage: (text) => processMessage(session, text),
+        triggerAbort: () => triggerAbort(session, state, ui),
+        debugLog: state.debugEnabled ? debugLog : undefined,
+      },
+      { input: process.stdin },
+    );
+    return;
   }
 
   // ── REPL Loop ────────────────────────────────────────────────

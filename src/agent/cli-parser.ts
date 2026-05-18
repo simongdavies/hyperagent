@@ -146,6 +146,16 @@ export interface CliConfig {
    */
   attach: string[];
   /**
+   * Headless mode: drive the agent over newline-delimited JSON on
+   * stdio instead of the interactive REPL. Used by the Electron
+   * desktop app and other embedding hosts. Disables readline, ANSI
+   * output, transcript stdout-tee and every other terminal-only
+   * affordance; every visible side-effect is serialised as a JSON
+   * frame on stdout via {@link JsonLinesUI}. See `docs/IPC-PROTOCOL.md`
+   * for the wire format.
+   */
+  ipcStdio: boolean;
+  /**
    * Standalone MCP setup/config command. Runs and exits before agent startup.
    */
   mcpSetupCommand?: MCPSetupCommand;
@@ -204,6 +214,7 @@ Options:
   --no-color             Strip ANSI colour codes from terminal output
   --quiet                Suppress informational notifications
   --attach <file>        Attach a file to the first user message (repeatable)
+  --ipc-stdio            Headless mode: speak NDJSON on stdio (for embedding)
   --version, -v        Show version and exit
   --help, -h           Show this help message
 
@@ -300,6 +311,7 @@ export function parseCliArgs(
     noColor: process.env.HYPERAGENT_NO_COLOR === "1",
     quiet: process.env.HYPERAGENT_QUIET === "1",
     attach: [],
+    ipcStdio: process.env.HYPERAGENT_IPC_STDIO === "1",
   };
 
   let i = 0;
@@ -494,6 +506,9 @@ export function parseCliArgs(
         config.attach.push(path);
         break;
       }
+      case "--ipc-stdio":
+        config.ipcStdio = true;
+        break;
       case "--mcp-setup-everything":
         setMCPSetupCommand(config, { kind: "setup-everything" });
         break;
@@ -576,6 +591,16 @@ export function parseCliArgs(
       );
       process.exit(1);
     }
+  }
+
+  // --ipc-stdio is mutually exclusive with the one-shot --prompt path.
+  // The host can drive the agent by sending `user-input` frames on
+  // stdin instead — combining them would silently ignore the prompt.
+  if (config.ipcStdio && config.prompt) {
+    console.error(
+      "--ipc-stdio cannot be combined with --prompt/--prompt-file (send a user-input frame on stdin instead)",
+    );
+    process.exit(1);
   }
 
   return config;

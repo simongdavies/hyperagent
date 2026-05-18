@@ -282,13 +282,21 @@ export function createAuditAbortHandler(ui: AgentUI): {
 
 /**
  * Trigger the cancellation sequence:
+/**
+ * Force-abort the current `processMessage` cycle.
+ *
+ * Public so the headless `--ipc-stdio` loop can route an `abort`
+ * frame from the host through the same code path the ESC key uses.
+ * The ESC handler in {@link enableAbortOnEsc} also calls this.
+ *
+ * Steps:
  *   1. Clear the activity indicator (clean up the UI)
  *   2. Call session.abort() (SDK sends RPC to CLI server)
  *   3. The abort event will arrive via the event handler, which
  *      resolves the pending promise — but if abort() itself fails
  *      or the event never arrives, we resolve manually as a fallback.
  */
-function triggerAbort(
+export function triggerAbort(
   session: CopilotSession,
   agentState: AgentState,
   ui: AgentUI,

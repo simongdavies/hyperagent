@@ -4,7 +4,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { parseCliArgs } from "../src/agent/cli-parser.js";
 
 describe("tune CLI flag", () => {
@@ -241,5 +241,53 @@ describe("--no-color / --quiet CLI flags", () => {
   it("CLI flag overrides env var that is unset", () => {
     delete process.env.HYPERAGENT_NO_COLOR;
     expect(parseCliArgs(["--no-color"]).noColor).toBe(true);
+  });
+});
+
+describe("--ipc-stdio CLI flag", () => {
+  const origEnv = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.HYPERAGENT_IPC_STDIO;
+  });
+
+  afterEach(() => {
+    process.env = { ...origEnv };
+  });
+
+  it("defaults ipcStdio to false", () => {
+    expect(parseCliArgs([]).ipcStdio).toBe(false);
+  });
+
+  it("parses --ipc-stdio", () => {
+    expect(parseCliArgs(["--ipc-stdio"]).ipcStdio).toBe(true);
+  });
+
+  it("honours HYPERAGENT_IPC_STDIO=1", () => {
+    process.env.HYPERAGENT_IPC_STDIO = "1";
+    expect(parseCliArgs([]).ipcStdio).toBe(true);
+  });
+
+  it("rejects --ipc-stdio combined with --prompt", () => {
+    const origExit = process.exit;
+    const origError = console.error;
+    const exitSpy = vi.fn((_code?: number) => {
+      throw new Error("__exit__");
+    });
+    const errorSpy = vi.fn();
+    process.exit = exitSpy as never;
+    console.error = errorSpy;
+    try {
+      expect(() => parseCliArgs(["--ipc-stdio", "--prompt", "hi"])).toThrow(
+        "__exit__",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls[0][0]).toMatch(
+        /--ipc-stdio cannot be combined/,
+      );
+    } finally {
+      process.exit = origExit;
+      console.error = origError;
+    }
   });
 });
