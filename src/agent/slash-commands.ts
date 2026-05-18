@@ -3248,16 +3248,14 @@ export async function handleSlashCommand(
       if (helpTopic) {
         const topicHelp = renderTopicHelp(helpTopic);
         if (topicHelp) {
-          console.log(topicHelp);
+          noteRaw(topicHelp);
         } else {
-          console.log(`  ❓ No help found for "${helpTopic}".`);
-          console.log(
-            "     Try /help plugin, /help timeout, or /help <command>.",
-          );
-          console.log();
+          noteIcon("❓", `No help found for "${helpTopic}".`);
+          note("   Try /help plugin, /help timeout, or /help <command>.");
+          blank();
         }
       } else {
-        console.log(renderHelp());
+        noteRaw(renderHelp());
       }
       return true;
     }
@@ -3289,17 +3287,17 @@ export async function handleSlashCommand(
           systemSkillExists(skillName, skillsDir) ||
           userSkillExists(skillName)
         ) {
-          console.log(`  ${C.info("📚")} Invoking skill: ${C.tool(skillName)}`);
+          note(`${C.info("📚")} Invoking skill: ${C.tool(skillName)}`);
           return false; // Let SDK handle it
         }
       } catch {
         // Ignore — fall through to unknown command
       }
 
-      console.log(
-        `  ${C.warn("❓ Unknown command:")} ${cmd}. Type ${C.info("/help")} for available commands.`,
+      note(
+        `${C.warn("❓ Unknown command:")} ${cmd}. Type ${C.info("/help")} for available commands.`,
       );
-      console.log();
+      blank();
       return true;
     }
   }
