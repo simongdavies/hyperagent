@@ -62,6 +62,18 @@ class SpyUI implements AgentUI {
   setWindowTitle(): void {}
   emitUsage(): void {}
 
+  // Modal prompts are never invoked by `/attach` — reject loudly if
+  // a test path hits one so the failure points straight at the bug.
+  askApproval(): Promise<"yes" | "no"> {
+    return Promise.reject(new Error("askApproval not expected in /attach"));
+  }
+  askChoice(): Promise<never> {
+    return Promise.reject(new Error("askChoice not expected in /attach"));
+  }
+  askText(): Promise<string> {
+    return Promise.reject(new Error("askText not expected in /attach"));
+  }
+
   /** Convenience for "the last notification's level matched X". */
   lastLevel(): NotificationLevel | undefined {
     return this.notifications[this.notifications.length - 1]?.level;

@@ -76,4 +76,30 @@ export class NullUI implements AgentUI {
   emitUsage(): void {
     /* intentionally empty */
   }
+
+  // ── Modal user prompts ─────────────────────────────────────────
+  //
+  // These reject instead of returning a default. Tests that reach a
+  // modal prompt with `NullUI` in place have almost certainly
+  // forgotten to install a real UI — a loud rejection beats a
+  // silent stub answer that nudges the test in a misleading
+  // direction.
+
+  askApproval(): Promise<"yes" | "no"> {
+    return Promise.reject(
+      new Error("NullUI does not support askApproval — install an AgentUI"),
+    );
+  }
+
+  askChoice(): Promise<never> {
+    return Promise.reject(
+      new Error("NullUI does not support askChoice — install an AgentUI"),
+    );
+  }
+
+  askText(): Promise<string> {
+    return Promise.reject(
+      new Error("NullUI does not support askText — install an AgentUI"),
+    );
+  }
 }

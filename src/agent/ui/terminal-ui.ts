@@ -41,18 +41,23 @@ import { Spinner } from "../spinner.js";
 import type { AgentUI } from "./port.js";
 import type {
   ActivityPayload,
+  ApprovalQuestion,
+  ChoiceAnswer,
+  ChoiceQuestion,
   MarkdownPayload,
   NotificationLevel,
   NotificationPayload,
   ReasoningDeltaPayload,
   ReasoningTransitionPayload,
   TextDeltaPayload,
+  TextQuestion,
   ToolResultPayload,
   ToolStartPayload,
   ToolStatus,
   UsagePayload,
   WindowTitlePayload,
 } from "./events.js";
+import type { Interface as ReadlineInterface } from "node:readline/promises";
 
 /**
  * Indent used in front of every block line (tool calls, notifications,
@@ -121,6 +126,19 @@ export interface TerminalUIOptions {
    * Disabled by default.
    */
   readonly quiet?: boolean;
+  /**
+   * Active readline instance, read **live** on every modal prompt
+   * so `/new` and other session swaps that swap the readline take
+   * effect without re-constructing the UI. `null`/`undefined` means
+   * "no interactive input available" — `ask*` returns a safe
+   * default rather than throwing.
+   *
+   * Optional so the existing host of test sites that pass a minimal
+   * options object don't have to grow a `readlineInstance: null`
+   * field; production code passes the agent's live `state`, which
+   * already carries this field.
+   */
+  readonly readlineInstance?: ReadlineInterface | null;
 }
 
 /**
@@ -476,5 +494,91 @@ export class TerminalUI implements AgentUI {
       const indent = payload.indent ?? BLOCK_INDENT;
       this._log(`${indent}${C.dim("📊 " + statsStr)}`);
     }
+  }
+
+  // ── Modal user prompts ─────────────────────────────────────────
+  //
+  // Every prompt:
+  //   1. Stops the spinner so the readline prompt isn't overwritten
+  //      by a spinner tick.
+  //   2. Renders the question through `_log` so `--no-color` and the
+  //      transcript listener fan-out both apply.
+  //   3. Reads `readlineInstance` *live* off `_opts` — handles the
+  //      case where `/new` (or a future session swap) installs a
+  //      fresh readline mid-session.
+  //   4. Falls back to a sensible default when no readline is
+  //      available rather than throwing — the caller's hook
+  //      contract (e.g. SDK `onUserInputRequest`) expects a string
+  //      to come back, never a rejection.
+  //
+  // Auto-approve short-circuiting belongs in the **caller** (see
+  // `user-input-handler.ts`) — keeping it out of the UI means the
+  // contract here is purely "ask the user; return their answer".
+
+  async askApproval(payload: ApprovalQuestion): Promise<"yes" | "no"> {
+    this._spinner.stop();
+    const rl = this._opts.readlineInstance;
+    const defaultChoice = payload.defaultChoice ?? "no";
+    // `[Y/n]` when default is yes; `[y/N]` when default is no — the
+    // capitalised letter signals which Enter will pick.
+    const hint = defaultChoice === "yes" ? "[Y/n]" : "[y/N]";
+    this._log(`\n  ${C.info("❓")} ${payload.question} ${C.dim(hint)}`);
+    if (!rl) {
+      // No interactive input — return the default. The caller can
+      // log a debug breadcrumb if it cares.
+      return defaultChoice;
+    }
+    const raw = await rl.question(`     ${C.dim("> ")}`);
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed === "") return defaultChoice;
+    if (trimmed === "y" || trimmed === "yes") return "yes";
+    if (trimmed === "n" || trimmed === "no") return "no";
+    // Unrecognised input falls back to the default — matches today's
+    // ad-hoc `[y/n]` prompts in slash-commands.ts which treat any
+    // non-"y" answer as "no".
+    return defaultChoice;
+  }
+
+  async askChoice(payload: ChoiceQuestion): Promise<ChoiceAnswer> {
+    this._spinner.stop();
+    const rl = this._opts.readlineInstance;
+    const allowFreeform = payload.allowFreeform !== false;
+    this._log(`\n  ${C.info("❓")} ${payload.question}`);
+    for (let i = 0; i < payload.choices.length; i++) {
+      this._log(`     ${C.info(`[${i + 1}]`)} ${payload.choices[i]}`);
+    }
+    if (allowFreeform) {
+      this._log(`     ${C.dim("Or type a custom answer")}`);
+    }
+    if (!rl) {
+      // No interactive input — default to the first choice.
+      return { answer: payload.choices[0] ?? "", wasFreeform: false };
+    }
+    const raw = await rl.question(`     ${C.dim("Choice: ")}`);
+    const trimmed = raw.trim();
+    const pick = parseInt(trimmed, 10);
+    if (pick >= 1 && pick <= payload.choices.length) {
+      return { answer: payload.choices[pick - 1], wasFreeform: false };
+    }
+    if (trimmed && allowFreeform) {
+      return { answer: trimmed, wasFreeform: true };
+    }
+    // Empty input *or* invalid input with freeform disabled → first
+    // choice as the default. Matches today's user-input-handler.ts
+    // behaviour byte-for-byte.
+    return { answer: payload.choices[0] ?? "", wasFreeform: false };
+  }
+
+  async askText(payload: TextQuestion): Promise<string> {
+    this._spinner.stop();
+    const rl = this._opts.readlineInstance;
+    this._log(`\n  ${C.info("❓")} ${payload.question}`);
+    if (!rl) {
+      // No interactive input — return empty string and let the
+      // caller decide how to surface "no answer".
+      return "";
+    }
+    const raw = await rl.question(`     ${C.dim("> ")}`);
+    return raw.trim();
   }
 }

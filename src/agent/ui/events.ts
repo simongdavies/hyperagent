@@ -259,3 +259,92 @@ export interface ReasoningTransitionPayload {
    */
   readonly nextActivity?: string;
 }
+
+// ── Modal input prompts (askApproval / askChoice / askText) ─────────
+//
+// These payloads describe **bidirectional** prompts: the UI renders
+// the question and returns the user's answer. They sit on the
+// `AgentUI` port alongside the emit-only methods.
+//
+// Design rules
+// ────────────
+//   1. Same JSON-serialisable constraint as the emit payloads — a
+//      future `JsonLinesUI` will marshal these out and unmarshal the
+//      reply.
+//   2. Every prompt carries an open-ended `kind` so structured UIs
+//      can route by event type (e.g. show a native confirm dialog
+//      for `kind === "plugin_audit"`).
+//   3. Auto-approve short-circuiting is the **caller's** job, not
+//      the UI's — keeps the port's contract crisp ("you called me to
+//      ask; I will ask").
+
+/**
+ * Semantic tag for an approval prompt — lets non-terminal UIs route
+ * the prompt to a kind-specific affordance (native dialog, banner,
+ * inline pill, etc.). Open-ended on purpose.
+ */
+export type ApprovalKind =
+  | "generic"
+  | "ask_user"
+  | "plugin_audit"
+  | "module_register"
+  | "module_delete"
+  | "skill_save"
+  | "mcp_server"
+  | "profile_apply"
+  | "limits_apply"
+  | "resume_session";
+
+/** A yes/no confirmation prompt. */
+export interface ApprovalQuestion {
+  /** The question text rendered to the user. */
+  readonly question: string;
+  /** Semantic tag for routing in structured UIs; defaults to "generic". */
+  readonly kind?: ApprovalKind;
+  /**
+   * The answer used when the user just hits Enter. Also drives the
+   * `[Y/n]` vs `[y/N]` hint that terminal UIs render. Defaults to
+   * `"no"` — safe default for destructive prompts.
+   */
+  readonly defaultChoice?: "yes" | "no";
+}
+
+/** A multiple-choice prompt with optional freeform fallback. */
+export interface ChoiceQuestion {
+  /** The question text rendered to the user. */
+  readonly question: string;
+  /**
+   * The choices presented as a numbered list. Must contain at least
+   * one entry; the empty case is a programming error.
+   */
+  readonly choices: readonly string[];
+  /**
+   * When true (default), the user may type any text instead of
+   * picking a number. When false, only numbered picks are accepted
+   * and other input falls back to the default choice.
+   */
+  readonly allowFreeform?: boolean;
+  /** Semantic tag for routing in structured UIs. */
+  readonly kind?: string;
+}
+
+/** Reply to a {@link ChoiceQuestion}. */
+export interface ChoiceAnswer {
+  /** The selected (or typed) answer text. */
+  readonly answer: string;
+  /** True when `answer` was typed freeform rather than picked. */
+  readonly wasFreeform: boolean;
+}
+
+/** A freeform text prompt. */
+export interface TextQuestion {
+  /** The question text rendered to the user. */
+  readonly question: string;
+  /**
+   * Optional prompt-cursor hint (e.g. `"path"`). Terminal UIs may
+   * ignore; future GUI UIs render it as a placeholder.
+   */
+  readonly hint?: string;
+  /** Semantic tag for routing in structured UIs. */
+  readonly kind?: string;
+}

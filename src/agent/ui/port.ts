@@ -32,11 +32,15 @@
 
 import type {
   ActivityPayload,
+  ApprovalQuestion,
+  ChoiceAnswer,
+  ChoiceQuestion,
   MarkdownPayload,
   NotificationPayload,
   ReasoningDeltaPayload,
   ReasoningTransitionPayload,
   TextDeltaPayload,
+  TextQuestion,
   ToolResultPayload,
   ToolStartPayload,
   UsagePayload,
@@ -158,4 +162,39 @@ export interface AgentUI {
    * Implementations decide whether to surface (verbose) or suppress.
    */
   emitUsage(payload: UsagePayload): void;
+
+  // ── Modal user prompts ─────────────────────────────────────────
+  //
+  // Bidirectional methods — the UI both renders the question and
+  // returns the user's answer. Implementations:
+  //
+  //   - SHOULD stop any active spinner / activity indicator before
+  //     rendering the question.
+  //   - MUST resolve with a sensible default if interactive input
+  //     is not possible (e.g. `NullUI` throws; `JsonLinesUI` will
+  //     emit a request frame and await a reply frame).
+  //   - Auto-approve short-circuiting is the caller's job, not the
+  //     UI's — keep the port's contract crisp.
+
+  /**
+   * Ask the user a yes/no question. Resolves with `"yes"` or
+   * `"no"`. An empty answer maps to `defaultChoice` (which itself
+   * defaults to `"no"` for safety).
+   */
+  askApproval(payload: ApprovalQuestion): Promise<"yes" | "no">;
+
+  /**
+   * Ask the user a multiple-choice question with an optional
+   * freeform fallback. Resolves with the chosen text and a flag
+   * indicating whether the answer was typed freeform rather than
+   * picked from the list.
+   */
+  askChoice(payload: ChoiceQuestion): Promise<ChoiceAnswer>;
+
+  /**
+   * Ask the user a freeform text question. Resolves with the
+   * user's trimmed answer. Implementations may return an empty
+   * string — callers decide how to handle "no input".
+   */
+  askText(payload: TextQuestion): Promise<string>;
 }

@@ -8,9 +8,21 @@
 //   - /commands  → config changes the LLM suggests (regex extraction)
 //   - ask_user   → decisions the LLM needs (structured SDK tool)
 //
+// Phase 3a refactor (this file)
+// ─────────────────────────────
+// Readline ownership and modal-prompt rendering have moved into the
+// `AgentUI.askChoice` / `AgentUI.askText` methods. This handler is
+// now a thin shim that:
+//   1. Short-circuits in `--auto-approve` mode (picks first choice
+//      or "yes") — auto-approve is the **caller's** policy, not the
+//      UI's, so it stays here. The "(auto: …)" affordance still
+//      renders via `console.log` for now; Phase 2.6 will route it
+//      through the UI's emit channel alongside other leaks.
+//   2. Delegates to `ui.askChoice` (when `choices` are provided) or
+//      `ui.askText` (otherwise).
+//   3. Maps the UI's reply into the SDK's `UserInputResponse` shape.
 // ─────────────────────────────────────────────────────────────────────
 
-import type { Interface as ReadlineInterface } from "node:readline/promises";
 import { C } from "./ansi.js";
 import type { AgentUI } from "./ui/index.js";
 
@@ -36,77 +48,76 @@ interface UserInputResponse {
   wasFreeform: boolean;
 }
 
+/** Fallback when freeform input arrived empty — keeps the SDK happy. */
+const NO_ANSWER_PROVIDED = "No answer provided";
+
 /**
  * Create the onUserInputRequest handler.
  *
- * Uses a factory pattern so the handler can access the active
- * readline instance without import cycles or global state.
+ * Uses a factory pattern so the handler can access the live `AgentUI`
+ * and auto-approve flag without import cycles or global state. The
+ * UI is the sole owner of readline now — Phase 3a moved that
+ * responsibility off the handler.
  *
- * @param getRl — Callback returning the active readline instance
- * @param getUi — Callback returning the AgentUI (to stop activity during input)
+ * @param getUi — Callback returning the active AgentUI. Required at
+ *   call time (returns "Unable to get user input" if absent —
+ *   matches the previous "no readline" branch).
+ * @param getAutoApprove — Callback returning the current
+ *   auto-approve flag. Auto-approve short-circuits the prompt and
+ *   picks the first choice (or "yes" for free-form).
  */
 export function createUserInputHandler(
-  getRl: () => ReadlineInterface | null,
-  getUi?: () => AgentUI | null,
+  getUi: () => AgentUI | null,
   getAutoApprove?: () => boolean,
 ): (request: UserInputRequest) => Promise<UserInputResponse> {
   return async (request: UserInputRequest): Promise<UserInputResponse> => {
     const { question, choices, allowFreeform } = request;
-    const rl = getRl();
-    const ui = getUi?.();
+    const ui = getUi();
     const autoApprove = getAutoApprove?.() ?? false;
 
-    // Safety: if readline isn't available (shouldn't happen in
-    // normal REPL flow), return a sensible default.
-    if (!rl) {
+    // Safety: if the UI isn't wired up (shouldn't happen in normal
+    // REPL flow), return a sensible default. Mirrors the previous
+    // "readline missing" branch.
+    if (!ui) {
       return { answer: "Unable to get user input", wasFreeform: true };
     }
 
-    // In auto-approve mode, auto-select first choice or confirm
+    // In auto-approve mode, auto-select first choice or confirm.
+    // The "(auto: …)" affordance is rendered via console.log to
+    // preserve today's exact bytes; Phase 2.6 will route it through
+    // the UI's emit channel alongside the other console.log leaks.
     if (autoApprove) {
-      ui?.setActivity(null);
+      ui.setActivity(null);
+      // eslint-disable-next-line no-console -- Phase 2.6 will replace
       console.log(`\n  ${C.info("❓")} ${question}`);
       if (choices && choices.length > 0) {
+        // eslint-disable-next-line no-console
         console.log(`     ${C.dim(`(auto: ${choices[0]})`)}`);
         return { answer: choices[0], wasFreeform: false };
       }
+      // eslint-disable-next-line no-console
       console.log(`     ${C.dim("(auto: yes)")}`);
       return { answer: "yes", wasFreeform: true };
     }
 
-    // Stop the spinner so it doesn't overwrite the readline prompt
-    ui?.setActivity(null);
-
     // ── Multiple choice ────────────────────────────────────────
     if (choices && choices.length > 0) {
-      console.log(`\n  ${C.info("❓")} ${question}`);
-      for (let i = 0; i < choices.length; i++) {
-        console.log(`     ${C.info(`[${i + 1}]`)} ${choices[i]}`);
-      }
-      if (allowFreeform !== false) {
-        console.log(`     ${C.dim("Or type a custom answer")}`);
-      }
-      const answer = await rl.question(`     ${C.dim("Choice: ")}`);
-      const trimmed = answer.trim();
-      const pick = parseInt(trimmed, 10);
-
-      // Valid numbered choice
-      if (pick >= 1 && pick <= choices.length) {
-        return { answer: choices[pick - 1], wasFreeform: false };
-      }
-
-      // Freeform fallback (if allowed, or if they typed something invalid)
-      if (trimmed) {
-        return { answer: trimmed, wasFreeform: true };
-      }
-
-      // Empty input → first choice as default
-      return { answer: choices[0], wasFreeform: false };
+      const { answer, wasFreeform } = await ui.askChoice({
+        question,
+        choices,
+        // `undefined` / `true` → allow freeform (UI default).
+        // Only `false` disables the freeform path explicitly.
+        allowFreeform: allowFreeform !== false,
+        kind: "ask_user",
+      });
+      return { answer, wasFreeform };
     }
 
     // ── Free-form question ─────────────────────────────────────
-    console.log(`\n  ${C.info("❓")} ${question}`);
-    const answer = await rl.question(`     ${C.dim("> ")}`);
-    return { answer: answer.trim() || "No answer provided", wasFreeform: true };
+    const answer = await ui.askText({ question, kind: "ask_user" });
+    return {
+      answer: answer || NO_ANSWER_PROVIDED,
+      wasFreeform: true,
+    };
   };
 }

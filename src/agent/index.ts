@@ -6243,7 +6243,6 @@ function buildSessionConfig() {
     // with optional multiple‐choice answers. Complements (does NOT
     // replace) our /command suggestion regex system.
     onUserInputRequest: createUserInputHandler(
-      () => state.readlineInstance,
       () => ui,
       () => state.autoApprove,
     ),
