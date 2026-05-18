@@ -1224,9 +1224,9 @@ export async function handleSlashCommand(
           pluginManager.discover();
           const allP = pluginManager.listPlugins();
           if (allP.length === 0) {
-            console.log("  🔌 No plugins discovered.");
-            console.log(
-              "     Create a plugins/ directory with subdirectories containing plugin.json",
+            noteIcon("🔌", "No plugins discovered.");
+            note(
+              "   Create a plugins/ directory with subdirectories containing plugin.json",
             );
           } else {
             // Count states for the legend
@@ -1237,8 +1237,8 @@ export async function handleSlashCommand(
               (p) => p.state === "enabled",
             ).length;
 
-            console.log(
-              `  ${C.label("🔌 Plugins")} (${allP.length}` +
+            note(
+              `${C.label("🔌 Plugins")} (${allP.length}` +
                 `${enabledCount > 0 ? `, ${C.ok(enabledCount + " active")}` : ""}):`,
             );
 
@@ -1254,35 +1254,33 @@ export async function handleSlashCommand(
                 ? ` ${C.dim("[" + p.audit.riskLevel + "]")}`
                 : "";
               const approved = p.approved ? " 🔒" : "";
-              console.log(
-                `     ${icon} ${C.tool(p.manifest.name)} v${p.manifest.version}` +
+              note(
+                `   ${icon} ${C.tool(p.manifest.name)} v${p.manifest.version}` +
                   `${risk}${approved}`,
               );
-              console.log(`        ${C.dim(p.manifest.description)}`);
+              note(`      ${C.dim(p.manifest.description)}`);
               // Show companion relationships so the LLM (and user)
               // can see which plugins will be auto-enabled together.
               if (p.manifest.companions && p.manifest.companions.length > 0) {
-                console.log(
-                  `        ${C.dim("🔗 companions: " + p.manifest.companions.join(", "))}`,
+                note(
+                  `      ${C.dim("🔗 companions: " + p.manifest.companions.join(", "))}`,
                 );
               }
             }
 
             // Legend — only show symbols that actually appear
-            console.log();
+            blank();
             const legend: string[] = ["⚪ = available"];
             if (hasEnabled) legend.push("🟢 = enabled");
             if (hasDisabled) legend.push("⏸️  = disabled");
             if (hasApproved) legend.push("🔒 = approved (skip audit)");
-            console.log(`     ${C.dim(legend.join("    "))}`);
+            note(`   ${C.dim(legend.join("    "))}`);
             if (!hasEnabled) {
-              console.log("     Use /plugin info <name> for config options.");
-              console.log(
-                "     Use /plugin enable <name> to activate a plugin.",
-              );
+              note("   Use /plugin info <name> for config options.");
+              note("   Use /plugin enable <name> to activate a plugin.");
             }
           }
-          console.log();
+          blank();
           break;
         }
 
@@ -1291,20 +1289,20 @@ export async function handleSlashCommand(
         // know what k=v options are available before enabling.
         case "info": {
           if (!pluginName) {
-            console.log("  Usage: /plugin info <name>");
-            console.log("     Use /plugin list to see available plugins.");
-            console.log();
+            note("Usage: /plugin info <name>");
+            note("   Use /plugin list to see available plugins.");
+            blank();
             break;
           }
 
           pluginManager.discover();
           const infoPlugin = pluginManager.getPlugin(pluginName);
           if (!infoPlugin) {
-            console.log(
-              `  ${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
+            note(
+              `${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
             );
-            console.log("     Use /plugin list to see available plugins.");
-            console.log();
+            note("   Use /plugin list to see available plugins.");
+            blank();
             break;
           }
 
@@ -1320,43 +1318,44 @@ export async function handleSlashCommand(
                 : "⚪";
 
           // ── Header ───────────────────────────────────────
-          console.log(
-            `  🔌 ${C.tool(m.name)} v${m.version}  ${stateIcon}${infoPlugin.approved ? " 🔒" : ""}`,
+          noteIcon(
+            "🔌",
+            `${C.tool(m.name)} v${m.version}  ${stateIcon}${infoPlugin.approved ? " 🔒" : ""}`,
           );
-          console.log(`     ${C.dim(m.description)}`);
-          console.log();
+          note(`   ${C.dim(m.description)}`);
+          blank();
 
           // ── Host modules ────────────────────────────────
-          console.log(
-            `     ${C.label("Host modules:")} ${m.hostModules.map((h) => C.val(`host:${h}`)).join(", ")}`,
+          note(
+            `   ${C.label("Host modules:")} ${m.hostModules.map((h) => C.val(`host:${h}`)).join(", ")}`,
           );
-          console.log(
-            `     ${C.label("State:")}        ${C.val(infoPlugin.state)}${infoPlugin.approved ? C.ok(" (approved)") : ""}`,
+          note(
+            `   ${C.label("State:")}        ${C.val(infoPlugin.state)}${infoPlugin.approved ? C.ok(" (approved)") : ""}`,
           );
 
           // ── Audit summary (if available) ─────────────────
           if (infoPlugin.audit) {
             const a = infoPlugin.audit;
-            console.log(
-              `     ${C.label("Risk:")}         ${C.warn(a.riskLevel)}  \u2014  ${a.recommendation.verdict}`,
+            note(
+              `   ${C.label("Risk:")}         ${C.warn(a.riskLevel)}  \u2014  ${a.recommendation.verdict}`,
             );
-            console.log(`     ${C.label("Summary:")}      ${a.summary}`);
+            note(`   ${C.label("Summary:")}      ${a.summary}`);
           }
-          console.log();
+          blank();
 
           // ── Config schema ───────────────────────────────
           // Use extracted schema or fall back to manifest
           const schema = infoPlugin.schema ?? m.configSchema ?? {};
           const schemaEntries = Object.entries(schema);
           if (schemaEntries.length === 0) {
-            console.log("     No configurable options.");
+            note("   No configurable options.");
           } else {
             // Determine which keys are prompted interactively
             const promptKeysArr = infoPlugin.promptKeys ?? m.promptKeys;
             const promptSet = promptKeysArr ? new Set(promptKeysArr) : null; // null = all prompted
 
-            console.log("     Config options:");
-            console.log();
+            note("   Config options:");
+            blank();
             for (const [key, entry] of schemaEntries) {
               // Type tag with constraints
               const constraints: string[] = [];
@@ -1396,30 +1395,30 @@ export async function handleSlashCommand(
                   : " \u2190 prompted (required, no default)";
               }
 
-              console.log(`       ${key}  (${entry.type}${constraintStr})`);
-              console.log(`         ${entry.description}`);
-              console.log(`         Default: ${defaultStr}${promptTag}`);
-              console.log();
+              note(`     ${key}  (${entry.type}${constraintStr})`);
+              note(`       ${entry.description}`);
+              note(`       Default: ${defaultStr}${promptTag}`);
+              blank();
             }
           }
 
           // ── Hints (concise guidance for LLM) ────────────
           const hints = infoPlugin.hints ?? m.systemMessage;
           if (hints) {
-            console.log("     Hints for LLM:");
-            console.log();
+            note("   Hints for LLM:");
+            blank();
             // Truncate to first 500 chars for info display
             const truncated =
               hints.length > 500 ? hints.slice(0, 500) + "..." : hints;
             for (const line of truncated.split("\n").slice(0, 10)) {
-              console.log(`       ${C.dim(line)}`);
+              note(`     ${C.dim(line)}`);
             }
             if (hints.length > 500 || hints.split("\n").length > 10) {
-              console.log(
-                `       ${C.dim("(truncated - see systemMessage for full text)")}`,
+              note(
+                `     ${C.dim("(truncated - see systemMessage for full text)")}`,
               );
             }
-            console.log();
+            blank();
           }
 
           // ── Example enable command ─────────────────────
@@ -1442,38 +1441,34 @@ export async function handleSlashCommand(
             });
           const exampleArgs = [...requiredKeys, ...optionalKeys].join(" ");
           if (exampleArgs) {
-            console.log(
-              `     Example: /plugin enable ${m.name} ${exampleArgs}`,
-            );
+            note(`   Example: /plugin enable ${m.name} ${exampleArgs}`);
           } else {
-            console.log(`     Example: /plugin enable ${m.name}`);
+            note(`   Example: /plugin enable ${m.name}`);
           }
-          console.log();
+          blank();
           break;
         }
 
         // ── /plugin enable <name> [key=value ...] ───────
         case "enable": {
           if (!pluginName) {
-            console.log("  Usage: /plugin enable <name> [key=value ...]");
-            console.log("     Use /plugin list to see available plugins.");
-            console.log("     Use /plugin info <name> to see config options.");
-            console.log("     Inline config overrides schema defaults, e.g.:");
-            console.log(
-              "     /plugin enable fs-read baseDir=/tmp maxFileSizeKb=2048",
-            );
-            console.log();
+            note("Usage: /plugin enable <name> [key=value ...]");
+            note("   Use /plugin list to see available plugins.");
+            note("   Use /plugin info <name> to see config options.");
+            note("   Inline config overrides schema defaults, e.g.:");
+            note("   /plugin enable fs-read baseDir=/tmp maxFileSizeKb=2048");
+            blank();
             break;
           }
 
           pluginManager.discover();
           const targetPlugin = pluginManager.getPlugin(pluginName);
           if (!targetPlugin) {
-            console.log(
-              `  ${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
+            note(
+              `${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
             );
-            console.log("     Use /plugin list to see available plugins.");
-            console.log();
+            note("   Use /plugin list to see available plugins.");
+            blank();
             break;
           }
 
@@ -1487,8 +1482,8 @@ export async function handleSlashCommand(
           // sandbox rather than silently ignoring the change.
           if (targetPlugin.state === "enabled") {
             if (!hasInlineConfig) {
-              console.log(`  ℹ️  "${pluginName}" is already enabled.`);
-              console.log();
+              noteIcon("ℹ️ ", `"${pluginName}" is already enabled.`);
+              blank();
               break;
             }
 
@@ -1502,20 +1497,21 @@ export async function handleSlashCommand(
             );
 
             if (applied.length === 0) {
-              console.log(
-                `  ⚠️  No recognised config keys in: ${inlineConfigArgs.join(" ")}`,
+              noteIcon(
+                "⚠️ ",
+                `No recognised config keys in: ${inlineConfigArgs.join(" ")}`,
               );
-              console.log(
-                `     Use /plugin info ${pluginName} to see available settings.`,
+              note(
+                `   Use /plugin info ${pluginName} to see available settings.`,
               );
-              console.log();
+              blank();
               break;
             }
 
             // Mark sandbox dirty so it rebuilds with the new config
             pluginManager.markSandboxDirty();
 
-            console.log(`  🔄 "${pluginName}" reconfigured:`);
+            noteIcon("🔄", `"${pluginName}" reconfigured:`);
             if (state.markdownEnabled) {
               const rows = applied.map((key) => {
                 const val = targetPlugin.config[key];
@@ -1525,18 +1521,18 @@ export async function handleSlashCommand(
                 return `| ${key} | ${display} |`;
               });
               const table = `| Key | Value |\n|-----|-------|\n${rows.join("\n")}`;
-              console.log(renderMarkdown(table));
+              noteRaw(renderMarkdown(table));
             } else {
               for (const key of applied) {
                 const val = targetPlugin.config[key];
                 const display = Array.isArray(val)
                   ? `[${(val as string[]).join(", ")}]`
                   : String(val);
-                console.log(`     ${key} = ${display}`);
+                note(`   ${key} = ${display}`);
               }
             }
-            console.log("     Changes take effect on the next message.");
-            console.log();
+            note("   Changes take effect on the next message.");
+            blank();
             break;
           }
 
@@ -1550,17 +1546,18 @@ export async function handleSlashCommand(
               storedRisk &&
               exceedsRiskThreshold(storedRisk, operatorConfig.maxRiskLevel)
             ) {
-              console.log(
-                `  🚫 "${pluginName}" is approved but its risk level (${storedRisk}) exceeds` +
+              noteIcon(
+                "🚫",
+                `"${pluginName}" is approved but its risk level (${storedRisk}) exceeds` +
                   ` the operator threshold (max: ${operatorConfig.maxRiskLevel}).`,
               );
-              console.log(
-                `     Update maxRiskLevel in ~/.hyperagent/config.json to allow ${storedRisk} or above.`,
+              note(
+                `   Update maxRiskLevel in ~/.hyperagent/config.json to allow ${storedRisk} or above.`,
               );
-              console.log();
+              blank();
               break;
             }
-            console.log(`  🔒 "${pluginName}" is approved — skipping audit.`);
+            noteIcon("🔒", `"${pluginName}" is approved — skipping audit.`);
 
             // Extract schema and hints from TypeScript source (falls back to manifest)
             await pluginManager.extractSchemaAndHints(pluginName);
@@ -1576,14 +1573,14 @@ export async function handleSlashCommand(
                 inlineKV,
               );
               if (applied.length > 0) {
-                console.log(`  ${C.label("⚙️  Config overrides:")}`);
+                note(`${C.label("⚙️  Config overrides:")}`);
                 const updatedPlugin = pluginManager.getPlugin(pluginName);
                 for (const key of applied) {
                   const val = updatedPlugin?.config[key];
                   const displayVal = Array.isArray(val)
                     ? val.join(", ")
                     : String(val);
-                  console.log(`     ${C.dim(key + ":")} ${displayVal}`);
+                  note(`   ${C.dim(key + ":")} ${displayVal}`);
                 }
               }
               const coveredKeys = new Set(Object.keys(inlineKV));
@@ -1599,10 +1596,12 @@ export async function handleSlashCommand(
                 const uncoveredFields = Object.keys(schema).filter(
                   (k) => !coveredKeys.has(k),
                 );
-                console.log(
-                  `\n  ⚙️  Configure remaining fields for "${pluginName}":`,
+                blank();
+                noteIcon(
+                  "⚙️ ",
+                  `Configure remaining fields for "${pluginName}":`,
                 );
-                console.log(`     Fields: ${uncoveredFields.join(", ")}`);
+                note(`   Fields: ${uncoveredFields.join(", ")}`);
                 await pluginManager.promptConfig(
                   ui,
                   pluginName,
@@ -1617,7 +1616,8 @@ export async function handleSlashCommand(
                 refreshedPlugin.manifest.configSchema ??
                 {};
               if (Object.keys(schema).length > 0) {
-                console.log(`\n  ⚙️  Configure "${pluginName}":`);
+                blank();
+                noteIcon("⚙️ ", `Configure "${pluginName}":`);
                 await pluginManager.promptConfig(
                   ui,
                   pluginName,
@@ -1630,13 +1630,14 @@ export async function handleSlashCommand(
             // ── Final config summary and approval ─────
             const configSummary = pluginManager.formatConfigSummary(pluginName);
             if (configSummary.length > 0) {
-              console.log(`\n  📋 Final configuration for "${pluginName}":`);
+              blank();
+              noteIcon("📋", `Final configuration for "${pluginName}":`);
               if (state.markdownEnabled) {
                 const table = formatConfigTable(configSummary);
-                console.log(renderMarkdown(table));
+                noteRaw(renderMarkdown(table));
               } else {
                 for (const line of configSummary) {
-                  console.log(`    ${line}`);
+                  note(`  ${line}`);
                 }
               }
 
@@ -1649,8 +1650,8 @@ export async function handleSlashCommand(
                     defaultChoice: "no",
                   });
               if (finalApprove !== "yes") {
-                console.log(`  ${C.dim("Plugin not enabled.")}`);
-                console.log();
+                note(`${C.dim("Plugin not enabled.")}`);
+                blank();
                 break;
               }
             }
@@ -1659,24 +1660,26 @@ export async function handleSlashCommand(
             // plugin.source for verifySourceHash(). Without this, the
             // hash check fails and the plugin is silently disabled.
             if (!pluginManager.loadSource(pluginName)) {
-              console.log(
-                `  ${C.err("❌ Failed to load source for")} "${pluginName}". Plugin will not be enabled.`,
+              note(
+                `${C.err("❌ Failed to load source for")} "${pluginName}". Plugin will not be enabled.`,
               );
-              console.log();
+              blank();
               break;
             }
 
             pluginManager.enable(pluginName);
-            console.log(
-              `  ✅ Plugin "${pluginName}" enabled (approved fast-path).`,
+            noteIcon(
+              "✅",
+              `Plugin "${pluginName}" enabled (approved fast-path).`,
             );
-            console.log("     Changes take effect on the next message.");
+            note("   Changes take effect on the next message.");
 
             // Check for companion plugins
             const fastPathCompanions = pluginManager.getCompanions(pluginName);
             if (fastPathCompanions.length > 0) {
-              console.log(
-                `  🔗 Companion${fastPathCompanions.length > 1 ? "s" : ""} needed: ${fastPathCompanions.join(", ")}`,
+              noteIcon(
+                "🔗",
+                `Companion${fastPathCompanions.length > 1 ? "s" : ""} needed: ${fastPathCompanions.join(", ")}`,
               );
               const fpParentConfig =
                 pluginManager.getPlugin(pluginName)?.config ?? {};
@@ -1710,11 +1713,10 @@ export async function handleSlashCommand(
                 }
                 const inlineConfig =
                   sharedArgs.length > 0 ? ` ${sharedArgs.join(" ")}` : "";
-                console.log(`\n  🔗 Auto-enabling companion "${comp}"...`);
+                blank();
+                noteIcon("🔗", `Auto-enabling companion "${comp}"...`);
                 if (sharedArgs.length > 0) {
-                  console.log(
-                    `     Inheriting config: ${sharedArgs.join(", ")}`,
-                  );
+                  note(`   Inheriting config: ${sharedArgs.join(", ")}`);
                 }
                 await handleSlashCommand(
                   `/plugin enable ${comp}${inlineConfig}`,
@@ -1723,17 +1725,15 @@ export async function handleSlashCommand(
               }
             }
 
-            console.log();
+            blank();
             break;
           }
 
           // ── Step 1: Load source and audit ────────────
           const source = pluginManager.loadSource(pluginName);
           if (!source) {
-            console.log(
-              `  ${C.err("❌ Could not load source for")} "${pluginName}".`,
-            );
-            console.log();
+            note(`${C.err("❌ Could not load source for")} "${pluginName}".`);
+            blank();
             break;
           }
 
@@ -1742,7 +1742,7 @@ export async function handleSlashCommand(
 
           let auditResult = pluginManager.getCachedAudit(source);
           if (auditResult) {
-            console.log("     (using cached audit result)");
+            note("   (using cached audit result)");
           } else if (state.copilotClient) {
             // Retry loop — gives the operator a chance to re-run the
             // LLM audit if the first attempt fails (network blip,
@@ -1774,11 +1774,9 @@ export async function handleSlashCommand(
               } catch (err) {
                 auditAbortCleanup();
                 ui.setActivity(null);
-                console.log(
-                  `  ⚠️  LLM audit failed: ${(err as Error).message}`,
-                );
+                noteIcon("⚠️ ", `LLM audit failed: ${(err as Error).message}`);
                 if (getTracePath()) {
-                  console.log(`  📝 Trace log: ${getTracePath()}`);
+                  noteIcon("📝", `Trace log: ${getTracePath()}`);
                 }
 
                 // Ask the operator what to do — don't silently produce garbage
@@ -1798,17 +1796,17 @@ export async function handleSlashCommand(
                       })
                     ).answer;
                 if (choice === "Retry") {
-                  console.log(`  🔄 Retrying audit...`);
+                  noteIcon("🔄", "Retrying audit...");
                   attemptAudit = true;
                   continue;
                 } else if (choice === "Abort") {
-                  console.log(`  ⏹️  Aborted — plugin not enabled.`);
-                  console.log();
+                  noteIcon("⏹️ ", "Aborted — plugin not enabled.");
+                  blank();
                   auditResult = null;
                   break;
                 }
                 // Fall through: "Static-only" → static-only
-                console.log("     Proceeding with static scan only.");
+                note("   Proceeding with static scan only.");
                 const staticFindings = pluginManager.runStaticScan(pluginName);
                 const hasDanger = staticFindings.some(
                   (f) => f.severity === "danger",
@@ -1864,7 +1862,7 @@ export async function handleSlashCommand(
           }
 
           pluginManager.setAuditResult(pluginName, auditResult);
-          console.log(formatAuditResult(auditResult, pluginName));
+          noteRaw(formatAuditResult(auditResult, pluginName));
 
           // ── Step 2: User approval after audit ──────────
           // The user has seen the audit report — now ask them
@@ -1885,8 +1883,8 @@ export async function handleSlashCommand(
                 defaultChoice: "no",
               });
           if (approveAnswer !== "yes") {
-            console.log(`  ${C.dim("Plugin not enabled.")}`);
-            console.log();
+            note(`${C.dim("Plugin not enabled.")}`);
+            blank();
             break;
           }
 
@@ -1897,18 +1895,17 @@ export async function handleSlashCommand(
               operatorConfig.maxRiskLevel,
             )
           ) {
-            console.log(
-              `  🚫 Plugin "${pluginName}" rated ${auditResult.riskLevel} — exceeds` +
+            noteIcon(
+              "🚫",
+              `Plugin "${pluginName}" rated ${auditResult.riskLevel} — exceeds` +
                 ` operator threshold (max: ${operatorConfig.maxRiskLevel}).`,
             );
-            console.log(
-              `     This plugin cannot be enabled under the current policy.`,
-            );
-            console.log(
-              `     To allow ${auditResult.riskLevel}-risk plugins, update maxRiskLevel` +
+            note(`   This plugin cannot be enabled under the current policy.`);
+            note(
+              `   To allow ${auditResult.riskLevel}-risk plugins, update maxRiskLevel` +
                 ` in ~/.hyperagent/config.json`,
             );
-            console.log();
+            blank();
             break;
           }
 
@@ -1922,14 +1919,14 @@ export async function handleSlashCommand(
               inlineKV,
             );
             if (applied.length > 0) {
-              console.log(`  ${C.label("⚙️  Config overrides:")}`);
+              note(`${C.label("⚙️  Config overrides:")}`);
               const updatedPlugin = pluginManager.getPlugin(pluginName);
               for (const key of applied) {
                 const val = updatedPlugin?.config[key];
                 const displayVal = Array.isArray(val)
                   ? val.join(", ")
                   : String(val);
-                console.log(`     ${C.dim(key + ":")} ${displayVal}`);
+                note(`   ${C.dim(key + ":")} ${displayVal}`);
               }
             }
             const coveredKeys = new Set(Object.keys(inlineKV));
@@ -1943,10 +1940,12 @@ export async function handleSlashCommand(
               const uncoveredFields = Object.keys(schema).filter(
                 (k) => !coveredKeys.has(k),
               );
-              console.log(
-                `\n  ⚙️  Configure remaining fields for "${pluginName}":`,
+              blank();
+              noteIcon(
+                "⚙️ ",
+                `Configure remaining fields for "${pluginName}":`,
               );
-              console.log(`     Fields: ${uncoveredFields.join(", ")}`);
+              note(`   Fields: ${uncoveredFields.join(", ")}`);
               await pluginManager.promptConfig(
                 ui,
                 pluginName,
@@ -1959,7 +1958,8 @@ export async function handleSlashCommand(
             const schema =
               targetPlugin.schema ?? targetPlugin.manifest.configSchema ?? {};
             if (Object.keys(schema).length > 0) {
-              console.log(`\n  ⚙️  Configure "${pluginName}":`);
+              blank();
+              noteIcon("⚙️ ", `Configure "${pluginName}":`);
               await pluginManager.promptConfig(
                 ui,
                 pluginName,
@@ -1972,13 +1972,14 @@ export async function handleSlashCommand(
           // ── Step 5: Final config summary and approval ──
           const configSummary = pluginManager.formatConfigSummary(pluginName);
           if (configSummary.length > 0) {
-            console.log(`\n  📋 Final configuration for "${pluginName}":`);
+            blank();
+            noteIcon("📋", `Final configuration for "${pluginName}":`);
             if (state.markdownEnabled) {
               const table = formatConfigTable(configSummary);
-              console.log(renderMarkdown(table));
+              noteRaw(renderMarkdown(table));
             } else {
               for (const line of configSummary) {
-                console.log(`    ${line}`);
+                note(`  ${line}`);
               }
             }
 
@@ -1991,25 +1992,27 @@ export async function handleSlashCommand(
                   defaultChoice: "no",
                 });
             if (finalApprove !== "yes") {
-              console.log(`  ${C.dim("Plugin not enabled.")}`);
-              console.log();
+              note(`${C.dim("Plugin not enabled.")}`);
+              blank();
               break;
             }
           }
 
           // ── Step 6: Enable ───────────────────────────
           pluginManager.enable(pluginName);
-          console.log(`  ✅ Plugin "${pluginName}" enabled.`);
-          console.log("     Changes take effect on the next message.");
+          noteIcon("✅", `Plugin "${pluginName}" enabled.`);
+          note("   Changes take effect on the next message.");
 
           // Check for companion plugins
           const companions = pluginManager.getCompanions(pluginName);
           if (companions.length > 0) {
-            console.log(
-              `\n  🔗 Companion plugin${companions.length > 1 ? "s" : ""}: ${companions.join(", ")}`,
+            blank();
+            noteIcon(
+              "🔗",
+              `Companion plugin${companions.length > 1 ? "s" : ""}: ${companions.join(", ")}`,
             );
-            console.log(
-              `     ${C.dim(`"${pluginName}" requires ${companions.length > 1 ? "these plugins" : "this plugin"} — enabling automatically.`)}`,
+            note(
+              `   ${C.dim(`"${pluginName}" requires ${companions.length > 1 ? "these plugins" : "this plugin"} — enabling automatically.`)}`,
             );
             // Build inline config from parent's config — share common
             // keys (e.g. baseDir) so companions use the same directory.
@@ -2042,9 +2045,10 @@ export async function handleSlashCommand(
               }
               const inlineConfig =
                 sharedArgs.length > 0 ? ` ${sharedArgs.join(" ")}` : "";
-              console.log(`\n  🔗 Auto-enabling companion "${comp}"...`);
+              blank();
+              noteIcon("🔗", `Auto-enabling companion "${comp}"...`);
               if (sharedArgs.length > 0) {
-                console.log(`     Inheriting config: ${sharedArgs.join(", ")}`);
+                note(`   Inheriting config: ${sharedArgs.join(", ")}`);
               }
               await handleSlashCommand(
                 `/plugin enable ${comp}${inlineConfig}`,
@@ -2053,73 +2057,72 @@ export async function handleSlashCommand(
             }
           }
 
-          console.log();
+          blank();
           break;
         }
 
         // ── /plugin disable <name> ──────────────────────
         case "disable": {
           if (!pluginName) {
-            console.log("  Usage: /plugin disable <name>");
-            console.log();
+            note("Usage: /plugin disable <name>");
+            blank();
             break;
           }
           const success = pluginManager.disable(pluginName);
           if (success) {
-            console.log(`  ⏸️  Plugin "${pluginName}" disabled.`);
-            console.log("     Changes take effect on the next message.");
+            noteIcon("⏸️ ", `Plugin "${pluginName}" disabled.`);
+            note("   Changes take effect on the next message.");
           } else {
             const p = pluginManager.getPlugin(pluginName);
             if (!p) {
-              console.log(
-                `  ${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
+              note(
+                `${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
               );
             } else {
-              console.log(
-                `  ℹ️  "${pluginName}" is not enabled (state: ${p.state}).`,
+              noteIcon(
+                "ℹ️ ",
+                `"${pluginName}" is not enabled (state: ${p.state}).`,
               );
             }
           }
-          console.log();
+          blank();
           break;
         }
 
         // ── /plugin approve <name> ──────────────────────
         case "approve": {
           if (!pluginName) {
-            console.log("  Usage: /plugin approve <name>");
-            console.log(
-              "     Approved plugins skip audit on /plugin enable (fast-path).",
+            note("Usage: /plugin approve <name>");
+            note(
+              "   Approved plugins skip audit on /plugin enable (fast-path).",
             );
-            console.log(
-              "     Approval is invalidated if the plugin source changes.",
-            );
-            console.log();
+            note("   Approval is invalidated if the plugin source changes.");
+            blank();
             break;
           }
 
           pluginManager.discover();
           const approveTarget = pluginManager.getPlugin(pluginName);
           if (!approveTarget) {
-            console.log(
-              `  ${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
+            note(
+              `${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
             );
-            console.log();
+            blank();
             break;
           }
 
           if (approveTarget.approved) {
-            console.log(`  ℹ️  "${pluginName}" is already approved.`);
-            console.log();
+            noteIcon("ℹ️ ", `"${pluginName}" is already approved.`);
+            blank();
             break;
           }
 
           if (!approveTarget.audit) {
-            console.log(
-              `  ${C.err("❌")} "${pluginName}" ${C.err("must be audited before approval.")}`,
+            note(
+              `${C.err("❌")} "${pluginName}" ${C.err("must be audited before approval.")}`,
             );
-            console.log("     Run /plugin audit or /plugin enable first.");
-            console.log();
+            note("   Run /plugin audit or /plugin enable first.");
+            blank();
             break;
           }
 
@@ -2130,56 +2133,57 @@ export async function handleSlashCommand(
               operatorConfig.maxRiskLevel,
             )
           ) {
-            console.log(
-              `  🚫 "${pluginName}" rated ${approveTarget.audit.riskLevel} — exceeds` +
+            noteIcon(
+              "🚫",
+              `"${pluginName}" rated ${approveTarget.audit.riskLevel} — exceeds` +
                 ` operator threshold (max: ${operatorConfig.maxRiskLevel}).`,
             );
-            console.log(
-              `     Cannot approve plugins above ${operatorConfig.maxRiskLevel} risk.`,
+            note(
+              `   Cannot approve plugins above ${operatorConfig.maxRiskLevel} risk.`,
             );
-            console.log(
-              `     Update maxRiskLevel in ~/.hyperagent/config.json to change.`,
+            note(
+              `   Update maxRiskLevel in ~/.hyperagent/config.json to change.`,
             );
-            console.log();
+            blank();
             break;
           }
 
           const approved = pluginManager.approve(pluginName);
           if (approved) {
-            console.log(`  🔒 Plugin "${pluginName}" approved.`);
-            console.log(
-              "     Approval persists across sessions until the source changes or you /plugin unapprove.",
+            noteIcon("🔒", `Plugin "${pluginName}" approved.`);
+            note(
+              "   Approval persists across sessions until the source changes or you /plugin unapprove.",
             );
           } else {
-            console.log(`  ${C.err("❌ Could not approve")} "${pluginName}".`);
+            note(`${C.err("❌ Could not approve")} "${pluginName}".`);
           }
-          console.log();
+          blank();
           break;
         }
 
         // ── /plugin unapprove <name> ────────────────────
         case "unapprove": {
           if (!pluginName) {
-            console.log("  Usage: /plugin unapprove <name>");
-            console.log();
+            note("Usage: /plugin unapprove <name>");
+            blank();
             break;
           }
 
           const unapproved = pluginManager.unapprove(pluginName);
           if (unapproved) {
-            console.log(`  🔓 Plugin "${pluginName}" approval removed.`);
-            console.log("     Next /plugin enable will require a full audit.");
+            noteIcon("🔓", `Plugin "${pluginName}" approval removed.`);
+            note("   Next /plugin enable will require a full audit.");
           } else {
             const p = pluginManager.getPlugin(pluginName);
             if (!p) {
-              console.log(
-                `  ${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
+              note(
+                `${C.err("❌ Plugin")} "${pluginName}" ${C.err("not found.")}`,
               );
             } else {
-              console.log(`  ℹ️  "${pluginName}" is not currently approved.`);
+              noteIcon("ℹ️ ", `"${pluginName}" is not currently approved.`);
             }
           }
-          console.log();
+          blank();
           break;
         }
 
@@ -2192,27 +2196,27 @@ export async function handleSlashCommand(
           // Plugin name is the first non-flag arg
           const auditPluginName = auditArgs.find((a) => !a.startsWith("-"));
           if (!auditPluginName) {
-            console.log("  Usage: /plugin audit <name> [--verbose]");
-            console.log();
+            note("Usage: /plugin audit <name> [--verbose]");
+            blank();
             break;
           }
           const auditTarget = pluginManager.getPlugin(auditPluginName);
           if (!auditTarget) {
-            console.log(
-              `  ${C.err("❌ Plugin")} "${auditPluginName}" ${C.err("not found.")}`,
+            note(
+              `${C.err("❌ Plugin")} "${auditPluginName}" ${C.err("not found.")}`,
             );
-            console.log();
+            blank();
             break;
           }
           const auditSource = pluginManager.loadSource(auditPluginName);
           if (!auditSource) {
-            console.log(
-              `  ${C.err("❌ Could not load source for")} "${auditPluginName}".`,
+            note(
+              `${C.err("❌ Could not load source for")} "${auditPluginName}".`,
             );
-            console.log();
+            blank();
             break;
           }
-          console.log(`  🔍 Auditing "${auditPluginName}"...`);
+          noteIcon("🔍", `Auditing "${auditPluginName}"...`);
           if (state.copilotClient) {
             // Retry loop — operator gets a chance to re-run the audit
             // on transient failures instead of losing all progress.
@@ -2241,10 +2245,10 @@ export async function handleSlashCommand(
                 auditAbortCleanup();
                 ui.setActivity(null);
                 if (getTracePath()) {
-                  console.log(`  📝 Trace log: ${getTracePath()}`);
+                  noteIcon("📝", `Trace log: ${getTracePath()}`);
                 }
                 pluginManager.setAuditResult(auditPluginName, result);
-                console.log(
+                noteRaw(
                   formatAuditResult(result, auditPluginName, {
                     verbose: verboseAudit,
                   }),
@@ -2253,10 +2257,13 @@ export async function handleSlashCommand(
                 auditAbortCleanup();
                 ui.setActivity(null);
                 const errObj = err as Error;
-                console.log(`  ${C.err("❌ Audit failed: " + errObj.message)}`);
-                // Always log the full stack to stderr for tracing.
-                console.error("[audit-trace] Full error:");
-                console.error(errObj.stack ?? errObj);
+                note(`${C.err("❌ Audit failed: " + errObj.message)}`);
+                // Always log the full stack via the UI so it's captured
+                // in the transcript and timed output for tracing.
+                // (Originally console.error — promoted to plain stdout via
+                // the UI for the same reasons documented in Phase 3d.)
+                noteRaw("[audit-trace] Full error:");
+                noteRaw(String(errObj.stack ?? errObj));
 
                 await ui.drainPasteBuffer();
                 // Default "yes" so an empty answer retries — matches the
@@ -2271,7 +2278,7 @@ export async function handleSlashCommand(
                       defaultChoice: "yes",
                     });
                 if (answer === "yes") {
-                  console.log(`  🔄 Retrying audit...`);
+                  noteIcon("🔄", "Retrying audit...");
                   attemptAudit = true;
                   continue;
                 }
@@ -2279,7 +2286,7 @@ export async function handleSlashCommand(
             }
           } else {
             const findings = pluginManager.runStaticScan(auditPluginName);
-            console.log("  📋 Static scan only (no client):");
+            noteIcon("📋", "Static scan only (no client):");
             for (const f of findings) {
               const icon =
                 f.severity === "danger"
@@ -2287,15 +2294,15 @@ export async function handleSlashCommand(
                   : f.severity === "warning"
                     ? "⚠️ "
                     : "ℹ️ ";
-              console.log(
-                `     ${icon} ${f.message}${f.line ? ` (line ${f.line})` : ""}`,
+              note(
+                `   ${icon} ${f.message}${f.line ? ` (line ${f.line})` : ""}`,
               );
             }
             if (findings.length === 0) {
-              console.log("     ✅ No issues found.");
+              note("   ✅ No issues found.");
             }
           }
-          console.log();
+          blank();
           break;
         }
 
@@ -2313,21 +2320,17 @@ export async function handleSlashCommand(
           if (subCmd) {
             const best = closestMatch(subCmd, PLUGIN_SUBS);
             if (best) {
-              console.log(
-                `  ${C.warn("❓ Unknown subcommand")} "${subCmd}". Did you mean ${C.info('"' + best + '"')}?`,
+              note(
+                `${C.warn("❓ Unknown subcommand")} "${subCmd}". Did you mean ${C.info('"' + best + '"')}?`,
               );
-              console.log(
-                `     /plugin ${best} ${parts.slice(2).join(" ")}`.trimEnd(),
-              );
+              note(`   /plugin ${best} ${parts.slice(2).join(" ")}`.trimEnd());
             } else {
-              console.log(`  ❓ Unknown subcommand "${subCmd}".`);
+              noteIcon("❓", `Unknown subcommand "${subCmd}".`);
             }
           }
-          console.log(
-            "  Usage: /plugin <list|enable|disable|approve|unapprove|audit>",
-          );
-          console.log("     Type /help for details.");
-          console.log();
+          note("Usage: /plugin <list|enable|disable|approve|unapprove|audit>");
+          note("   Type /help for details.");
+          blank();
           break;
         }
       }
