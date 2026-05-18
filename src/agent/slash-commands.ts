@@ -767,11 +767,12 @@ export async function handleSlashCommand(
           }
           console.log();
 
-          // Prompt for selection
-          const answer = await rl.question(
-            `  ${C.label("Enter number (1-" + pickCount + ") or session ID:")} `,
-          );
-          const trimmed = answer.trim();
+          // Prompt for selection — routes through AgentUI so non-terminal
+          // ports can render their own picker.
+          const trimmed = await ui.askText({
+            question: `Enter number (1-${pickCount}) or session ID:`,
+            kind: "resume_session",
+          });
           if (!trimmed) {
             console.log(`  ${C.dim("Cancelled.")}`);
             console.log();
@@ -1567,12 +1568,14 @@ export async function handleSlashCommand(
               }
 
               await drainAndWarn(rl);
-              const finalApprove = state.autoApprove
-                ? "y"
-                : await rl.question(
-                    `\n  ${C.dim("Enable with this configuration? [y/n] ")}`,
-                  );
-              if (finalApprove.trim().toLowerCase() !== "y") {
+              const finalApprove: "yes" | "no" = state.autoApprove
+                ? "yes"
+                : await ui.askApproval({
+                    question: "Enable with this configuration?",
+                    kind: "plugin_audit",
+                    defaultChoice: "no",
+                  });
+              if (finalApprove !== "yes") {
                 console.log(`  ${C.dim("Plugin not enabled.")}`);
                 console.log();
                 break;
@@ -1708,24 +1711,31 @@ export async function handleSlashCommand(
 
                 // Ask the operator what to do — don't silently produce garbage
                 await drainAndWarn(rl);
-                const answer = state.autoApprove
-                  ? "s"
-                  : await rl.question(
-                      `\n  ${C.warn("What would you like to do?")}\n` +
-                        `     ${C.dim("[R]etry / [s]tatic-only / [a]bort: ")}`,
-                    );
-                const choice = answer.trim().toLowerCase();
-                if (choice === "r" || choice === "retry" || choice === "") {
+                // Order matters: empty/default picks "Retry" (matches the
+                // legacy [R]etry default); auto-approve picks "Static-only"
+                // so unattended runs don't get stuck waiting on an
+                // interactive operator answer.
+                const choice: string = state.autoApprove
+                  ? "Static-only"
+                  : (
+                      await ui.askChoice({
+                        question: "What would you like to do?",
+                        choices: ["Retry", "Static-only", "Abort"],
+                        allowFreeform: false,
+                        kind: "plugin_audit",
+                      })
+                    ).answer;
+                if (choice === "Retry") {
                   console.log(`  🔄 Retrying audit...`);
                   attemptAudit = true;
                   continue;
-                } else if (choice === "a" || choice === "abort") {
+                } else if (choice === "Abort") {
                   console.log(`  ⏹️  Aborted — plugin not enabled.`);
                   console.log();
                   auditResult = null;
                   break;
                 }
-                // Fall through: "s" / "static" / anything else → static-only
+                // Fall through: "Static-only" → static-only
                 console.log("     Proceeding with static scan only.");
                 const staticFindings = pluginManager.runStaticScan(pluginName);
                 const hasDanger = staticFindings.some(
@@ -1788,17 +1798,21 @@ export async function handleSlashCommand(
           // The user has seen the audit report — now ask them
           // explicitly whether they want to enable this plugin.
           const verdict = auditResult.recommendation?.verdict ?? "unknown";
-          const approvalPrompt =
+          const approvalQuestion =
             verdict === "reject"
-              ? `  ${C.warn("⚠️  Auditor recommends REJECTION.")} Enable anyway? [y/n] `
+              ? `${C.warn("⚠️  Auditor recommends REJECTION.")} Enable anyway?`
               : verdict === "approve-with-conditions"
-                ? `  ${C.dim("Auditor recommends APPROVE WITH CONDITIONS. Enable? [y/n] ")}`
-                : `  ${C.dim("Enable plugin based on audit? [y/n] ")}`;
+                ? "Auditor recommends APPROVE WITH CONDITIONS. Enable?"
+                : "Enable plugin based on audit?";
           await drainAndWarn(rl);
-          const approveAnswer = state.autoApprove
-            ? "y"
-            : await rl.question(approvalPrompt);
-          if (approveAnswer.trim().toLowerCase() !== "y") {
+          const approveAnswer: "yes" | "no" = state.autoApprove
+            ? "yes"
+            : await ui.askApproval({
+                question: approvalQuestion,
+                kind: "plugin_audit",
+                defaultChoice: "no",
+              });
+          if (approveAnswer !== "yes") {
             console.log(`  ${C.dim("Plugin not enabled.")}`);
             console.log();
             break;
@@ -1897,12 +1911,14 @@ export async function handleSlashCommand(
             }
 
             await drainAndWarn(rl);
-            const finalApprove = state.autoApprove
-              ? "y"
-              : await rl.question(
-                  `\n  ${C.dim("Enable with this configuration? [y/n] ")}`,
-                );
-            if (finalApprove.trim().toLowerCase() !== "y") {
+            const finalApprove: "yes" | "no" = state.autoApprove
+              ? "yes"
+              : await ui.askApproval({
+                  question: "Enable with this configuration?",
+                  kind: "plugin_audit",
+                  defaultChoice: "no",
+                });
+            if (finalApprove !== "yes") {
               console.log(`  ${C.dim("Plugin not enabled.")}`);
               console.log();
               break;
@@ -2172,19 +2188,18 @@ export async function handleSlashCommand(
                 console.error(errObj.stack ?? errObj);
 
                 await drainAndWarn(rl);
-                const answer = state.autoApprove
-                  ? "n"
-                  : await rl.question(
-                      `\n  ${C.warn("Retry the audit?")} ${C.dim("[Y]es / [n]o: ")}`,
-                    );
-                const choice = answer.trim().toLowerCase();
-                if (
-                  choice === "" ||
-                  choice === "y" ||
-                  choice === "yes" ||
-                  choice === "r" ||
-                  choice === "retry"
-                ) {
+                // Default "yes" so an empty answer retries — matches the
+                // legacy [Y]es / [n]o hint where uppercase signalled the
+                // Enter-pick. Auto-approve picks "no" to avoid an audit
+                // retry loop in unattended runs.
+                const answer: "yes" | "no" = state.autoApprove
+                  ? "no"
+                  : await ui.askApproval({
+                      question: `${C.warn("Retry the audit?")}`,
+                      kind: "plugin_audit",
+                      defaultChoice: "yes",
+                    });
+                if (answer === "yes") {
                   console.log(`  🔄 Retrying audit...`);
                   attemptAudit = true;
                   continue;
@@ -2341,13 +2356,11 @@ export async function handleSlashCommand(
         await drainAndWarn(rl);
         const confirmed = state.autoApprove
           ? true
-          : (
-              await rl.question(
-                `  ${C.warn("🗑️  Delete user skill")} ${C.tool(arg)}? [y/n] `,
-              )
-            )
-              .trim()
-              .toLowerCase() === "y";
+          : (await ui.askApproval({
+              question: `${C.warn("🗑️  Delete user skill")} ${C.tool(arg)}?`,
+              kind: "skill_delete",
+              defaultChoice: "no",
+            })) === "yes";
         if (!confirmed) {
           console.log(`  ${C.dim("Cancelled.")}`);
           return true;
@@ -3031,10 +3044,12 @@ export async function handleSlashCommand(
                 console.log(`  ${C.ok("Auto-approved")} (--auto-approve mode)`);
               } else {
                 await deps.drainAndWarn(rl);
-                const answer = await rl.question(
-                  `  Approve "${mcpName}"? (y/n) `,
-                );
-                if (answer.trim().toLowerCase() !== "y") {
+                const answer = await ui.askApproval({
+                  question: `Approve "${mcpName}"?`,
+                  kind: "mcp_server",
+                  defaultChoice: "no",
+                });
+                if (answer !== "yes") {
                   console.log(`  ${C.dim("Cancelled.")}`);
                   await deps.mcpManager.disconnect(mcpName);
                   console.log();

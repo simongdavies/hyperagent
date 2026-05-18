@@ -290,6 +290,7 @@ export type ApprovalKind =
   | "module_register"
   | "module_delete"
   | "skill_save"
+  | "skill_delete"
   | "mcp_server"
   | "profile_apply"
   | "limits_apply"
