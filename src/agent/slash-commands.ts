@@ -2353,57 +2353,57 @@ export async function handleSlashCommand(
       // /skills info <name> — show full SKILL.md (user > system precedence)
       if (sub === "info") {
         if (!arg) {
-          console.log(`  ${C.dim("Usage: /skills info <name>")}`);
+          note(`${C.dim("Usage: /skills info <name>")}`);
           return true;
         }
         // Validate the name BEFORE touching the filesystem so a value
         // like "../etc" can never be `join`-ed into a path we read.
         const nameError = validateSkillName(arg);
         if (nameError) {
-          console.log(`  ${C.err("❌ Invalid skill name:")} ${nameError}`);
+          note(`${C.err("❌ Invalid skill name:")} ${nameError}`);
           return true;
         }
         const userContent = readUserSkill(arg);
         if (userContent) {
-          console.log(
-            `  ${C.label("📚 User skill:")} ${C.tool(arg)} ${C.dim("(👤)")}\n`,
+          note(
+            `${C.label("📚 User skill:")} ${C.tool(arg)} ${C.dim("(👤)")}\n`,
           );
-          console.log(userContent);
+          noteRaw(userContent);
           return true;
         }
         const systemFile = join(skillsDir, arg, "SKILL.md");
         if (existsSync(systemFile)) {
           const { readFileSync } = await import("node:fs");
-          console.log(`  ${C.label("📚 System skill:")} ${C.tool(arg)}\n`);
-          console.log(readFileSync(systemFile, "utf8"));
+          note(`${C.label("📚 System skill:")} ${C.tool(arg)}\n`);
+          noteRaw(readFileSync(systemFile, "utf8"));
           return true;
         }
-        console.log(`  ${C.err("❌ Skill not found:")} ${arg}`);
+        note(`${C.err("❌ Skill not found:")} ${arg}`);
         return true;
       }
 
       // /skills edit <name> — print the user-skill path for $EDITOR.
       if (sub === "edit") {
         if (!arg) {
-          console.log(`  ${C.dim("Usage: /skills edit <name>")}`);
+          note(`${C.dim("Usage: /skills edit <name>")}`);
           return true;
         }
         const nameError = validateSkillName(arg);
         if (nameError) {
-          console.log(`  ${C.err("❌ Invalid skill name:")} ${nameError}`);
+          note(`${C.err("❌ Invalid skill name:")} ${nameError}`);
           return true;
         }
         if (!userSkillExists(arg)) {
-          console.log(
-            `  ${C.err("❌ User skill not found:")} ${arg} ` +
+          note(
+            `${C.err("❌ User skill not found:")} ${arg} ` +
               `${C.dim("(system skills cannot be edited from the REPL)")}`,
           );
           return true;
         }
         const filePath = join(getUserSkillsDir(), arg, "SKILL.md");
-        console.log(`  ${C.label("📝 Edit:")} ${filePath}`);
-        console.log(
-          `  ${C.dim("Open in your editor, save, then the change applies on next /suggest_approach.")}`,
+        note(`${C.label("📝 Edit:")} ${filePath}`);
+        note(
+          `${C.dim("Open in your editor, save, then the change applies on next /suggest_approach.")}`,
         );
         return true;
       }
@@ -2411,17 +2411,17 @@ export async function handleSlashCommand(
       // /skills delete <name> — remove a user skill (system ones are immutable).
       if (sub === "delete") {
         if (!arg) {
-          console.log(`  ${C.dim("Usage: /skills delete <name>")}`);
+          note(`${C.dim("Usage: /skills delete <name>")}`);
           return true;
         }
         const nameError = validateSkillName(arg);
         if (nameError) {
-          console.log(`  ${C.err("❌ Invalid skill name:")} ${nameError}`);
+          note(`${C.err("❌ Invalid skill name:")} ${nameError}`);
           return true;
         }
         if (!userSkillExists(arg)) {
-          console.log(
-            `  ${C.err("❌ User skill not found:")} ${arg} ` +
+          note(
+            `${C.err("❌ User skill not found:")} ${arg} ` +
               `${C.dim("(system skills cannot be deleted)")}`,
           );
           return true;
@@ -2436,11 +2436,11 @@ export async function handleSlashCommand(
               defaultChoice: "no",
             })) === "yes";
         if (!confirmed) {
-          console.log(`  ${C.dim("Cancelled.")}`);
+          note(`${C.dim("Cancelled.")}`);
           return true;
         }
         deleteUserSkill(arg);
-        console.log(`  ${C.ok("🗑️  Deleted user skill:")} ${arg}`);
+        note(`${C.ok("🗑️  Deleted user skill:")} ${arg}`);
         return true;
       }
 
@@ -2457,19 +2457,17 @@ export async function handleSlashCommand(
       // `<available_skills>` block to the model on its next turn.
       if (sub === "reload") {
         if (!state.activeSession) {
-          console.log(
-            `  ${C.err("❌ No active session — start the agent first.")}`,
-          );
+          err("No active session — start the agent first.");
           return true;
         }
         try {
           await state.activeSession.rpc.skills.reload();
-          console.log(
-            `  ${C.ok("📚 Skills reloaded")} ${C.dim("— new skills are now invocable.")}`,
+          note(
+            `${C.ok("📚 Skills reloaded")} ${C.dim("— new skills are now invocable.")}`,
           );
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.log(`  ${C.err("❌ Skill reload failed:")} ${msg}`);
+          note(`${C.err("❌ Skill reload failed:")} ${msg}`);
         }
         return true;
       }
@@ -2531,16 +2529,14 @@ export async function handleSlashCommand(
         }
 
         if (rows.size === 0) {
-          console.log("  No skills found.");
+          note("No skills found.");
           return true;
         }
 
         const sorted = Array.from(rows.values()).sort((a, b) =>
           a.name.localeCompare(b.name),
         );
-        console.log(
-          `  ${C.label("📚 Available skills")} (${sorted.length}):\n`,
-        );
+        note(`${C.label("📚 Available skills")} (${sorted.length}):\n`);
         for (const row of sorted) {
           const badge =
             row.source === "user"
@@ -2548,14 +2544,14 @@ export async function handleSlashCommand(
                 ? " 👤 (overrides built-in)"
                 : " 👤"
               : "";
-          console.log(`     /${row.name}${badge}`);
-          console.log(`     ${C.dim(row.desc)}\n`);
+          note(`   /${row.name}${badge}`);
+          note(`   ${C.dim(row.desc)}\n`);
         }
-        console.log(
-          `  ${C.dim("Invoke: /<name> · Manage: /skills info|edit|delete <name> · Refresh: /skills reload")}`,
+        note(
+          `${C.dim("Invoke: /<name> · Manage: /skills info|edit|delete <name> · Refresh: /skills reload")}`,
         );
       } catch {
-        console.log("  Error reading skills directory.");
+        note("Error reading skills directory.");
       }
       return true;
     }
@@ -2570,16 +2566,15 @@ export async function handleSlashCommand(
       // so it's better placed than the REPL to write the guidance text.
       const desiredName = parts[1]?.trim();
       if (!state.activeSession) {
-        console.log(
-          `  ${C.err("❌ No active session — start the agent first.")}`,
-        );
+        err("No active session — start the agent first.");
         return true;
       }
 
       const ctx = extractSessionContext(state);
       if (ctx.totalToolCalls === 0 && !ctx.userPrompt) {
-        console.log(
-          `  ${C.warn("⚠️  Nothing to learn from yet — run a task first, then /save-skill.")}`,
+        warn(
+          "Nothing to learn from yet — run a task first, then /save-skill.",
+          "⚠️ ",
         );
         return true;
       }
@@ -2611,8 +2606,8 @@ export async function handleSlashCommand(
       ];
       const synthetic = promptLines.join("\n");
 
-      console.log(
-        `  ${C.label("📝 Capturing session learnings…")}` +
+      note(
+        `${C.label("📝 Capturing session learnings…")}` +
           (desiredName ? ` ${C.dim("(name: " + desiredName + ")")}` : ""),
       );
       // "distinct tools" = full-history cardinality, NOT the bounded
@@ -2621,8 +2616,8 @@ export async function handleSlashCommand(
       const distinctToolCount = new Set(
         state.toolCallHistory.map((e) => e.tool),
       ).size;
-      console.log(
-        `  ${C.dim("Context: " + ctx.totalToolCalls + " tool calls, " + distinctToolCount + " distinct tools.")}`,
+      note(
+        `${C.dim("Context: " + ctx.totalToolCalls + " tool calls, " + distinctToolCount + " distinct tools.")}`,
       );
 
       // Bypass auto suggest_approach on the next turn — the synthetic
