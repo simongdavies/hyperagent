@@ -4093,18 +4093,43 @@ function renderProfilePreviewPlain(
   limitChanges: readonly LimitChange[],
   pluginNames: readonly string[],
 ): void {
-  console.log(`\n  ${C.warn("📋 Profile:")} ${C.tool(profileLabel)}`);
+  // Leading blank-line separator + 2-space-indent header. Subsequent
+  // detail lines use 5-space (`Limits:` / `Plugins:`) and 7-space
+  // (per-limit row) indents — encoded in `indent` rather than the
+  // message so JSON-line UIs see structured data, not whitespace.
+  ui.emitNotification({
+    level: "plain",
+    kind: "generic",
+    indent: "",
+    message: "",
+  });
+  ui.emitNotification({
+    level: "plain",
+    kind: "generic",
+    message: `${C.warn("📋 Profile:")} ${C.tool(profileLabel)}`,
+  });
   if (limitChanges.length > 0) {
-    console.log(`     Limits:`);
+    ui.emitNotification({
+      level: "plain",
+      kind: "generic",
+      indent: "     ",
+      message: "Limits:",
+    });
     for (const c of limitChanges) {
-      console.log(`       ${c.name}: ${c.before} → ${c.after}`);
+      ui.emitNotification({
+        level: "plain",
+        kind: "generic",
+        indent: "       ",
+        message: `${c.name}: ${c.before} → ${c.after}`,
+      });
     }
   }
-  if (pluginNames.length > 0) {
-    console.log(`     Plugins: ${pluginNames.join(", ")}`);
-  } else {
-    console.log(`     Plugins: none`);
-  }
+  ui.emitNotification({
+    level: "plain",
+    kind: "generic",
+    indent: "     ",
+    message: `Plugins: ${pluginNames.length > 0 ? pluginNames.join(", ") : "none"}`,
+  });
 }
 
 /**
@@ -4137,7 +4162,17 @@ function renderProfilePreviewMarkdown(
       ? `**Plugins:** ${pluginNames.join(", ")}`
       : `**Plugins:** none`,
   );
-  process.stdout.write("\n" + renderMarkdown(lines.join("\n")) + "\n");
+  // Leading blank-line separator + rendered markdown table.
+  // `ui.renderMarkdown` writes `${renderMarkdown(source)}\n` via `_log`,
+  // so we emit the leading `\n` as a blank notification first to
+  // preserve byte-identity with the legacy stdout.write.
+  ui.emitNotification({
+    level: "plain",
+    kind: "generic",
+    indent: "",
+    message: "",
+  });
+  ui.renderMarkdown({ source: lines.join("\n") });
 }
 
 /** Internal implementation for apply_profile — called under lock. */

@@ -28,6 +28,7 @@ import type {
   ApprovalQuestion,
   ChoiceAnswer,
   ChoiceQuestion,
+  NotificationPayload,
   TextQuestion,
 } from "../src/agent/ui/events.js";
 
@@ -46,6 +47,9 @@ class SpyUI implements AgentUI {
   readonly textCalls: TextQuestion[] = [];
   /** Recorded `askApproval` invocations. */
   readonly approvalCalls: ApprovalQuestion[] = [];
+  /** Recorded `emitNotification` invocations — the auto-approve
+   *  affordance flows through this in Phase 3f. */
+  readonly notificationCalls: NotificationPayload[] = [];
   /** Number of `setActivity(null)` calls — handler stops spinner first. */
   setActivityCalls = 0;
 
@@ -92,7 +96,9 @@ class SpyUI implements AgentUI {
   emitToolResult(): void {}
   beginTurn(): void {}
   setWindowTitle(): void {}
-  emitNotification(): void {}
+  emitNotification(payload: NotificationPayload): void {
+    this.notificationCalls.push(payload);
+  }
   emitUsage(): void {}
   drainPasteBuffer(): Promise<void> {
     return Promise.resolve();
@@ -212,9 +218,11 @@ describe("createUserInputHandler — auto-approve short-circuit", () => {
     expect(ui.setActivityCalls).toBeGreaterThan(0);
     expect(ui.choiceCalls).toHaveLength(0);
     expect(ui.textCalls).toHaveLength(0);
-    // Affordance rendered: question + "(auto: alpha)" line.
-    expect(cap.stdout()).toContain("Pick one");
-    expect(cap.stdout()).toContain("(auto: alpha)");
+    // Affordance rendered through the UI port (3 notifications:
+    // blank-line separator, question, auto-pick line).
+    expect(ui.notificationCalls).toHaveLength(3);
+    expect(ui.notificationCalls[1].message).toBe("Pick one");
+    expect(ui.notificationCalls[2].message).toContain("(auto: alpha)");
   });
 
   it("returns 'yes' for freeform questions in auto-approve mode", async () => {
@@ -227,8 +235,9 @@ describe("createUserInputHandler — auto-approve short-circuit", () => {
     expect(reply).toEqual({ answer: "yes", wasFreeform: true });
     expect(ui.askText).toBeDefined(); // sanity
     expect(ui.textCalls).toHaveLength(0);
-    expect(cap.stdout()).toContain("Continue?");
-    expect(cap.stdout()).toContain("(auto: yes)");
+    expect(ui.notificationCalls).toHaveLength(3);
+    expect(ui.notificationCalls[1].message).toBe("Continue?");
+    expect(ui.notificationCalls[2].message).toContain("(auto: yes)");
   });
 
   it("does not auto-approve when getAutoApprove returns false", async () => {

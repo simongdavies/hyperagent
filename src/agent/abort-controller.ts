@@ -222,7 +222,22 @@ export function createAuditAbortHandler(ui: AgentUI): {
           timer = null;
           if (!controller.signal.aborted) {
             ui.setActivity(null);
-            console.log(`\n  ${C.warn("⏹️  Audit cancelled.")}`);
+            // Leading blank-line separator + 2-space-indent warning.
+            // Icon string carries the trailing space so the formula
+            // `${icon} ${message}` renders `⏹️  msg` (double space)
+            // matching the legacy `C.warn("⏹️  Audit cancelled.")`.
+            ui.emitNotification({
+              level: "plain",
+              kind: "generic",
+              indent: "",
+              message: "",
+            });
+            ui.emitNotification({
+              level: "warning",
+              kind: "generic",
+              icon: "⏹️ ",
+              message: "Audit cancelled.",
+            });
             controller.abort();
           }
         }, ESC_DEBOUNCE_MS);
@@ -281,7 +296,22 @@ function triggerAbort(
   abortFired = true;
   agentState.lastResponseWasCancelled = true;
   ui.setActivity(null);
-  console.log(`\n  ${C.warn("⏹️  Cancelled.")}`);
+  // Leading blank-line separator + 2-space-indent warning. Icon
+  // string carries the trailing space so the formula
+  // `${icon} ${message}` renders `⏹️  Cancelled.` (double space)
+  // matching the legacy `C.warn("⏹️  Cancelled.")`.
+  ui.emitNotification({
+    level: "plain",
+    kind: "generic",
+    indent: "",
+    message: "",
+  });
+  ui.emitNotification({
+    level: "warning",
+    kind: "generic",
+    icon: "⏹️ ",
+    message: "Cancelled.",
+  });
 
   /**
    * Force-resolve the pending promise if the SDK abort event never

@@ -83,20 +83,43 @@ export function createUserInputHandler(
     }
 
     // In auto-approve mode, auto-select first choice or confirm.
-    // The "(auto: …)" affordance is rendered via console.log to
-    // preserve today's exact bytes; Phase 2.6 will route it through
-    // the UI's emit channel alongside the other console.log leaks.
+    // The "(auto: …)" affordance flows through the UI port so the
+    // `--no-color` strip and transcript listener cover it like every
+    // other line, and JsonLinesUI (Phase 6) can route it as a
+    // structured event instead of an opaque stdout write.
     if (autoApprove) {
       ui.setActivity(null);
-      // eslint-disable-next-line no-console -- Phase 2.6 will replace
-      console.log(`\n  ${C.info("❓")} ${question}`);
+      // Leading blank-line separator + 2-space-indent `❓ <question>`
+      // line. Plain level preserves the `C.info` colour wrap on the
+      // icon (LEVEL_COLOR[plain] is identity, so any inner SGR
+      // survives byte-for-byte).
+      ui.emitNotification({
+        level: "plain",
+        kind: "generic",
+        indent: "",
+        message: "",
+      });
+      ui.emitNotification({
+        level: "plain",
+        kind: "generic",
+        icon: C.info("❓"),
+        message: question,
+      });
       if (choices && choices.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log(`     ${C.dim(`(auto: ${choices[0]})`)}`);
+        ui.emitNotification({
+          level: "plain",
+          kind: "generic",
+          indent: "     ",
+          message: C.dim(`(auto: ${choices[0]})`),
+        });
         return { answer: choices[0], wasFreeform: false };
       }
-      // eslint-disable-next-line no-console
-      console.log(`     ${C.dim("(auto: yes)")}`);
+      ui.emitNotification({
+        level: "plain",
+        kind: "generic",
+        indent: "     ",
+        message: C.dim("(auto: yes)"),
+      });
       return { answer: "yes", wasFreeform: true };
     }
 

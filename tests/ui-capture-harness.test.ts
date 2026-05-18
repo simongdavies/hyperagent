@@ -140,7 +140,7 @@ describe("event handler — golden flows", () => {
 
   it("renders an assistant.usage stats line after streamed content", async () => {
     // After streamed text the handler emits "\n" so stats land on a
-    // fresh line, then prints "📊 ..." via printUsageStats.
+    // fresh line, then prints "📊 ..." via TerminalUI.emitUsage.
     const e = makeEventFactory();
     const events = [
       e.turnStart("turn-1"),

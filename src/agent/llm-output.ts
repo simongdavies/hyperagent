@@ -234,16 +234,6 @@ export function formatUsageStats(d: UsageData): string | null {
 }
 
 /**
- * Print a usage stats line to the console with the 📊 icon.
- *
- * @param stats - Formatted stats string from `formatUsageStats()`
- * @param indent - Leading whitespace (differs between main "  " and audit "     ")
- */
-export function printUsageStats(stats: string, indent: string): void {
-  console.log(`${indent}${C.dim("📊 " + stats)}`);
-}
-
-/**
  * Format a session token summary for /tokens command or exit display.
  * Returns an array of lines (without leading newline).
  */
