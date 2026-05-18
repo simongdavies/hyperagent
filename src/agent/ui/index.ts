@@ -24,3 +24,9 @@ export type {
 } from "./events.js";
 export { NullUI } from "./null-ui.js";
 export { TerminalUI, type TerminalUIOptions } from "./terminal-ui.js";
+export {
+  JsonLinesUI,
+  JSON_LINES_PROTOCOL_VERSION,
+  type JsonLinesUIOptions,
+  type JsonLinesWriter,
+} from "./json-lines-ui.js";
