@@ -239,6 +239,44 @@ describe("TerminalUI.askText", () => {
   });
 });
 
+describe("TerminalUI.askInline", () => {
+  // `askInline` is the form-style affordance (Phase 3d). Unlike
+  // `askText` it doesn't render its own styled question block — it
+  // forwards the caller-supplied prompt to readline verbatim. Used
+  // by `pluginManager.promptConfig` for inline `key: ` fields.
+  let cap: StdioCapture;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cap = captureStdio();
+  });
+  afterEach(() => {
+    cap.restore();
+    vi.useRealTimers();
+  });
+
+  it("forwards the prompt to readline verbatim and returns trimmed answer", async () => {
+    const rl = makeFakeReadline(["  yes  "]);
+    const ui = makeUI(rl);
+    const answer = await ui.askInline("    timeout [30000]: ");
+    expect(answer).toBe("yes");
+    // The readline mock recorded the exact prompt we sent — no
+    // styled question block was prepended by TerminalUI.
+    expect(vi.mocked(rl.question).mock.calls[0]?.[0]).toBe(
+      "    timeout [30000]: ",
+    );
+  });
+
+  it("no readline: returns empty string without writing the prompt anywhere", async () => {
+    const ui = makeUI(null);
+    const answer = await ui.askInline("    foo: ");
+    expect(answer).toBe("");
+    // No prompt block rendered: stdout stays clean. (Form-style
+    // prompts go straight to readline; with no readline there is
+    // nothing to render.)
+    expect(cap.stdout()).not.toContain("foo:");
+  });
+});
+
 describe("TerminalUI.ask* — live readline (handles /new swaps)", () => {
   let cap: StdioCapture;
   beforeEach(() => {
@@ -289,6 +327,13 @@ describe("NullUI.ask* — rejects rather than silently defaulting", () => {
     const ui: AgentUI = new NullUI();
     await expect(ui.askText({ question: "?" })).rejects.toThrow(
       /NullUI does not support askText/,
+    );
+  });
+
+  it("askInline rejects with a descriptive error", async () => {
+    const ui: AgentUI = new NullUI();
+    await expect(ui.askInline("prompt> ")).rejects.toThrow(
+      /NullUI does not support askInline/,
     );
   });
 });

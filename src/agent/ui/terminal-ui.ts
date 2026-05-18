@@ -594,6 +594,31 @@ export class TerminalUI implements AgentUI {
     return raw.trim();
   }
 
+  /**
+   * Inline freeform prompt — renders the caller-supplied prompt
+   * verbatim through readline (no styled question block) and
+   * returns the trimmed reply. Used by form-style flows
+   * (plugin-config) that pre-format each field as a single line.
+   *
+   * The readline `question(prompt)` call writes the prompt straight
+   * to stdout — unlike `_log` it does NOT pass through the
+   * `--no-color` SGR-stripping pipeline. Callers are expected to
+   * pass an already-uncoloured prompt for form-style fields, which
+   * matches today's plugin-config bytes. The trade-off is documented
+   * in the port-level JSDoc on `askInline`.
+   */
+  async askInline(prompt: string): Promise<string> {
+    this._spinner.stop();
+    const rl = this._opts.readlineInstance;
+    if (!rl) {
+      // No interactive input — return empty string and let the
+      // caller decide how to surface "no answer".
+      return "";
+    }
+    const raw = await rl.question(prompt);
+    return raw.trim();
+  }
+
   // ── Paste-buffer drain ─────────────────────────────────────────
 
   /**

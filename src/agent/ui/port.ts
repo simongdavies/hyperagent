@@ -198,6 +198,29 @@ export interface AgentUI {
    */
   askText(payload: TextQuestion): Promise<string>;
 
+  /**
+   * Ask the user for a single line of freeform text using a
+   * caller-formatted **inline** prompt — the string is rendered
+   * verbatim and the user's reply is read on the same line.
+   *
+   * This is the form-style affordance used by flows that present
+   * many tight `key (description) [default]: ` pairs (today: plugin
+   * configuration). The full styled question block that `askText`
+   * renders would visually break those flows, so `askInline` lets
+   * the caller own the prompt formatting and `TerminalUI` just
+   * forwards it to readline.
+   *
+   * Structured UIs (`JsonLinesUI`, future GUI) surface the prompt
+   * however suits their medium: an inline input field, a JSON event
+   * carrying the verbatim prompt string, etc. Callers that need
+   * rich form semantics should add a richer payload type, not
+   * overload this string-only contract.
+   *
+   * Resolves with the user's trimmed answer; empty string when no
+   * interactive input is available.
+   */
+  askInline(prompt: string): Promise<string>;
+
   // ── Paste-buffer drain ─────────────────────────────────────────
 
   /**

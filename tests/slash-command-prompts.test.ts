@@ -49,7 +49,6 @@ import type {
 import type { AgentUI } from "../src/agent/ui/port.js";
 import type { SlashCommandDeps } from "../src/agent/slash-commands.js";
 import { makeTestState } from "./ui-harness/test-state.js";
-import type { Interface as ReadlineInterface } from "node:readline/promises";
 
 // ── 1. Structural regression guard ──────────────────────────────────
 
@@ -128,12 +127,17 @@ function makeSpyUI(
     return reply ?? { answer: p.choices[0] ?? "", wasFreeform: false };
   });
   const drainPasteBuffer = vi.fn(async (): Promise<void> => {});
+  // `askInline` isn't exercised by these tests (no plugin-config flow);
+  // wired as a vi.fn no-op so the SpyUI satisfies the wider AgentUI
+  // surface and a stray call would still be diagnosable.
+  const askInline = vi.fn(async (_prompt: string): Promise<string> => "");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ui: any = {
     askApproval,
     askText,
     askChoice,
+    askInline,
     drainPasteBuffer,
     emitText() {},
     emitReasoning() {},
@@ -202,11 +206,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
     const ui = makeSpyUI({ approval: "no" });
     const deps = makeDeps(ui);
 
-    const handled = await slash.handleSlashCommand(
-      "/skills delete demo",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    const handled = await slash.handleSlashCommand("/skills delete demo", deps);
 
     expect(handled).toBe(true);
     expect(ui.approvals).toHaveLength(1);
@@ -223,11 +223,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
     const ui = makeSpyUI({ approval: "yes" });
     const deps = makeDeps(ui);
 
-    await slash.handleSlashCommand(
-      "/skills delete demo",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await slash.handleSlashCommand("/skills delete demo", deps);
 
     const { userSkillExists } = await import("../src/agent/skill-writer.js");
     expect(userSkillExists("demo")).toBe(false);
@@ -237,11 +233,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
     const ui = makeSpyUI();
     const deps = makeDeps(ui, /* autoApprove */ true);
 
-    await slash.handleSlashCommand(
-      "/skills delete demo",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await slash.handleSlashCommand("/skills delete demo", deps);
 
     expect(ui.approvals).toHaveLength(0);
     expect((ui.askApproval as Mock).mock.calls).toHaveLength(0);
@@ -253,11 +245,7 @@ describe("/skills delete — destructive confirmation prompt", () => {
     const ui = makeSpyUI({ approval: "no" });
     const deps = makeDeps(ui);
 
-    await slash.handleSlashCommand(
-      "/skills delete demo",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await slash.handleSlashCommand("/skills delete demo", deps);
 
     expect((ui.drainPasteBuffer as Mock).mock.calls).toHaveLength(1);
   });
@@ -312,11 +300,7 @@ describe("/resume — session picker text prompt", () => {
       },
     ]);
 
-    const handled = await slash.handleSlashCommand(
-      "/resume",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    const handled = await slash.handleSlashCommand("/resume", deps);
 
     expect(handled).toBe(true);
     expect(ui.texts).toHaveLength(1);
@@ -334,11 +318,7 @@ describe("/resume — session picker text prompt", () => {
       },
     ]);
 
-    const handled = await slash.handleSlashCommand(
-      "/resume",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    const handled = await slash.handleSlashCommand("/resume", deps);
 
     expect(handled).toBe(true);
     // Empty answer = cancel; no resumeSession call.

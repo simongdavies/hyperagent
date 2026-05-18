@@ -1195,22 +1195,26 @@ describe("promptConfig skipKeys", () => {
     // Apply inline config first for 'greeting'
     manager.applyInlineConfig("test-plugin", { greeting: "pre-set" });
 
-    // Create a mock readline that answers any remaining prompts
-    const mockRl = {
-      question: vi.fn().mockResolvedValue(""),
-    } as unknown as import("node:readline/promises").Interface;
+    // Mock the AgentUI surface that `promptConfig` drives — only
+    // `askInline` and `emitNotification` are exercised by this flow.
+    // Returning "" for every prompt keeps the existing test contract
+    // (every prompted field falls through to its schema default).
+    const askInline = vi.fn(async (_prompt: string) => "");
+    const mockUi = {
+      askInline,
+      emitNotification: vi.fn(),
+    } as unknown as import("../src/agent/ui/port.js").AgentUI;
 
     // Call promptConfig with skipKeys containing 'greeting'
     const skipKeys = new Set(["greeting"]);
-    await manager.promptConfig(mockRl, "test-plugin", skipKeys);
+    await manager.promptConfig(mockUi, "test-plugin", skipKeys);
 
     // The pre-set value should be preserved
     expect(manager.getPlugin("test-plugin")!.config.greeting).toBe("pre-set");
     // The mock should NOT have been called for 'greeting'
     // (it may have been called for other schema fields though)
-    const calls = vi.mocked(mockRl.question).mock.calls;
-    const greetingPrompted = calls.some((c: unknown[]) =>
-      (c[0] as string).toLowerCase().includes("greeting"),
+    const greetingPrompted = askInline.mock.calls.some((c) =>
+      c[0].toLowerCase().includes("greeting"),
     );
     expect(greetingPrompted).toBe(false);
   });

@@ -17,8 +17,8 @@ import {
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import * as readline from "node:readline/promises";
 
+import type { AgentUI } from "../agent/ui/port.js";
 import type {
   PluginManifest,
   PluginConfig,
@@ -989,13 +989,13 @@ export function createPluginManager(pluginsDir: string) {
    * silently. This avoids config fatigue for plugins with many
    * tuneable fields (e.g. 17-field fetch vs 2-field fs-read).
    *
-   * @param rl — readline interface for user input
+   * @param ui — agent UI port driving the per-field prompts
    * @param name — plugin name
    * @param skipKeys — keys to skip (already provided via inline config)
    * @returns resolved config, or null if plugin not found
    */
   async function promptConfig(
-    rl: readline.Interface,
+    ui: AgentUI,
     name: string,
     skipKeys?: ReadonlySet<string>,
     autoApprove?: boolean,
@@ -1027,7 +1027,7 @@ export function createPluginManager(pluginsDir: string) {
       }
 
       const value = await promptSingleField(
-        rl,
+        ui,
         key,
         entry as ConfigSchemaEntry,
         autoApprove,
@@ -1425,13 +1425,24 @@ export function createPluginManager(pluginsDir: string) {
  * Prompt the user for a single config field value.
  * Handles type coercion and default values.
  *
- * @param rl — readline interface
+ * Output flows through the supplied `AgentUI`:
+ *   - The field prompt is rendered via `ui.askInline` so the
+ *     inline `key (description) [default]: ` form layout is
+ *     preserved byte-for-byte under `TerminalUI`.
+ *   - Auto-approve display lines and inline warnings (re-prompt
+ *     on required-but-empty, invalid-number coercion) flow through
+ *     `ui.emitNotification` with `kind: "plugin_config"` so
+ *     structured UIs can route them — previously they bypassed the
+ *     UI entirely via `console.log` / `console.error`.
+ *
+ * @param ui — agent UI port driving the prompt and notification
+ *             output for this field
  * @param key — config field name
  * @param entry — schema entry describing the field
  * @returns resolved value
  */
 async function promptSingleField(
-  rl: readline.Interface,
+  ui: AgentUI,
   key: string,
   entry: ConfigSchemaEntry,
   autoApprove?: boolean,
@@ -1449,11 +1460,24 @@ async function promptSingleField(
       const displayVal = Array.isArray(entry.default)
         ? (entry.default as string[]).join(",")
         : String(entry.default);
-      console.log(`${prompt}${displayVal} (auto)`);
+      // `indent: ""` — the prompt already carries its own leading
+      // four-space indent. `level: "plain"` — preserves the original
+      // uncoloured `console.log` rendering byte-for-byte.
+      ui.emitNotification({
+        level: "plain",
+        kind: "plugin_config",
+        indent: "",
+        message: `${prompt}${displayVal} (auto)`,
+      });
       return entry.default;
     }
     // No default — fallback to empty-ish value
-    console.log(`${prompt}(auto — no default)`);
+    ui.emitNotification({
+      level: "plain",
+      kind: "plugin_config",
+      indent: "",
+      message: `${prompt}(auto — no default)`,
+    });
     switch (entry.type) {
       case "array":
         return [];
@@ -1466,15 +1490,24 @@ async function promptSingleField(
     }
   }
 
-  const answer = await rl.question(prompt);
+  const answer = await ui.askInline(prompt);
   const trimmed = answer.trim();
 
   // Required field with empty answer — re-prompt until non-empty.
   // Fields are required when they have no default AND have required: true.
   if (trimmed === "" && entry.default === undefined) {
     if (entry.required) {
-      console.error(`    ⚠️  This field is required — cannot be empty.`);
-      return promptSingleField(rl, key, entry);
+      // Originally written to stderr via `console.error`; routing
+      // through the UI port means transcripts now capture the
+      // warning along with everything else. Bytes are byte-identical
+      // on the user's terminal.
+      ui.emitNotification({
+        level: "plain",
+        kind: "plugin_config",
+        indent: "    ",
+        message: `⚠️  This field is required — cannot be empty.`,
+      });
+      return promptSingleField(ui, key, entry);
     }
     // No default, not required — return type-appropriate empty value
     switch (entry.type) {
@@ -1507,7 +1540,12 @@ async function promptSingleField(
     case "number": {
       const n = Number(trimmed);
       if (!Number.isFinite(n)) {
-        console.error(`    ⚠️  Invalid number "${trimmed}", using default`);
+        ui.emitNotification({
+          level: "plain",
+          kind: "plugin_config",
+          indent: "    ",
+          message: `⚠️  Invalid number "${trimmed}", using default`,
+        });
         return (entry.default as number) ?? 0;
       }
       return n;

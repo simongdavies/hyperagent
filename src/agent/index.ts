@@ -1167,10 +1167,7 @@ function makeSessionId(): string {
  * Handle slash commands from the REPL.
  * Delegates to the extracted implementation in agent/slash-commands.ts.
  */
-async function handleSlashCommand(
-  rawInput: string,
-  rl: readline.Interface,
-): Promise<boolean> {
+async function handleSlashCommand(rawInput: string): Promise<boolean> {
   const slashDeps: SlashCommandDeps = {
     state,
     ui,
@@ -1196,7 +1193,7 @@ async function handleSlashCommand(
       }
     },
   };
-  return handleSlashCommandImpl(rawInput, rl, slashDeps);
+  return handleSlashCommandImpl(rawInput, slashDeps);
 }
 
 // ── Tool Definition ──────────────────────────────────────────────────
@@ -3228,7 +3225,7 @@ async function managePluginImpl(params: {
     // After it returns, the plugin is enabled (or rejected by policy).
     const syntheticInput = `/plugin enable ${params.name}${configStr}`;
     try {
-      await handleSlashCommand(syntheticInput, rl);
+      await handleSlashCommand(syntheticInput);
       ui.setActivity(null); // ensure spinner is off after
 
       // CRITICAL: Sync plugins to sandbox immediately — the slash
@@ -4347,7 +4344,7 @@ async function applyProfileImpl(
 
     const syntheticInput = `/plugin enable ${plugin.name}${configStr}`;
     try {
-      await handleSlashCommand(syntheticInput, rl);
+      await handleSlashCommand(syntheticInput);
       ui.setActivity(null); // ensure spinner is off after
 
       // Check if enable succeeded
@@ -7150,7 +7147,7 @@ async function main(): Promise<void> {
           console.log(
             `${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}${C.dim("(invoking skill: " + skillName + ")")}`,
           );
-          const handled = await handleSlashCommand(`/${skillName}`, rl);
+          const handled = await handleSlashCommand(`/${skillName}`);
           if (!handled) {
             // Skill detected but not a slash command — send to SDK
             // so the session can load the skill instructions.
@@ -7166,7 +7163,7 @@ async function main(): Promise<void> {
           console.log(
             `${ANSI.bold}${ANSI.cyan}You: ${ANSI.reset}${C.dim("(auto-applying: " + cmd + ")")}`,
           );
-          await handleSlashCommand(cmd, rl);
+          await handleSlashCommand(cmd);
           if (pluginManager.consumeSandboxDirty()) {
             await syncPluginsToSandbox();
           }
@@ -7281,7 +7278,7 @@ async function main(): Promise<void> {
         ) {
           trimmed = `/${skillsParts[1]}`;
         }
-        const handled = await handleSlashCommand(trimmed, rl);
+        const handled = await handleSlashCommand(trimmed);
         if (handled) continue;
         // Not handled — could be a skill (/<skill-name>).
         // Fall through to processMessage so the SDK can invoke it.
@@ -7372,7 +7369,7 @@ async function main(): Promise<void> {
           const normalised = answer.trim().toLowerCase();
           if (normalised === "" || normalised === "y" || normalised === "yes") {
             console.log(`  ${C.info("⚡ Executing:")} ${C.val(cmd)}`);
-            await handleSlashCommand(cmd, rl);
+            await handleSlashCommand(cmd);
             // Auto-continue — tell the LLM the config changed
             // so it picks up where it left off. We DON'T re-send
             // the original input (it might be a mistyped command).
@@ -7411,7 +7408,7 @@ async function main(): Promise<void> {
             // Execute ALL suggested commands sequentially
             for (const cmd of suggestions) {
               console.log(`  ${C.info("⚡ Executing:")} ${C.val(cmd)}`);
-              await handleSlashCommand(cmd, rl);
+              await handleSlashCommand(cmd);
             }
             pendingContinuation =
               "Done — I applied all those configuration changes. Please continue with what I asked.";
@@ -7420,7 +7417,7 @@ async function main(): Promise<void> {
             if (pick >= 1 && pick <= suggestions.length) {
               const cmd = suggestions[pick - 1];
               console.log(`  ${C.info("⚡ Executing:")} ${C.val(cmd)}`);
-              await handleSlashCommand(cmd, rl);
+              await handleSlashCommand(cmd);
               // Auto-continue — see single-command path for rationale.
               pendingContinuation =
                 "Done — I applied that configuration change. Please continue with what I asked.";

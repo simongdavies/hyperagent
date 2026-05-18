@@ -4,7 +4,10 @@
 // dependencies. All runtime singletons are passed via SlashCommandDeps.
 // ─────────────────────────────────────────────────────────────────────
 
-import type { Interface as ReadlineInterface } from "node:readline/promises";
+// Note: This file no longer imports `node:readline/promises` — modal input
+// flows entirely through the `AgentUI` port. The `pluginManager.promptConfig`
+// + paste-buffer-drain migrations (Phase 3c/3d) removed the last call sites
+// that needed a raw readline handle.
 import type { CopilotSession, ModelInfo } from "@github/copilot-sdk";
 import type { WriteStream } from "node:fs";
 import { createWriteStream, mkdirSync, existsSync } from "node:fs";
@@ -134,7 +137,6 @@ export interface SlashCommandDeps {
  */
 export async function handleSlashCommand(
   rawInput: string,
-  rl: ReadlineInterface,
   deps: SlashCommandDeps,
 ): Promise<boolean> {
   // Destructure deps so the function body can reference them
@@ -1528,7 +1530,7 @@ export async function handleSlashCommand(
                 );
                 console.log(`     Fields: ${uncoveredFields.join(", ")}`);
                 await pluginManager.promptConfig(
-                  rl,
+                  ui,
                   pluginName,
                   coveredKeys,
                   state.autoApprove,
@@ -1543,7 +1545,7 @@ export async function handleSlashCommand(
               if (Object.keys(schema).length > 0) {
                 console.log(`\n  ⚙️  Configure "${pluginName}":`);
                 await pluginManager.promptConfig(
-                  rl,
+                  ui,
                   pluginName,
                   undefined,
                   state.autoApprove,
@@ -1642,7 +1644,6 @@ export async function handleSlashCommand(
                 }
                 await handleSlashCommand(
                   `/plugin enable ${comp}${inlineConfig}`,
-                  rl,
                   deps,
                 );
               }
@@ -1873,7 +1874,7 @@ export async function handleSlashCommand(
               );
               console.log(`     Fields: ${uncoveredFields.join(", ")}`);
               await pluginManager.promptConfig(
-                rl,
+                ui,
                 pluginName,
                 coveredKeys,
                 state.autoApprove,
@@ -1886,7 +1887,7 @@ export async function handleSlashCommand(
             if (Object.keys(schema).length > 0) {
               console.log(`\n  ⚙️  Configure "${pluginName}":`);
               await pluginManager.promptConfig(
-                rl,
+                ui,
                 pluginName,
                 undefined,
                 state.autoApprove,
@@ -1973,7 +1974,6 @@ export async function handleSlashCommand(
               }
               await handleSlashCommand(
                 `/plugin enable ${comp}${inlineConfig}`,
-                rl,
                 deps,
               );
             }
@@ -2407,7 +2407,7 @@ export async function handleSlashCommand(
       // command auto-apply, /save-skill prompts) here as well.
       const skillArg = parts[1]?.trim();
       if (skillArg && sub !== "list") {
-        return await handleSlashCommand(`/${skillArg}`, rl, deps);
+        return await handleSlashCommand(`/${skillArg}`, deps);
       }
 
       // /skills (no args) or /skills list — list system + user skills,
@@ -2683,7 +2683,6 @@ export async function handleSlashCommand(
             : "";
           await handleSlashCommand(
             `/plugin enable ${plugin.name}${configStr}`,
-            rl,
             deps,
           );
         }

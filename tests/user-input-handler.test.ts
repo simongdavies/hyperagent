@@ -66,6 +66,13 @@ class SpyUI implements AgentUI {
     this.approvalCalls.push(payload);
     return Promise.resolve("no");
   }
+  askInline(): Promise<string> {
+    // Not exercised by user-input-handler — guard with an explicit
+    // rejection so accidental wiring drift surfaces immediately.
+    return Promise.reject(
+      new Error("askInline not expected from user-input-handler"),
+    );
+  }
   setActivity(): void {
     this.setActivityCalls += 1;
   }

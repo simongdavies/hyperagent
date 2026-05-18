@@ -103,6 +103,12 @@ export class NullUI implements AgentUI {
     );
   }
 
+  askInline(): Promise<string> {
+    return Promise.reject(
+      new Error("NullUI does not support askInline — install an AgentUI"),
+    );
+  }
+
   // ── Paste-buffer drain ─────────────────────────────────────────
   //
   // No readline → no paste buffer to drain. Resolve immediately so

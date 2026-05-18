@@ -161,7 +161,8 @@ export type NotificationKind =
   | "audit_phase"
   | "audit_receiving"
   | "extended_reasoning"
-  | "pending_attachments";
+  | "pending_attachments"
+  | "plugin_config";
 
 /** Generic notification — covers info / warning / error / success lines. */
 export interface NotificationPayload {

@@ -28,7 +28,6 @@ import type {
 } from "../src/agent/ui/events.js";
 import type { AgentUI } from "../src/agent/ui/port.js";
 import { makeTestState } from "./ui-harness/test-state.js";
-import type { Interface as ReadlineInterface } from "node:readline/promises";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -72,6 +71,9 @@ class SpyUI implements AgentUI {
   }
   askText(): Promise<string> {
     return Promise.reject(new Error("askText not expected in /attach"));
+  }
+  askInline(): Promise<string> {
+    return Promise.reject(new Error("askInline not expected in /attach"));
   }
 
   // Paste-drain is a no-op for the headless test surface.
@@ -127,11 +129,7 @@ describe("/attach — list pending", () => {
   it("reports 'No pending attachments' when queue is empty", async () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
-    const handled = await handleSlashCommand(
-      "/attach",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    const handled = await handleSlashCommand("/attach", deps);
     expect(handled).toBe(true);
     expect(spy.notifications).toHaveLength(1);
     expect(spy.notifications[0].level).toBe("info");
@@ -148,11 +146,7 @@ describe("/attach — list pending", () => {
       { type: "file", path: "/x/b.csv", displayName: "b.csv" },
     );
 
-    await handleSlashCommand(
-      "/attach",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand("/attach", deps);
     expect(spy.lastLevel()).toBe("info");
     expect(spy.lastMessage()).toBe("Pending attachments (2): a.png, b.csv");
     // Listing must not mutate the queue.
@@ -166,11 +160,7 @@ describe("/attach clear", () => {
   it("emits a friendly message when nothing is queued", async () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
-    await handleSlashCommand(
-      "/attach clear",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand("/attach clear", deps);
     expect(spy.lastLevel()).toBe("success");
     expect(spy.lastMessage()).toBe("No pending attachments to clear.");
   });
@@ -183,11 +173,7 @@ describe("/attach clear", () => {
       { type: "file", path: "/x/b.csv", displayName: "b.csv" },
     );
 
-    await handleSlashCommand(
-      "/attach clear",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand("/attach clear", deps);
     expect(deps.state.pendingAttachments).toEqual([]);
     expect(spy.lastLevel()).toBe("success");
     expect(spy.lastMessage()).toBe("Cleared 2 pending attachments.");
@@ -202,11 +188,7 @@ describe("/attach clear", () => {
       displayName: "a.png",
     });
 
-    await handleSlashCommand(
-      "/attach clear",
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand("/attach clear", deps);
     expect(spy.lastMessage()).toBe("Cleared 1 pending attachment.");
   });
 });
@@ -217,11 +199,7 @@ describe("/attach <path> — enqueue", () => {
   it("queues a single file and emits a success line", async () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
-    await handleSlashCommand(
-      `/attach ${fileA}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${fileA}`, deps);
     expect(deps.state.pendingAttachments).toEqual([
       { type: "file", path: fileA, displayName: "a.png" },
     ]);
@@ -232,11 +210,7 @@ describe("/attach <path> — enqueue", () => {
   it("queues multiple files in order in a single call", async () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
-    await handleSlashCommand(
-      `/attach ${fileA} ${fileB}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${fileA} ${fileB}`, deps);
     expect(
       deps.state.pendingAttachments.map((a) =>
         "displayName" in a ? a.displayName : "",
@@ -254,11 +228,7 @@ describe("/attach <path> — enqueue", () => {
       path: "/preexisting",
       displayName: "preexisting",
     });
-    await handleSlashCommand(
-      `/attach ${fileA}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${fileA}`, deps);
     expect(
       deps.state.pendingAttachments.map((a) =>
         "displayName" in a ? a.displayName : "",
@@ -270,11 +240,7 @@ describe("/attach <path> — enqueue", () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
     const missing = join(dir, "missing.png");
-    await handleSlashCommand(
-      `/attach ${missing}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${missing}`, deps);
     expect(deps.state.pendingAttachments).toEqual([]);
     expect(spy.lastLevel()).toBe("error");
     expect(spy.lastMessage()).toMatch(/^\/attach:/);
@@ -284,11 +250,7 @@ describe("/attach <path> — enqueue", () => {
   it("rejects a directory with a clear message", async () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
-    await handleSlashCommand(
-      `/attach ${subdir}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${subdir}`, deps);
     expect(deps.state.pendingAttachments).toEqual([]);
     expect(spy.lastLevel()).toBe("error");
     expect(spy.lastMessage()).toMatch(/^\/attach:/);
@@ -299,11 +261,7 @@ describe("/attach <path> — enqueue", () => {
     const spy = new SpyUI();
     const deps = makeDeps(spy);
     const missing = join(dir, "missing.png");
-    await handleSlashCommand(
-      `/attach ${fileA} ${missing} ${fileB}`,
-      null as unknown as ReadlineInterface,
-      deps,
-    );
+    await handleSlashCommand(`/attach ${fileA} ${missing} ${fileB}`, deps);
     // Neither the good entry before, nor the good entry after, lands.
     expect(deps.state.pendingAttachments).toEqual([]);
     expect(spy.lastLevel()).toBe("error");
