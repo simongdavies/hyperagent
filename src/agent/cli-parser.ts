@@ -605,3 +605,50 @@ export function parseCliArgs(
 
   return config;
 }
+
+/**
+ * Propagate CLI flags into the environment so downstream modules
+ * (`sandbox-tool.js`, the Copilot SDK, the MCP client manager, etc.)
+ * pick them up without having to thread `cli` through every import.
+ *
+ * Behaviour is exhaustive and deterministic: every always-on
+ * mapping fires unconditionally; the verbose/debug flags set their
+ * env mirror only when truthy (so a clean shell doesn't have a
+ * stray `HYPERAGENT_VERBOSE=` lingering from a previous run).
+ *
+ * Extracted from `index.ts`'s top-level setup so it can be unit
+ * tested directly — without spawning the agent — and so the
+ * behaviour stays in one place rather than two scattered blocks.
+ *
+ * @param cli - Parsed CLI config (typically from `parseCliArgs()`).
+ * @param env - Target environment object. Defaults to `process.env`;
+ *   tests pass a throwaway record to assert on the writes without
+ *   leaking into the real process environment.
+ */
+export function applyCliEnvOverrides(
+  cli: CliConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  // Always-on numeric / string propagation. Sandbox-tool.js and the
+  // Copilot SDK read these env vars at boot.
+  env.COPILOT_MODEL = cli.model;
+  env.HYPERLIGHT_CPU_TIMEOUT_MS = cli.cpuTimeout;
+  env.HYPERLIGHT_WALL_TIMEOUT_MS = cli.wallTimeout;
+  env.HYPERAGENT_SEND_TIMEOUT_MS = cli.sendTimeout;
+  env.HYPERLIGHT_HEAP_SIZE_MB = cli.heapSize;
+  env.HYPERLIGHT_SCRATCH_SIZE_MB = cli.scratchSize;
+
+  // Large-output threshold mirrored to all three env names the SDK
+  // and our own tool handler look at. Keeping them in sync at boot
+  // guarantees the SDK's fallback path uses the same value we do.
+  env.HYPERAGENT_OUTPUT_THRESHOLD_BYTES = cli.outputThreshold;
+  env.COPILOT_LARGE_OUTPUT_THRESHOLD_BYTES = cli.outputThreshold;
+  env.COPILOT_LARGE_OUTPUT_MAX_BYTES = cli.outputThreshold;
+
+  // Conditional flags — set only when truthy so a downstream env-var
+  // check like `process.env.HYPERAGENT_VERBOSE === "1"` doesn't see
+  // a stale "0" or empty string from a previous run.
+  if (cli.verbose) env.HYPERAGENT_VERBOSE = "1";
+  if (cli.veryVerbose) env.HYPERAGENT_VERY_VERBOSE = "1";
+  if (cli.debug) env.HYPERAGENT_DEBUG = "1";
+}

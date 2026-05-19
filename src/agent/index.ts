@@ -52,7 +52,11 @@ import {
 import { deepAudit, formatAuditResult } from "../plugin-system/auditor.js";
 import { extractSuggestedCommands } from "./command-suggestions.js";
 import { ANSI, C } from "./ansi.js";
-import { type CliConfig, parseCliArgs } from "./cli-parser.js";
+import {
+  applyCliEnvOverrides,
+  type CliConfig,
+  parseCliArgs,
+} from "./cli-parser.js";
 import { getVersion, getVersionString } from "./version.js";
 import { closestMatch } from "./fuzzy-match.js";
 import { buildBufferOverflowHint } from "./buffer-overflow.js";
@@ -225,21 +229,12 @@ if (cli.ipcStdio) {
   JsonLinesUI.redirectConsoleLogToStderr();
 }
 
-// Propagate CLI → env vars (so sandbox-tool.js and other modules pick them up)
-process.env.COPILOT_MODEL = cli.model;
-process.env.HYPERLIGHT_CPU_TIMEOUT_MS = cli.cpuTimeout;
-process.env.HYPERLIGHT_WALL_TIMEOUT_MS = cli.wallTimeout;
-process.env.HYPERAGENT_SEND_TIMEOUT_MS = cli.sendTimeout;
-process.env.HYPERLIGHT_HEAP_SIZE_MB = cli.heapSize;
-process.env.HYPERLIGHT_SCRATCH_SIZE_MB = cli.scratchSize;
-
-// Propagate output threshold to SDK env vars so the CLI's own large-output
-// handling aligns with our threshold. We handle interception ourselves in
-// the tool handler (using skipLargeOutputProcessing), but set these so the
-// CLI's VB() fallback uses the same value.
-process.env.HYPERAGENT_OUTPUT_THRESHOLD_BYTES = cli.outputThreshold;
-process.env.COPILOT_LARGE_OUTPUT_THRESHOLD_BYTES = cli.outputThreshold;
-process.env.COPILOT_LARGE_OUTPUT_MAX_BYTES = cli.outputThreshold;
+// Propagate CLI → env vars in one shot so downstream modules
+// (sandbox-tool.js, the Copilot SDK, the MCP client manager, the
+// shared `isVerbose()` / `isDebug()` checks, etc.) pick them up
+// without having to thread `cli` through every import. Defined in
+// cli-parser.ts so the same wiring is unit-tested directly.
+applyCliEnvOverrides(cli);
 
 // ── Windows WHP surrogate pool sizing ────────────────────────────────
 // On Windows, two independent SurrogateProcessManagers (hyperlight-js +
@@ -311,11 +306,9 @@ if (cli.profile) {
   // configure_sandbox at runtime for buffer changes.
 }
 
-if (cli.verbose) process.env.HYPERAGENT_VERBOSE = "1";
-if (cli.veryVerbose) process.env.HYPERAGENT_VERY_VERBOSE = "1";
-if (cli.debug) process.env.HYPERAGENT_DEBUG = "1";
-
-// Conditionally allow the tuning tool through the gate
+// (HYPERAGENT_VERBOSE / HYPERAGENT_VERY_VERBOSE / HYPERAGENT_DEBUG env
+// mirrors are written by applyCliEnvOverrides above — here we just gate
+// the tuning tool.)
 if (cli.tune) ALLOWED_TOOLS.add("llm_thought");
 
 // ── Debug Log File ───────────────────────────────────────────────────
@@ -1110,6 +1103,15 @@ if (cli.reasoningEffort) {
     | "medium"
     | "high"
     | "xhigh";
+  state.sessionNeedsRebuild = true;
+} else if (cli.verbose && state.reasoningEffort === null) {
+  // `--verbose` on its own implies the user wants to *see* what the
+  // model is thinking. Reasoning streams are gated by
+  // `state.reasoningEffort` (null = off), so without this the
+  // verbose flag would silently no-op for any model that doesn't
+  // emit reasoning by default. Default to "high" — matches the
+  // default the `--show-reasoning` flag picks when used bare.
+  state.reasoningEffort = "high";
   state.sessionNeedsRebuild = true;
 }
 
@@ -6986,6 +6988,7 @@ async function main(): Promise<void> {
       ],
       ["Context", "infinite sessions (auto-compaction)"],
       ["Plugins", pluginSummary],
+      ["Verbose", state.verboseOutput ? "ON" : "OFF"],
     ];
     if (cli.showCode && process.env.HYPERAGENT_CODE_LOG) {
       configRows.push(["Code log", process.env.HYPERAGENT_CODE_LOG]);
