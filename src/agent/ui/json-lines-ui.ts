@@ -68,6 +68,24 @@ export const JSON_LINES_PROTOCOL_VERSION = 1;
 export type JsonLinesWriter = (chunk: string) => void;
 
 /**
+ * Payload of the `ready` frame emitted exactly once by
+ * {@link JsonLinesUI.emitReady} when the agent has finished booting
+ * and the IPC stdin reader is attached. Hosts use this as the
+ * handshake signal that they can start sending `user-input` frames.
+ *
+ * `protocolVersion` mirrors {@link JSON_LINES_PROTOCOL_VERSION} so a
+ * mismatched host can fail fast with a useful error.
+ */
+export interface ReadyPayload {
+  /** Wire protocol version the agent speaks. */
+  readonly protocolVersion: number;
+  /** Agent binary version string (e.g. `"0.6.2-alpha.26+e982c07"`). */
+  readonly agentVersion: string;
+  /** Currently-selected Copilot model id (e.g. `"claude-opus-4.6"`). */
+  readonly model: string;
+}
+
+/**
  * Construction options for {@link JsonLinesUI}.
  *
  * All fields are optional so unit tests can spin up a UI with no
@@ -213,6 +231,23 @@ export class JsonLinesUI implements AgentUI {
 
   emitNotification(payload: NotificationPayload): void {
     this._emit("notification", payload);
+  }
+
+  // ── Bootstrap handshake ────────────────────────────────────────
+
+  /**
+   * Emit the one-shot `ready` frame announcing that the agent has
+   * finished booting and the stdin reader is attached. Hosts should
+   * wait for this frame before sending `user-input` (any frames sent
+   * earlier may be buffered or dropped depending on startup timing).
+   *
+   * Not part of the {@link AgentUI} port — only the headless
+   * protocol surface emits it. {@link TerminalUI} has no analogue
+   * because the human-readable banner serves the same role for an
+   * interactive REPL.
+   */
+  emitReady(payload: ReadyPayload): void {
+    this._emit("ready", payload);
   }
 
   // ── Usage stats ────────────────────────────────────────────────
@@ -372,4 +407,38 @@ export class JsonLinesUI implements AgentUI {
   get pendingCount(): number {
     return this._pending.size;
   }
+
+  // ── Static helpers ─────────────────────────────────────────────
+
+  /**
+   * Redirect global `console.log` to stderr.
+   *
+   * In IPC mode stdout is reserved exclusively for the NDJSON wire
+   * stream — any stray `console.log` (boot banner, SDK chatter,
+   * future code we haven't audited) would corrupt the JSON-Lines
+   * protocol the host parses. {@link JsonLinesUI} writes its frames
+   * straight to `process.stdout.write`, bypassing `console`, so it
+   * is safe to redirect `console.log` globally for the life of the
+   * process.
+   *
+   * Stderr remains a normal byte stream the host can attach to for
+   * diagnostics. Leaks become visible-but-harmless instead of
+   * silent-but-fatal.
+   *
+   * Idempotent — calling it more than once is a no-op. Not
+   * reversible by design: IPC mode is a process-lifetime decision.
+   */
+  static redirectConsoleLogToStderr(): void {
+    const marker = console as unknown as Record<string, unknown>;
+    if (marker[REDIRECT_FLAG] === true) return;
+    console.log = console.error;
+    marker[REDIRECT_FLAG] = true;
+  }
 }
+
+/**
+ * Marker property set on `console` after
+ * {@link JsonLinesUI.redirectConsoleLogToStderr} runs once, so the
+ * helper is idempotent and tests can detect / reset it.
+ */
+const REDIRECT_FLAG = "__hyperagent_jsonLinesUI_logRedirected__";

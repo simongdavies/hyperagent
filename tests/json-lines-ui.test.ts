@@ -28,7 +28,7 @@
 // changes here are intentional protocol changes.
 // ─────────────────────────────────────────────────────────────────────
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   JSON_LINES_PROTOCOL_VERSION,
   JsonLinesUI,
@@ -292,6 +292,98 @@ describe("JsonLinesUI — notifications & usage", () => {
         },
       },
     ]);
+  });
+});
+
+describe("JsonLinesUI — bootstrap handshake", () => {
+  it("emitReady: writes one ready frame echoing every payload field verbatim", () => {
+    const { ui, frames } = makeUI();
+    ui.emitReady({
+      protocolVersion: JSON_LINES_PROTOCOL_VERSION,
+      agentVersion: "0.6.2-alpha.27+abc1234",
+      model: "claude-opus-4.6",
+    });
+    expect(parseFrames(frames)).toEqual([
+      {
+        v: 1,
+        t: "ready",
+        data: {
+          protocolVersion: JSON_LINES_PROTOCOL_VERSION,
+          agentVersion: "0.6.2-alpha.27+abc1234",
+          model: "claude-opus-4.6",
+        },
+      },
+    ]);
+  });
+});
+
+describe("JsonLinesUI.redirectConsoleLogToStderr", () => {
+  // The helper mutates global `console` state. We snapshot the
+  // original references in `beforeEach` and restore them in
+  // `afterEach` so test ordering can't bleed state.
+  const REDIRECT_FLAG = "__hyperagent_jsonLinesUI_logRedirected__";
+  let originalLog: typeof console.log;
+  let originalError: typeof console.error;
+
+  beforeEach(() => {
+    originalLog = console.log;
+    originalError = console.error;
+    delete (console as unknown as Record<string, unknown>)[REDIRECT_FLAG];
+  });
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.error = originalError;
+    delete (console as unknown as Record<string, unknown>)[REDIRECT_FLAG];
+  });
+
+  it("rewires console.log to console.error so stray writes hit stderr", () => {
+    const errorSpy = vi.fn();
+    console.error = errorSpy;
+
+    JsonLinesUI.redirectConsoleLogToStderr();
+    console.log("hello", 42);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("hello", 42);
+  });
+
+  it("does not write to stdout after redirect", () => {
+    // The real stdout sink would corrupt the NDJSON wire stream, so
+    // we spy on it to prove no byte ever reaches it once the helper
+    // has run. `process.stdout.write` is the byte sink that
+    // `console.log` eventually invokes pre-redirect.
+    const stdoutSpy = vi.spyOn(process.stdout, "write");
+    // Replace console.error with a no-op so any redirected output
+    // does not actually print during the test run.
+    console.error = vi.fn();
+
+    JsonLinesUI.redirectConsoleLogToStderr();
+    console.log("must not reach stdout");
+
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    stdoutSpy.mockRestore();
+  });
+
+  it("is idempotent — calling twice leaves console.log pointing at the same target", () => {
+    console.error = vi.fn();
+
+    JsonLinesUI.redirectConsoleLogToStderr();
+    const afterFirst = console.log;
+    JsonLinesUI.redirectConsoleLogToStderr();
+    const afterSecond = console.log;
+
+    expect(afterFirst).toBe(afterSecond);
+  });
+
+  it("sets a marker on `console` so external callers can detect the redirect", () => {
+    expect(
+      (console as unknown as Record<string, unknown>)[REDIRECT_FLAG],
+    ).toBeUndefined();
+    JsonLinesUI.redirectConsoleLogToStderr();
+    expect((console as unknown as Record<string, unknown>)[REDIRECT_FLAG]).toBe(
+      true,
+    );
   });
 });
 

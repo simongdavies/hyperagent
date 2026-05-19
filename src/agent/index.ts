@@ -63,7 +63,12 @@ import {
 } from "./slash-commands.js";
 import { COMPLETION_STRINGS, renderHelp, renderTopicHelp } from "./commands.js";
 import { buildSystemMessage } from "./system-message.js";
-import { TerminalUI, JsonLinesUI, type AgentUI } from "./ui/index.js";
+import {
+  TerminalUI,
+  JsonLinesUI,
+  JSON_LINES_PROTOCOL_VERSION,
+  type AgentUI,
+} from "./ui/index.js";
 import { makeAuditProgressCallback } from "./audit-progress.js";
 import { createAgentState, type AgentState } from "./state.js";
 import {
@@ -204,6 +209,20 @@ if (cli.showVersion) {
 if (cli.mcpSetupCommand) {
   runMCPSetupCommand(cli.mcpSetupCommand, { contentRoot: CONTENT_ROOT });
   process.exit(0);
+}
+
+// ── IPC stdio: protect stdout against accidental writes ─────────────
+// In `--ipc-stdio` mode stdout is owned exclusively by the NDJSON
+// JSON-Lines protocol. Any stray `console.log` (boot banner, SDK
+// chatter, plugin audit progress, third-party module logs, …) would
+// corrupt the wire format the host parses. Redirecting at the
+// earliest possible point — right after CLI parsing, before any
+// other side-effects — catches everything between import time and
+// `main()`. `JsonLinesUI` writes its frames via
+// `process.stdout.write` directly, bypassing the global `console`,
+// so this redirect cannot break the protocol stream itself.
+if (cli.ipcStdio) {
+  JsonLinesUI.redirectConsoleLogToStderr();
 }
 
 // Propagate CLI → env vars (so sandbox-tool.js and other modules pick them up)
@@ -6885,108 +6904,121 @@ async function main(): Promise<void> {
   }
 
   // ── Banner ───────────────────────────────────────────────────
-  const { bold, magenta, cyan, green, dim, reset, yellow } = ANSI;
-  const versionStr = `v${getVersion()}`;
+  //
+  // The interactive REPL prints a startup banner (ASCII box,
+  // pre-release warning, configuration table) so the human sees
+  // what they're about to drive. In `--ipc-stdio` mode the host
+  // gets the equivalent metadata via the `ready` handshake frame
+  // emitted just before the IPC loop starts, so the banner block
+  // is skipped entirely — both to keep stderr clean (the global
+  // `console.log` redirect would route every line there otherwise)
+  // and to skip the ANSI string construction work.
+  if (!cli.ipcStdio) {
+    const { bold, magenta, cyan, green, dim, reset, yellow } = ANSI;
+    const versionStr = `v${getVersion()}`;
 
-  const boxWidth = 48;
+    const boxWidth = 48;
 
-  // All lines: 4 space indent, right-pad to boxWidth
-  const line = (text: string, visibleLen: number): string => {
-    return "    " + text + " ".repeat(Math.max(0, boxWidth - 4 - visibleLen));
-  };
+    // All lines: 4 space indent, right-pad to boxWidth
+    const line = (text: string, visibleLen: number): string => {
+      return "    " + text + " ".repeat(Math.max(0, boxWidth - 4 - visibleLen));
+    };
 
-  console.log();
-  console.log(`${bold}${magenta}  ╔${"═".repeat(boxWidth)}╗${reset}`);
-  console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
-  console.log(
-    `${bold}${magenta}  ║${line("🤖 H Y P E R A G E N T", 22)}║${reset}`,
-  );
-  console.log(
-    `${bold}${magenta}  ║${line(`   ${dim}${versionStr}${reset}${bold}${magenta}`, 3 + versionStr.length)}║${reset}`,
-  );
-  console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
-  console.log(
-    `${bold}${magenta}  ║${line("Hyperlight × Copilot SDK Agent", 30)}║${reset}`,
-  );
-  console.log(
-    `${bold}${magenta}  ║${line("Sandboxed JavaScript Execution", 30)}║${reset}`,
-  );
-  console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
-  console.log(`${bold}${magenta}  ╚${"═".repeat(boxWidth)}╝${reset}`);
+    console.log();
+    console.log(`${bold}${magenta}  ╔${"═".repeat(boxWidth)}╗${reset}`);
+    console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
+    console.log(
+      `${bold}${magenta}  ║${line("🤖 H Y P E R A G E N T", 22)}║${reset}`,
+    );
+    console.log(
+      `${bold}${magenta}  ║${line(`   ${dim}${versionStr}${reset}${bold}${magenta}`, 3 + versionStr.length)}║${reset}`,
+    );
+    console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
+    console.log(
+      `${bold}${magenta}  ║${line("Hyperlight × Copilot SDK Agent", 30)}║${reset}`,
+    );
+    console.log(
+      `${bold}${magenta}  ║${line("Sandboxed JavaScript Execution", 30)}║${reset}`,
+    );
+    console.log(`${bold}${magenta}  ║${" ".repeat(boxWidth)}║${reset}`);
+    console.log(`${bold}${magenta}  ╚${"═".repeat(boxWidth)}╝${reset}`);
 
-  // Warning banner
-  const isContainer =
-    existsSync("/.dockerenv") || existsSync("/run/.containerenv");
-  console.log();
-  console.log(
-    `  ${bold}${yellow}⚠  WARNING: Pre-release software created by AI.${reset}`,
-  );
-  console.log(
-    `  ${yellow}   Not for production use. Be careful where you run it and what you do with it.${reset}`,
-  );
-  if (!isContainer) {
-    console.log(`  ${yellow}   Consider running in a container.${reset}`);
-  }
-
-  console.log();
-  // Build config rows as key-value pairs for both plain and markdown display
-  const bannerPlugins = pluginManager.listPlugins();
-  const bannerEnabled = pluginManager.getEnabledPlugins();
-  const pluginSummary =
-    bannerPlugins.length > 0
-      ? (() => {
-          const audited = bannerPlugins.filter((p) => p.audit !== null).length;
-          const approved = bannerPlugins.filter((p) => p.approved).length;
-          return `${bannerEnabled.length}/${bannerPlugins.length} enabled, ${audited} audited, ${approved} approved`;
-        })()
-      : "none (create plugins/ directory to extend)";
-
-  type ConfigRow = [label: string, value: string];
-  const configRows: ConfigRow[] = [
-    ["Model", state.currentModel],
-    ["CPU timeout", `${sandbox.config.cpuTimeoutMs}ms`],
-    ["Wall timeout", `${sandbox.config.wallClockTimeoutMs}ms`],
-    ["Send timeout", `${SEND_TIMEOUT_MS}ms (inactivity)`],
-    ["Heap size", `${sandbox.config.heapSizeMb}MB`],
-    ["Scratch size", `${sandbox.config.scratchSizeMb}MB`],
-    [
-      "Buffers",
-      `${sandbox.config.inputBufferKb}KB input / ${sandbox.config.outputBufferKb}KB output`,
-    ],
-    ["Context", "infinite sessions (auto-compaction)"],
-    ["Plugins", pluginSummary],
-  ];
-  if (cli.showCode && process.env.HYPERAGENT_CODE_LOG) {
-    configRows.push(["Code log", process.env.HYPERAGENT_CODE_LOG]);
-  }
-  if (cli.showTiming && process.env.HYPERAGENT_TIMING_LOG) {
-    configRows.push(["Timing log", process.env.HYPERAGENT_TIMING_LOG]);
-  }
-  if (transcript.active) {
-    configRows.push(["Transcript", transcript.rawPath ?? ""]);
-  }
-
-  if (state.markdownEnabled) {
-    const mdRows = configRows.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
-    const table = `| Setting | Value |\n|---------|-------|\n${mdRows}`;
-    // Use ANSI bold directly — console.log doesn't pass through the
-    // markdown renderer, so `**foo**` would print raw asterisks.
-    console.log(`  ${bold}Configuration:${reset}`);
-    console.log(renderMarkdown(table));
-  } else {
-    console.log(`  ${bold}Configuration:${reset}`);
-    for (const [label, value] of configRows) {
-      console.log(`    ${label.padEnd(14)} ${cyan}${value}${reset}`);
+    // Warning banner
+    const isContainer =
+      existsSync("/.dockerenv") || existsSync("/run/.containerenv");
+    console.log();
+    console.log(
+      `  ${bold}${yellow}⚠  WARNING: Pre-release software created by AI.${reset}`,
+    );
+    console.log(
+      `  ${yellow}   Not for production use. Be careful where you run it and what you do with it.${reset}`,
+    );
+    if (!isContainer) {
+      console.log(`  ${yellow}   Consider running in a container.${reset}`);
     }
-  }
-  console.log();
-  console.log(
-    `   ${dim}Type your request and press Enter. Type ${ANSI.cyan}/help${ANSI.reset}${dim} for commands, ${ANSI.cyan}/exit${ANSI.reset}${dim} to quit.${reset}`,
-  );
-  console.log(
-    `   ${dim}Press ${ANSI.cyan}ESC${ANSI.reset}${dim} during a response to cancel.${reset}`,
-  );
-  console.log();
+
+    console.log();
+    // Build config rows as key-value pairs for both plain and markdown display
+    const bannerPlugins = pluginManager.listPlugins();
+    const bannerEnabled = pluginManager.getEnabledPlugins();
+    const pluginSummary =
+      bannerPlugins.length > 0
+        ? (() => {
+            const audited = bannerPlugins.filter(
+              (p) => p.audit !== null,
+            ).length;
+            const approved = bannerPlugins.filter((p) => p.approved).length;
+            return `${bannerEnabled.length}/${bannerPlugins.length} enabled, ${audited} audited, ${approved} approved`;
+          })()
+        : "none (create plugins/ directory to extend)";
+
+    type ConfigRow = [label: string, value: string];
+    const configRows: ConfigRow[] = [
+      ["Model", state.currentModel],
+      ["CPU timeout", `${sandbox.config.cpuTimeoutMs}ms`],
+      ["Wall timeout", `${sandbox.config.wallClockTimeoutMs}ms`],
+      ["Send timeout", `${SEND_TIMEOUT_MS}ms (inactivity)`],
+      ["Heap size", `${sandbox.config.heapSizeMb}MB`],
+      ["Scratch size", `${sandbox.config.scratchSizeMb}MB`],
+      [
+        "Buffers",
+        `${sandbox.config.inputBufferKb}KB input / ${sandbox.config.outputBufferKb}KB output`,
+      ],
+      ["Context", "infinite sessions (auto-compaction)"],
+      ["Plugins", pluginSummary],
+    ];
+    if (cli.showCode && process.env.HYPERAGENT_CODE_LOG) {
+      configRows.push(["Code log", process.env.HYPERAGENT_CODE_LOG]);
+    }
+    if (cli.showTiming && process.env.HYPERAGENT_TIMING_LOG) {
+      configRows.push(["Timing log", process.env.HYPERAGENT_TIMING_LOG]);
+    }
+    if (transcript.active) {
+      configRows.push(["Transcript", transcript.rawPath ?? ""]);
+    }
+
+    if (state.markdownEnabled) {
+      const mdRows = configRows.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
+      const table = `| Setting | Value |\n|---------|-------|\n${mdRows}`;
+      // Use ANSI bold directly — console.log doesn't pass through the
+      // markdown renderer, so `**foo**` would print raw asterisks.
+      console.log(`  ${bold}Configuration:${reset}`);
+      console.log(renderMarkdown(table));
+    } else {
+      console.log(`  ${bold}Configuration:${reset}`);
+      for (const [label, value] of configRows) {
+        console.log(`    ${label.padEnd(14)} ${cyan}${value}${reset}`);
+      }
+    }
+    console.log();
+    console.log(
+      `   ${dim}Type your request and press Enter. Type ${ANSI.cyan}/help${ANSI.reset}${dim} for commands, ${ANSI.cyan}/exit${ANSI.reset}${dim} to quit.${reset}`,
+    );
+    console.log(
+      `   ${dim}Press ${ANSI.cyan}ESC${ANSI.reset}${dim} during a response to cancel.${reset}`,
+    );
+    console.log();
+  } // end if (!cli.ipcStdio) banner block
 
   // ── Diagnostic: verify tool definition before sending ────────
   if (state.debugEnabled) {
@@ -7142,7 +7174,13 @@ async function main(): Promise<void> {
       }
       pluginManager.enable("mcp");
       await syncPluginsToSandbox();
-      console.log(`  ${C.ok("MCP gateway auto-enabled")} (servers configured)`);
+      // Boot-time status log is human-only — skip in IPC mode so
+      // we don't corrupt the NDJSON stdout stream with raw text.
+      if (!cli.ipcStdio) {
+        console.log(
+          `  ${C.ok("MCP gateway auto-enabled")} (servers configured)`,
+        );
+      }
     }
   }
 
@@ -7163,6 +7201,15 @@ async function main(): Promise<void> {
         "internal: cli.ipcStdio set but jsonLinesUI not constructed",
       );
     }
+    // One-shot handshake: announce that the agent has finished
+    // booting and the stdin reader is about to attach. Hosts must
+    // wait for this frame before sending `user-input` to avoid
+    // racing the IPC reader setup. See `docs/IPC-PROTOCOL.md`.
+    jsonLinesUI.emitReady({
+      protocolVersion: JSON_LINES_PROTOCOL_VERSION,
+      agentVersion: getVersion(),
+      model: state.currentModel,
+    });
     state.activeSession = session;
     await runIpcStdioLoop(
       {

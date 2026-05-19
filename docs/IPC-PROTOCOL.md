@@ -70,14 +70,18 @@ the payload type definitions live in
 2. The agent boots — plugins audit, MCP gateway initialises, session
    is created. Bootstrapping notifications stream out as `notification`
    frames during this window.
-3. The agent waits for a `user-input` frame on stdin. The host sends
+3. The agent emits one `ready` frame announcing the protocol version,
+   agent build, and selected model. Hosts must wait for this frame
+   before sending `user-input` — frames sent earlier may race the
+   stdin reader setup.
+4. The agent waits for a `user-input` frame on stdin. The host sends
    one whenever the user submits a turn.
-4. While a turn is in flight the agent streams events on stdout. Modal
+5. While a turn is in flight the agent streams events on stdout. Modal
    prompts (`ask-approval`, `ask-choice`, `ask-text`, `ask-inline`)
    pause the turn until the host posts a matching `*-response` reply.
-5. The turn finishes — a final `markdown` frame carries the assistant
-   text, `usage` reports tokens/cost, and the loop returns to step 3.
-6. The host sends a `shutdown` frame (or closes stdin) to exit the
+6. The turn finishes — a final `markdown` frame carries the assistant
+   text, `usage` reports tokens/cost, and the loop returns to step 4.
+7. The host sends a `shutdown` frame (or closes stdin) to exit the
    loop cleanly. The agent cancels any pending modals with safe
    defaults (`approval → "no"`, text/inline → `""`, choice →
    `{ answer: "", wasFreeform: false }`) and resolves the loop promise.
@@ -109,6 +113,19 @@ the payload type definitions live in
 Each row lists the `t` tag, a one-line summary, and the shape of the
 `data` payload. Payload field types are listed inline; an `?` suffix
 marks an optional field.
+
+### Bootstrap handshake
+
+| Tag     | Description                                  | Payload                                                                                |
+| ------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ready` | One-shot: agent finished booting, stdin attached | `{ protocolVersion: number, agentVersion: string, model: string }`                 |
+
+`ready` is emitted exactly once per agent process, after the boot
+sequence and immediately before the stdin reader is wired up. The
+fields let the host fail fast on a protocol-version mismatch and
+display the selected model/build in its chrome before the first
+turn. Hosts that send `user-input` before this frame arrives are
+racing the reader and may have their input dropped.
 
 ### Streaming output
 

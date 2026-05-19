@@ -29,4 +29,5 @@ export {
   JSON_LINES_PROTOCOL_VERSION,
   type JsonLinesUIOptions,
   type JsonLinesWriter,
+  type ReadyPayload,
 } from "./json-lines-ui.js";
