@@ -1104,15 +1104,6 @@ if (cli.reasoningEffort) {
     | "high"
     | "xhigh";
   state.sessionNeedsRebuild = true;
-} else if (cli.verbose && state.reasoningEffort === null) {
-  // `--verbose` on its own implies the user wants to *see* what the
-  // model is thinking. Reasoning streams are gated by
-  // `state.reasoningEffort` (null = off), so without this the
-  // verbose flag would silently no-op for any model that doesn't
-  // emit reasoning by default. Default to "high" — matches the
-  // default the `--show-reasoning` flag picks when used bare.
-  state.reasoningEffort = "high";
-  state.sessionNeedsRebuild = true;
 }
 
 // Wire CLI --attach <file> (repeatable) into the pending-attachments
@@ -6988,7 +6979,6 @@ async function main(): Promise<void> {
       ],
       ["Context", "infinite sessions (auto-compaction)"],
       ["Plugins", pluginSummary],
-      ["Verbose", state.verboseOutput ? "ON" : "OFF"],
     ];
     if (cli.showCode && process.env.HYPERAGENT_CODE_LOG) {
       configRows.push(["Code log", process.env.HYPERAGENT_CODE_LOG]);
